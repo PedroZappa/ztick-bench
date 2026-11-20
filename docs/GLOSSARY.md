@@ -55,7 +55,7 @@ redefining them.
 | **Unavailable value** | A metric the platform or integration could not provide. |
 | **Not-applicable value** | A metric that is undefined for the benchmark type or mode. |
 | **Overhead estimate** | A separately preserved estimate of the cost introduced by measurement and instrumentation; never silently subtracted. |
-| **Throughput** | Processing rate, expressed in samples or blocks per second. |
+| **Throughput** | Processing rate in frames/s (canonical); samples/s = frames/s × channels and blocks/s = frames/s ÷ block size. Samples are counted per channel. |
 | **Real-time factor** | Ratio of DSP processing time to the duration of the audio represented; below 1 means faster than real time. |
 | **Scaling efficiency** | How processing capacity grows with added instances or worker threads relative to ideal linear scaling. |
 | **Deadline miss** | Failure to complete processing within a configured deadline; meaningful for simulated real-time or live modes, otherwise not applicable. |

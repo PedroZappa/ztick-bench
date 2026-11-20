@@ -118,7 +118,15 @@ The platform abstraction reports one of:
 
 These states map to the metric value statuses in
 [METRICS §1](METRICS_REFERENCE.md#1-value-statuses) and are serialized using
-[RESULTS_FORMAT](RESULTS_FORMAT.md#31-value-statuses).
+[RESULTS_FORMAT](RESULTS_FORMAT.md#31-value-statuses). Derived design mapping:
+
+| Platform state | Metric value status |
+| --- | --- |
+| `value`, directly observed | `measured` |
+| `value`, derived from other signals | `estimated` |
+| `unavailable` | `unavailable`, with reason |
+| `unsupported` | `unavailable` with reason, or `not_applicable` when the capability is undefined for the selected mode |
+| `not_applicable` | `not_applicable`, with reason |
 
 ## 7. Platform coverage and roadmap
 

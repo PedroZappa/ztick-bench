@@ -92,6 +92,20 @@ If a topic belongs to another file, add a link instead of re-documenting it.
 - Keep requirement references in the form `BR §n` (Baseline Record =
   `docs/DECISIONS.md`) so the docs remain traceable to the decisions.
 
+## Implementation rules (agent behavior)
+
+- **Unit-test every function.** When adding or changing a function, add or update a
+  deterministic unit test that asserts its observable behavior, including error and
+  edge paths. A change is not complete until its tests pass. Test scope and
+  exemptions are owned by
+  [TESTING_STRATEGY §2](docs/TESTING_STRATEGY.md#2-test-layers).
+- **Verify mathematical formulas independently.** Every implemented formula from
+  [METRICS_REFERENCE §3](docs/METRICS_REFERENCE.md#3-definitions-and-formulas)
+  must be tested against an independently computed expected value, never against
+  the implementation itself.
+- **Keep every test registered with CTest** so `make test` runs it; Catch2 remains
+  a dev-only dependency (BR §22).
+
 ## Git operations (agent behavior)
 
 - **Read-only inspection is allowed.** Commands such as `git status`, `git diff`,

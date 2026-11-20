@@ -39,6 +39,16 @@ and failure cases in §4–§9. The version is pinned for offline/reproducible b
 the FetchContent fallback is a build-time convenience only and does not make
 Catch2 a runtime dependency.
 
+**Unit-test scope (Derived design).** Every function introduced or modified in
+ztick-bench has a deterministic unit test asserting its observable behavior,
+including error and edge paths, before the change is considered complete. Generated
+or vendored code and declarations without a definition are exempt; any other
+exception must be recorded in the change. Tests are registered with CTest
+(`make test` runs them). Formulas taken from
+[METRICS §3](METRICS_REFERENCE.md#3-definitions-and-formulas) are checked against
+an independently computed expected value, not against the implementation under
+test.
+
 ## 3. Custom SDK test applications
 
 The requirement is two **independent** applications (BR §5.2). Derived design of

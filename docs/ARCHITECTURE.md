@@ -217,11 +217,12 @@ the next independent test. Result writes use a temporary file and atomic rename
 
 The abstraction exposes capability-probed operations for system information,
 runtime monitoring, CPU affinity/topology, worker-thread control and scheduling
-priority. Each operation reports one of: supported value, `unavailable` (platform
-cannot provide it), or `unsupported` (never implemented on this platform/backend).
-This satisfies the rule that platform-dependent capabilities must not be silently
-omitted (BR §17). Details are owned by
-[PLATFORM_MONITORING](PLATFORM_MONITORING.md).
+priority. Each operation reports one of: a supported value, `unavailable` (platform
+cannot provide it), `unsupported` (never implemented on this platform/backend), or
+`not_applicable` (meaningless for the selected mode). This satisfies the rule that
+platform-dependent capabilities must not be silently omitted (BR §17). The mapping
+to metric value statuses is owned by
+[PLATFORM_MONITORING §6](PLATFORM_MONITORING.md#6-availability-states).
 
 ## 8. Comparison and reporting placement
 

@@ -40,6 +40,18 @@ harmonic signal and impulse generators. *Source: BR §4.2.*
 for a run; compared builds receive identical input data wherever possible.
 *Source: BR §4.3.*
 
+Derived design (the independent reference for generator tests): with frame index
+`n` in `[0, frames)`, sample rate `fs`, peak amplitude `A` and fixed initial phase:
+
+- **Sine:** `x[n] = A * sin(2*pi*f*n/fs + phi)`, with `f` and `phi` recorded.
+- **Multi-tone / harmonic:** `x[n] = A * sum_k a_k * sin(2*pi*f_k*n/fs + phi_k)`,
+  with tone frequencies, phases and weights recorded. Weights are normalised so
+  `sum_k |a_k| = 1`, which bounds `|x[n]| <= A`.
+- **Impulse:** `x[p] = A` at one recorded position `p`; all other samples are zero.
+
+The v1.0 generators are deterministic; no random seed applies. Seeded generators
+are deferred with the randomized generators above.
+
 Deferred generators, recorded here so they are not mistaken for v1.0 requirements:
 white noise, pink noise, frequency sweeps, silence, musical test material and
 custom audio files. Randomized future generators must support configurable seeds
@@ -61,6 +73,12 @@ coverage. *Source: BR §3.1.*
 | Duration | Configurable target duration |
 | Iterations | Configurable fixed iteration count |
 | Repetitions | Configurable repeated measurements |
+
+Derived design: in duration mode, `frames = ceil(duration * fs)` and
+`blocks = ceil(frames / block_size)` per instance; in iteration mode,
+`frames = iterations * block_size`. If both duration and iterations are configured,
+iterations take precedence and the conflict is recorded as a warning. Warm-up
+iterations are excluded from frames, throughput and RTF denominators.
 
 ## 5. Profiles
 
@@ -172,6 +190,11 @@ adapter custom checks, adapter-provided references, workload reference files,
 deterministic reference generation for built-in workloads, absolute and relative
 tolerances, and direct comparison of two implementations with one designated as
 reference. *Source: BR §10.2.*
+
+Derived design for reference comparisons: a sample passes when
+`|actual - reference| <= atol + rtol * |reference|`. NaN, Inf and out-of-range
+outputs fail unless that check explicitly declares them expected. The absolute and
+relative tolerances used for each check are recorded with its validation outcome.
 
 SDK hooks for validation are owned by
 [SDK_SPECIFICATION §7](SDK_SPECIFICATION.md#7-validation-through-the-sdk); outcome

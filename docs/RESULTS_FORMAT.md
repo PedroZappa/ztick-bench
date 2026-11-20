@@ -120,9 +120,11 @@ Each run contains (Derived design):
 | `warnings`, `failures` | Conditions classified per §9 |
 | `status` | `complete`, `incomplete`, or `failed` |
 
-Raw per-block samples are retained when detail collection is enabled; aggregate
-mode retains only the configured raw basis for statistics. Overhead estimates are
-always a separate field (BR §7.3).
+Raw per-block samples are retained and serialized when detail collection is
+enabled; in aggregate mode the configured raw basis
+([METRICS §4](METRICS_REFERENCE.md#4-aggregation-and-raw-data-rules)) is retained
+long enough to compute the aggregates and need not be serialized. Overhead estimates
+are always a separate field (BR §7.3).
 
 ## 6. Config document
 
@@ -216,7 +218,8 @@ Comparison records preserve the underlying measurements and context (BR §11.3):
 | --- | --- |
 | `baseline`, `candidate` | References to result documents and selected metrics |
 | `level` | `run_to_run`, `build_to_build`, `machine_to_machine` (BR §11.2) |
-| `threshold_percent` | Configured percentage threshold |
+| `threshold_percent` | Configured percentage threshold, applied to the absolute relative change |
+| `statistics` | Metric polarity, significance level `alpha`, one/two-sided choice, test method and metrics tested |
 | `significance` | Test/method used and outcome from [METRICS §6](METRICS_REFERENCE.md#6-comparison-and-regression-statistics) |
 | `classification` | `raw_difference`, `within_variability`, `regression`, `improvement` |
 | `comparability_warnings` | Build/machine/environment mismatches |
