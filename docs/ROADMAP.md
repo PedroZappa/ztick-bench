@@ -47,106 +47,92 @@ unproven adapter contract.
 Each phase is divided below into small, independently completable increments. The
 steps are **derived planning guidance only** (REQ-ROAD-03): they do not add v1.0
 requirements, and they may be split, merged or reordered within a phase when
-dependencies allow. Phase order itself remains binding per BR §16. Each row is
+dependencies allow. Phase order itself remains binding per BR §16. Each item is
 intended to be one reviewable change, with a verifiable completion condition.
 Technical detail stays in the owning document named in the
-[PROJECT_SPEC ownership map](PROJECT_SPEC.md#4-document-ownership-map); the tables
+[PROJECT_SPEC ownership map](PROJECT_SPEC.md#4-document-ownership-map); the lists
 only state the increment and its completion condition.
 
 ### 2.1 Phase 1 — Foundation
 
-| Step | Increment | Complete when |
-| --- | --- | --- |
-| P1.1 | Bootstrap the root CMake project: C++20, version `0.1.0-dev`, toolchain flags, CTest enabled | Configure and build succeed on Linux with GCC 13+ or Clang 16+ |
-| P1.2 | Create the source-tree skeleton and per-directory targets from [ARCHITECTURE §3.1](ARCHITECTURE.md#31-source-tree-layout-derived-design) | Layout matches the frozen tree; every declared target builds from a placeholder source |
-| P1.3 | Add `include/ztick/version.h` with SDK ABI `1.0.0` macros | Header compiles standalone as C11 and C++20; values asserted by a test |
-| P1.4 | Add `include/ztick/types.h` with the frozen [core-type inventory](SDK_SPECIFICATION.md#12-core-type-inventory) | Every listed type is defined once; C11 and C++20 compile checks pass |
-| P1.5 | Add `include/ztick/sdk.h` with opaque handles, `ZTICK_API` and the C-only surface | Header is self-contained C11; no C++ types, exceptions or ABI leak |
-| P1.6 | Add C++20 wrapper scaffolding under `include/ztick/cpp/` | Wrappers include the C headers and compile in namespace `ztick::sdk` |
-| P1.7 | Define the `ztick_sdk` target, install rules and `cmake/ztick-sdk-config.cmake.in` | A scratch consumer outside the repo can `find_package(ztick-sdk)` and include headers (BR §17.8) |
-| P1.8 | Integrate Catch2 v3 (pinned, FetchContent fallback) and register the first CTest | `ctest --test-dir build --output-on-failure` passes |
-| P1.9 | Unit-test core types and version macros | Statuses, availability states and version constants are covered |
-| P1.10 | Define the platform abstraction interface in `src/platform/include/` | Interface compiles; operations expose explicit availability states (ARCHITECTURE §7) |
-| P1.11 | Implement Linux system-info collection in `src/platform/linux/` | Every [PLATFORM_MONITORING §2](PLATFORM_MONITORING.md#2-system-information-inventory) field yields a value or an explicit state |
-| P1.12 | Test missing and unsupported platform-data paths | All availability states are produced by tests; no field is silently omitted |
-| P1.13 | Add `tools/ztick-sysinfo/` printing the system-info inventory | Running the tool prints every inventory field with its availability state |
-| P1.14 | Phase 1 verification pass | The §1 exit criterion is demonstrated with CI flags active |
+- [ ] **P1.1 — Bootstrap the root CMake project: C++20, version `0.1.0-dev`, toolchain flags, CTest enabled.** Done when: Configure and build succeed on Linux with GCC 13+ or Clang 16+.
+- [ ] **P1.2 — Create the source-tree skeleton and per-directory targets from [ARCHITECTURE §3.1](ARCHITECTURE.md#31-source-tree-layout-derived-design).** Done when: Layout matches the frozen tree; every declared target builds from a placeholder source.
+- [ ] **P1.3 — Add `include/ztick/version.h` with SDK ABI `1.0.0` macros.** Done when: Header compiles standalone as C11 and C++20; values asserted by a test.
+- [ ] **P1.4 — Add `include/ztick/types.h` with the frozen [core-type inventory](SDK_SPECIFICATION.md#12-core-type-inventory).** Done when: Every listed type is defined once; C11 and C++20 compile checks pass.
+- [ ] **P1.5 — Add `include/ztick/sdk.h` with opaque handles, `ZTICK_API` and the C-only surface.** Done when: Header is self-contained C11; no C++ types, exceptions or ABI leak.
+- [ ] **P1.6 — Add C++20 wrapper scaffolding under `include/ztick/cpp/`.** Done when: Wrappers include the C headers and compile in namespace `ztick::sdk`.
+- [ ] **P1.7 — Define the `ztick_sdk` target, install rules and `cmake/ztick-sdk-config.cmake.in`.** Done when: A scratch consumer outside the repo can `find_package(ztick-sdk)` and include headers (BR §17.8).
+- [ ] **P1.8 — Integrate Catch2 v3 (pinned, FetchContent fallback) and register the first CTest.** Done when: `ctest --test-dir build --output-on-failure` passes.
+- [ ] **P1.9 — Unit-test core types and version macros.** Done when: Statuses, availability states and version constants are covered.
+- [ ] **P1.10 — Define the platform abstraction interface in `src/platform/include/`.** Done when: Interface compiles; operations expose explicit availability states (ARCHITECTURE §7).
+- [ ] **P1.11 — Implement Linux system-info collection in `src/platform/linux/`.** Done when: Every [PLATFORM_MONITORING §2](PLATFORM_MONITORING.md#2-system-information-inventory) field yields a value or an explicit state.
+- [ ] **P1.12 — Test missing and unsupported platform-data paths.** Done when: All availability states are produced by tests; no field is silently omitted.
+- [ ] **P1.13 — Add `tools/ztick-sysinfo/` printing the system-info inventory.** Done when: Running the tool prints every inventory field with its availability state.
+- [ ] **P1.14 — Phase 1 verification pass.** Done when: The §1 exit criterion is demonstrated with CI flags active.
 
 ### 2.2 Phase 2 — Benchmark engine
 
-| Step | Increment | Complete when |
-| --- | --- | --- |
-| P2.1 | Model processor, chain and engine workloads and profile settings | Model round-trips from config-shaped data with unit tests |
-| P2.2 | Implement sine, multi-tone/harmonic and impulse generators with fixed seeds | Generator reproducibility tests pass (BR §4.3) |
-| P2.3 | Implement execution sequencing with generation, setup and warm-up outside the primary interval | A test asserts no measurement is recorded for those phases |
-| P2.4 | Implement per-block, whole-run and opt-in end-to-end timing | All three levels are selectable; raw samples are retained |
-| P2.5 | Record overhead estimates separately from raw timings | No subtraction occurs before reporting; estimates are independently visible |
-| P2.6 | Implement statistics: mean, median, percentiles, standard deviation, throughput, RTF and scaling efficiency | Values match independent reference calculations ([METRICS](METRICS_REFERENCE.md#3-definitions-and-formulas)) |
-| P2.7 | Implement Basic/Standard/Strict validation as a separate phase | All levels are exercised and timing results are unchanged |
-| P2.8 | Phase 2 verification pass | Generators and timing levels work; metrics compute per [METRICS](METRICS_REFERENCE.md) |
+- [ ] **P2.1 — Model processor, chain and engine workloads and profile settings.** Done when: Model round-trips from config-shaped data with unit tests.
+- [ ] **P2.2 — Implement sine, multi-tone/harmonic and impulse generators with fixed seeds.** Done when: Generator reproducibility tests pass (BR §4.3).
+- [ ] **P2.3 — Implement execution sequencing with generation, setup and warm-up outside the primary interval.** Done when: A test asserts no measurement is recorded for those phases.
+- [ ] **P2.4 — Implement per-block, whole-run and opt-in end-to-end timing.** Done when: All three levels are selectable; raw samples are retained.
+- [ ] **P2.5 — Record overhead estimates separately from raw timings.** Done when: No subtraction occurs before reporting; estimates are independently visible.
+- [ ] **P2.6 — Implement statistics: mean, median, percentiles, standard deviation, throughput, RTF and scaling efficiency.** Done when: Values match independent reference calculations ([METRICS](METRICS_REFERENCE.md#3-definitions-and-formulas)).
+- [ ] **P2.7 — Implement Basic/Standard/Strict validation as a separate phase.** Done when: All levels are exercised and timing results are unchanged.
+- [ ] **P2.8 — Phase 2 verification pass.** Done when: Generators and timing levels work; metrics compute per [METRICS](METRICS_REFERENCE.md).
 
 ### 2.3 Phase 3 — Integrations
 
-| Step | Increment | Complete when |
-| --- | --- | --- |
-| P3.1 | Static adapter registry and one minimal static adapter | The adapter registers and is discoverable |
-| P3.2 | Dynamic loader with metadata-only inspection | Metadata is readable without executing plugin code (BR §6.1) |
-| P3.3 | SDK version and capability negotiation before use | Incompatible integrations are refused with a reason |
-| P3.4 | Trust list and first-run confirmation flow | An untrusted plugin requires explicit consent (BR §6.2) |
-| P3.5 | In-process runner | Mode is selectable and recorded in the run record |
-| P3.6 | Out-of-process runner and IPC | A child crash is contained; transport cost is outside the DSP interval (BR §6.3) |
-| P3.7 | Custom test app A — static processor/chain harness | App A runs end-to-end ([TESTING_STRATEGY §3](TESTING_STRATEGY.md#3-custom-sdk-test-applications)) |
-| P3.8 | Custom test app B — dynamic engine harness | App B runs end-to-end |
-| P3.9 | External-style build of both apps | BR §17.8 is verified without modifying ztick-bench |
-| P3.10 | Phase 3 verification pass | Both test apps run end-to-end |
+- [ ] **P3.1 — Static adapter registry and one minimal static adapter.** Done when: The adapter registers and is discoverable.
+- [ ] **P3.2 — Dynamic loader with metadata-only inspection.** Done when: Metadata is readable without executing plugin code (BR §6.1).
+- [ ] **P3.3 — SDK version and capability negotiation before use.** Done when: Incompatible integrations are refused with a reason.
+- [ ] **P3.4 — Trust list and first-run confirmation flow.** Done when: An untrusted plugin requires explicit consent (BR §6.2).
+- [ ] **P3.5 — In-process runner.** Done when: Mode is selectable and recorded in the run record.
+- [ ] **P3.6 — Out-of-process runner and IPC.** Done when: A child crash is contained; transport cost is outside the DSP interval (BR §6.3).
+- [ ] **P3.7 — Custom test app A — static processor/chain harness.** Done when: App A runs end-to-end ([TESTING_STRATEGY §3](TESTING_STRATEGY.md#3-custom-sdk-test-applications)).
+- [ ] **P3.8 — Custom test app B — dynamic engine harness.** Done when: App B runs end-to-end.
+- [ ] **P3.9 — External-style build of both apps.** Done when: BR §17.8 is verified without modifying ztick-bench.
+- [ ] **P3.10 — Phase 3 verification pass.** Done when: Both test apps run end-to-end.
 
 ### 2.4 Phase 4 — CLI and results
 
-| Step | Increment | Complete when |
-| --- | --- | --- |
-| P4.1 | Config document schema and parser | Round-trip test passes; version field is present ([RESULTS §6](RESULTS_FORMAT.md#6-config-document)) |
-| P4.2 | Result document schema and atomic writer | Incomplete runs are marked; writes use temporary file plus rename |
-| P4.3 | CSV projection | Shared fields agree between JSON and CSV |
-| P4.4 | Build, machine and workload metadata attachment | Metadata is present; comparability warnings fire on mismatch |
-| P4.5 | CLI skeleton and `list` | Command dispatch and documented exit codes work |
-| P4.6 | `run` command with config files and overrides | Runs execute with overrides applied |
-| P4.7 | `system` command using the platform abstraction | It prints availability states (BR §22) |
-| P4.8 | `report` and `compare` commands | Stored results render through both commands |
-| P4.9 | Regression thresholds and significance checks | Sub-threshold or normal-variability differences are not flagged |
-| P4.10 | `plugin list` / `plugin inspect`, CI exit codes, machine-readable output | CI-oriented tests pass |
-| P4.11 | Phase 4 verification pass | CLI workflows, config portability, comparisons and CI support are verified |
+- [ ] **P4.1 — Config document schema and parser.** Done when: Round-trip test passes; version field is present ([RESULTS §6](RESULTS_FORMAT.md#6-config-document)).
+- [ ] **P4.2 — Result document schema and atomic writer.** Done when: Incomplete runs are marked; writes use temporary file plus rename.
+- [ ] **P4.3 — CSV projection.** Done when: Shared fields agree between JSON and CSV.
+- [ ] **P4.4 — Build, machine and workload metadata attachment.** Done when: Metadata is present; comparability warnings fire on mismatch.
+- [ ] **P4.5 — CLI skeleton and `list`.** Done when: Command dispatch and documented exit codes work.
+- [ ] **P4.6 — `run` command with config files and overrides.** Done when: Runs execute with overrides applied.
+- [ ] **P4.7 — `system` command using the platform abstraction.** Done when: It prints availability states (BR §22).
+- [ ] **P4.8 — `report` and `compare` commands.** Done when: Stored results render through both commands.
+- [ ] **P4.9 — Regression thresholds and significance checks.** Done when: Sub-threshold or normal-variability differences are not flagged.
+- [ ] **P4.10 — `plugin list` / `plugin inspect`, CI exit codes, machine-readable output.** Done when: CI-oriented tests pass.
+- [ ] **P4.11 — Phase 4 verification pass.** Done when: CLI workflows, config portability, comparisons and CI support are verified.
 
 ### 2.5 Phase 5 — TUI
 
-| Step | Increment | Complete when |
-| --- | --- | --- |
-| P5.1 | Dashboard screen wired to core and results | Principal run status is visible ([TUI](TUI_SPECIFICATION.md)) |
-| P5.2 | Configuration screen | Profiles and dimensions are editable from the TUI |
-| P5.3 | Execution monitoring screen | Live progress and status are shown |
-| P5.4 | Results inspection screen | Metrics and their statuses are displayed |
-| P5.5 | Comparison and report screens | Stored comparisons are viewable |
-| P5.6 | Trust confirmation interaction | First-run consent works through the active front end |
-| P5.7 | Phase 5 verification pass | Principal TUI workflows are verified |
+- [ ] **P5.1 — Dashboard screen wired to core and results.** Done when: Principal run status is visible ([TUI](TUI_SPECIFICATION.md)).
+- [ ] **P5.2 — Configuration screen.** Done when: Profiles and dimensions are editable from the TUI.
+- [ ] **P5.3 — Execution monitoring screen.** Done when: Live progress and status are shown.
+- [ ] **P5.4 — Results inspection screen.** Done when: Metrics and their statuses are displayed.
+- [ ] **P5.5 — Comparison and report screens.** Done when: Stored comparisons are viewable.
+- [ ] **P5.6 — Trust confirmation interaction.** Done when: First-run consent works through the active front end.
+- [ ] **P5.7 — Phase 5 verification pass.** Done when: Principal TUI workflows are verified.
 
 ### 2.6 Phase 6 — Reliability
 
-| Step | Increment | Complete when |
-| --- | --- | --- |
-| P6.1 | Stress and repeatability runs | Variability is established and recorded |
-| P6.2 | Overhead validation at small block sizes | Overhead estimates are reported (BR §7.3) |
-| P6.3 | Failure-injection tests | Classification, context and continuation are verified (BR §14) |
-| P6.4 | Plugin isolation and crash tests | The host survives a child crash (ARCHITECTURE §6) |
-| P6.5 | Platform warning paths for thermal, frequency and load | Warnings are recorded while measurements are retained (BR §9) |
-| P6.6 | Full BR §17 acceptance traceability run | All eight criteria verified per [TESTING_STRATEGY §10](TESTING_STRATEGY.md#10-acceptance-criteria-traceability) |
-| P6.7 | v1.0 verification pass | Phases 1–6 complete; §6 exit criteria met |
+- [ ] **P6.1 — Stress and repeatability runs.** Done when: Variability is established and recorded.
+- [ ] **P6.2 — Overhead validation at small block sizes.** Done when: Overhead estimates are reported (BR §7.3).
+- [ ] **P6.3 — Failure-injection tests.** Done when: Classification, context and continuation are verified (BR §14).
+- [ ] **P6.4 — Plugin isolation and crash tests.** Done when: The host survives a child crash (ARCHITECTURE §6).
+- [ ] **P6.5 — Platform warning paths for thermal, frequency and load.** Done when: Warnings are recorded while measurements are retained (BR §9).
+- [ ] **P6.6 — Full BR §17 acceptance traceability run.** Done when: All eight criteria verified per [TESTING_STRATEGY §10](TESTING_STRATEGY.md#10-acceptance-criteria-traceability).
+- [ ] **P6.7 — v1.0 verification pass.** Done when: Phases 1–6 complete; §6 exit criteria met.
 
 ### 2.7 Phase 7 — Platform expansion (post-v1.0, REQ-ROAD-02)
 
-| Step | Increment | Complete when |
-| --- | --- | --- |
-| P7.1 | macOS implementation of the platform abstraction | macOS builds; unavailable fields are reported as such |
-| P7.2 | Windows preparation | The abstraction accepts a Windows backend without core changes |
-| P7.3 | Cross-platform verification | Portability tests pass on each available platform |
+- [ ] **P7.1 — macOS implementation of the platform abstraction.** Done when: macOS builds; unavailable fields are reported as such.
+- [ ] **P7.2 — Windows preparation.** Done when: The abstraction accepts a Windows backend without core changes.
+- [ ] **P7.3 — Cross-platform verification.** Done when: Portability tests pass on each available platform.
 
 ## 3. Mode rollout
 
