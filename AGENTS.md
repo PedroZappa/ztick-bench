@@ -109,7 +109,36 @@ If a topic belongs to another file, add a link instead of re-documenting it.
 - **The commit and branch conventions above** apply only when the user explicitly
   asks for a commit or branch. They are never a reason to initiate one.
 
+## Reusable command flows (Makefile)
+
+- **Promote useful command flows into `make` rules.** When a command sequence is
+  worth running again or handing to another contributor, add a target to the root
+  `Makefile` instead of leaving it as an ad-hoc shell command in a document, chat
+  or memory. The `Makefile` is the canonical home for developer workflows; CMake
+  remains the build system.
+- **Keep targets thin.** Wrap `cmake`, `ctest` and the project binaries rather than
+  duplicating build logic. Expose anything a developer may change as an
+  overridable variable (`CMAKE`, `CTEST`, `BUILD_TYPE`, `FILTER`, `CONFIG`, ...).
+- **Follow the existing target conventions:** hyphenated target names, a `##`
+  description so `make help` picks it up, placement under the matching `##@`
+  banner, and a `.PHONY` entry for non-file targets.
+- **Keep `make help` and dry runs side-effect free.** New targets must not create
+  files, configure builds or modify the repository just to display help.
+- **Document arguments in the help text**, not in a separate list, so `make help`
+  stays authoritative. Once a target exists, prefer it over the raw command;
+  keep the raw form only where it explains what the target does.
+- **Extract cumbersome rules into `scripts/`.** When a target grows beyond a short
+  command or two — multi-step logic, loops, conditionals or portability shims —
+  move the body into an executable `scripts/<name>.sh` and leave a thin `make` rule
+  that calls it with the target's arguments. Scripts use `snake_case` names, start
+  with a shebang and `# SPDX-License-Identifier: MIT`, fail fast (`set -euo
+  pipefail` where supported), and stay portable across the platforms in scope.
+  The `make` rule keeps its `##` help text and remains the only entry point.
+
 ## Planned commands (Foundation phase not yet implemented)
+
+These become `make` targets as the underlying tools land; see Reusable command
+flows above.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -133,3 +162,5 @@ ztick-bench plugin inspect <path>
 - [ ] Cross-topic content is linked, not copied.
 - [ ] v1.0 requirements and deferred work remain visually distinct.
 - [ ] Terminology matches the glossary.
+- [ ] Reusable command flows are exposed as `make` targets with `##` help text.
+- [ ] Cumbersome rule logic lives in `scripts/` behind a thin `make` wrapper.
