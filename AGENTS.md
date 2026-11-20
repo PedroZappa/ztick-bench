@@ -92,6 +92,23 @@ If a topic belongs to another file, add a link instead of re-documenting it.
 - Keep requirement references in the form `BR §n` (Baseline Record =
   `docs/DECISIONS.md`) so the docs remain traceable to the decisions.
 
+## Git operations (agent behavior)
+
+- **Read-only inspection is allowed.** Commands such as `git status`, `git diff`,
+  `git log`, `git show`, `git branch`, `git remote -v` and `git ls-remote` may be
+  run freely; they do not change the repository.
+- **Never commit on your own.** The agent must not run `git commit` unless the
+  user explicitly requests that specific commit at that moment.
+- **Ask before any repo-modifying git command.** This includes `git add`,
+  `git commit`, `git stash`, `git switch` / `git checkout`, `git merge`,
+  `git rebase`, `git reset`, `git push`, `git pull`, `git tag` and `git clean`.
+  State the exact command and its purpose, then wait for approval before running it.
+- **Approval is per command, not blanket.** Prior approval for one git operation
+  does not authorize another. When the user asks for a git operation, run only
+  that operation and report the result; do not chain extra git actions.
+- **The commit and branch conventions above** apply only when the user explicitly
+  asks for a commit or branch. They are never a reason to initiate one.
+
 ## Planned commands (Foundation phase not yet implemented)
 
 ```bash
