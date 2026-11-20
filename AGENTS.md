@@ -105,6 +105,17 @@ If a topic belongs to another file, add a link instead of re-documenting it.
   the implementation itself.
 - **Keep every test registered with CTest** so `make test` runs it; Catch2 remains
   a dev-only dependency (BR §22).
+- **Document all code with Doxygen comments.** Every file, namespace, type,
+  function, method, enum, constant, macro and member gets a Doxygen comment
+  (`/** ... */` or `///`) at its declaration, including internal code. Use
+  `@brief`, `@param`, `@return` and `@note`/`@warning` as applicable; state units,
+  preconditions, ownership/lifetime, status/error behavior and thread-safety where
+  relevant. C ABI headers document the C11 surface and opaque handles; C++ wrappers
+  name their C ABI counterpart. Comments are updated with the code they describe.
+- **Keep generated documentation buildable and uncommitted.** `make docs`
+  (Doxyfile → `build/doxygen`) is the single entry point; `make docs-open` views it
+  and `make clean-docs` removes it. Resolve Doxygen warnings for changed code before
+  finishing a change, and never commit generated output.
 
 ## Git operations (agent behavior)
 
