@@ -66,8 +66,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Defines BUILD_TESTING and enables CTest. Test registration starts at P1.8.
 include(CTest)
 
-# Minimal bootstrap target: proves the selected compiler, language levels and
-# warning flags work. P1.2 replaces it with the real source-tree targets.
-set(_ztick_bootstrap_source "${CMAKE_CURRENT_BINARY_DIR}/ztick_bootstrap.cpp")
-file(WRITE "${_ztick_bootstrap_source}" "int main() { return 0; }\n")
-add_executable(ztick_bootstrap "${_ztick_bootstrap_source}")
+# Source-tree targets (ARCHITECTURE §3.1). Per-directory CMakeLists.txt files
+# declare the targets; later phases populate their implementations.
+add_subdirectory(src/results)
+add_subdirectory(src/core)
+add_subdirectory(src/platform)
+add_subdirectory(src/plugin)
+add_subdirectory(src/cli)
+add_subdirectory(src/tui)
+
+# Optional example SDK test applications (Phase 3 implementations, BR §17.2).
+option(ZTICK_BUILD_EXAMPLES "Build placeholder/example SDK test applications" ON)
+if(ZTICK_BUILD_EXAMPLES)
+  add_subdirectory(examples/static_adapter)
+  add_subdirectory(examples/dynamic_adapter)
+endif()

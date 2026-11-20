@@ -56,7 +56,7 @@ only state the increment and its completion condition.
 ### 2.1 Phase 1 — Foundation
 
 - [x] **P1.1 — Bootstrap the root CMake project: C++20, version `0.1.0-dev`, toolchain flags, CTest enabled.** Done when: Configure and build succeed on Linux with GCC 13+ or Clang 16+.
-- [ ] **P1.2 — Create the source-tree skeleton and per-directory targets from [ARCHITECTURE §3.1](ARCHITECTURE.md#31-source-tree-layout-derived-design).** Done when: Layout matches the frozen tree; every declared target builds from a placeholder source.
+- [x] **P1.2 — Create the source-tree skeleton and per-directory targets from [ARCHITECTURE §3.1](ARCHITECTURE.md#31-source-tree-layout-derived-design).** Done when: Layout matches the frozen tree; every declared target builds from a placeholder source.
 - [ ] **P1.3 — Add `include/ztick/version.h` with SDK ABI `1.0.0` macros.** Done when: Header compiles standalone as C11 and C++20; values asserted by a test.
 - [ ] **P1.4 — Add `include/ztick/types.h` with the frozen [core-type inventory](SDK_SPECIFICATION.md#12-core-type-inventory).** Done when: Every listed type is defined once; C11 and C++20 compile checks pass.
 - [ ] **P1.5 — Add `include/ztick/sdk.h` with opaque handles, `ZTICK_API` and the C-only surface.** Done when: Header is self-contained C11; no C++ types, exceptions or ABI leak.
