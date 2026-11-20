@@ -32,9 +32,9 @@ applications before investing heavily in the TUI. *Source: BR §16.*
 **REQ-ROAD-02 (Confirmed).** v1.0 comprises phases 1–6; phase 7 (macOS support and
 Windows preparation) is post-v1.0. *Source: BR §21.*
 
-**REQ-ROAD-03 (Confirmed).** The deliverables and exit criteria in §1 are planning
-guidance, not binding acceptance gates; only BR §16 ordering and BR §17 criteria
-are binding. *Source: BR §21.*
+**REQ-ROAD-03 (Confirmed).** The deliverables, exit criteria and step breakdown in
+§1–§2 are planning guidance, not binding acceptance gates; only BR §16 ordering
+and BR §17 criteria are binding. *Source: BR §21.*
 
 **REQ-ROAD-04 (Confirmed).** The roadmap is dependency-ordered only; no dates or
 estimates are added. *Source: BR §21.*
@@ -42,7 +42,113 @@ estimates are added. *Source: BR §21.*
 This is why Phase 3 precedes Phase 5: a dashboard cannot meaningfully validate an
 unproven adapter contract.
 
-## 2. Mode rollout
+## 2. Incremental step breakdown (planning guidance)
+
+Each phase is divided below into small, independently completable increments. The
+steps are **derived planning guidance only** (REQ-ROAD-03): they do not add v1.0
+requirements, and they may be split, merged or reordered within a phase when
+dependencies allow. Phase order itself remains binding per BR §16. Each row is
+intended to be one reviewable change, with a verifiable completion condition.
+Technical detail stays in the owning document named in the
+[PROJECT_SPEC ownership map](PROJECT_SPEC.md#4-document-ownership-map); the tables
+only state the increment and its completion condition.
+
+### 2.1 Phase 1 — Foundation
+
+| Step | Increment | Complete when |
+| --- | --- | --- |
+| P1.1 | Bootstrap the root CMake project: C++20, version `0.1.0-dev`, toolchain flags, CTest enabled | Configure and build succeed on Linux with GCC 13+ or Clang 16+ |
+| P1.2 | Create the source-tree skeleton and per-directory targets from [ARCHITECTURE §3.1](ARCHITECTURE.md#31-source-tree-layout-derived-design) | Layout matches the frozen tree; every declared target builds from a placeholder source |
+| P1.3 | Add `include/ztick/version.h` with SDK ABI `1.0.0` macros | Header compiles standalone as C11 and C++20; values asserted by a test |
+| P1.4 | Add `include/ztick/types.h` with the frozen [core-type inventory](SDK_SPECIFICATION.md#12-core-type-inventory) | Every listed type is defined once; C11 and C++20 compile checks pass |
+| P1.5 | Add `include/ztick/sdk.h` with opaque handles, `ZTICK_API` and the C-only surface | Header is self-contained C11; no C++ types, exceptions or ABI leak |
+| P1.6 | Add C++20 wrapper scaffolding under `include/ztick/cpp/` | Wrappers include the C headers and compile in namespace `ztick::sdk` |
+| P1.7 | Define the `ztick_sdk` target, install rules and `cmake/ztick-sdk-config.cmake.in` | A scratch consumer outside the repo can `find_package(ztick-sdk)` and include headers (BR §17.8) |
+| P1.8 | Integrate Catch2 v3 (pinned, FetchContent fallback) and register the first CTest | `ctest --test-dir build --output-on-failure` passes |
+| P1.9 | Unit-test core types and version macros | Statuses, availability states and version constants are covered |
+| P1.10 | Define the platform abstraction interface in `src/platform/include/` | Interface compiles; operations expose explicit availability states (ARCHITECTURE §7) |
+| P1.11 | Implement Linux system-info collection in `src/platform/linux/` | Every [PLATFORM_MONITORING §2](PLATFORM_MONITORING.md#2-system-information-inventory) field yields a value or an explicit state |
+| P1.12 | Test missing and unsupported platform-data paths | All availability states are produced by tests; no field is silently omitted |
+| P1.13 | Add `tools/ztick-sysinfo/` printing the system-info inventory | Running the tool prints every inventory field with its availability state |
+| P1.14 | Phase 1 verification pass | The §1 exit criterion is demonstrated with CI flags active |
+
+### 2.2 Phase 2 — Benchmark engine
+
+| Step | Increment | Complete when |
+| --- | --- | --- |
+| P2.1 | Model processor, chain and engine workloads and profile settings | Model round-trips from config-shaped data with unit tests |
+| P2.2 | Implement sine, multi-tone/harmonic and impulse generators with fixed seeds | Generator reproducibility tests pass (BR §4.3) |
+| P2.3 | Implement execution sequencing with generation, setup and warm-up outside the primary interval | A test asserts no measurement is recorded for those phases |
+| P2.4 | Implement per-block, whole-run and opt-in end-to-end timing | All three levels are selectable; raw samples are retained |
+| P2.5 | Record overhead estimates separately from raw timings | No subtraction occurs before reporting; estimates are independently visible |
+| P2.6 | Implement statistics: mean, median, percentiles, standard deviation, throughput, RTF and scaling efficiency | Values match independent reference calculations ([METRICS](METRICS_REFERENCE.md#3-definitions-and-formulas)) |
+| P2.7 | Implement Basic/Standard/Strict validation as a separate phase | All levels are exercised and timing results are unchanged |
+| P2.8 | Phase 2 verification pass | Generators and timing levels work; metrics compute per [METRICS](METRICS_REFERENCE.md) |
+
+### 2.3 Phase 3 — Integrations
+
+| Step | Increment | Complete when |
+| --- | --- | --- |
+| P3.1 | Static adapter registry and one minimal static adapter | The adapter registers and is discoverable |
+| P3.2 | Dynamic loader with metadata-only inspection | Metadata is readable without executing plugin code (BR §6.1) |
+| P3.3 | SDK version and capability negotiation before use | Incompatible integrations are refused with a reason |
+| P3.4 | Trust list and first-run confirmation flow | An untrusted plugin requires explicit consent (BR §6.2) |
+| P3.5 | In-process runner | Mode is selectable and recorded in the run record |
+| P3.6 | Out-of-process runner and IPC | A child crash is contained; transport cost is outside the DSP interval (BR §6.3) |
+| P3.7 | Custom test app A — static processor/chain harness | App A runs end-to-end ([TESTING_STRATEGY §3](TESTING_STRATEGY.md#3-custom-sdk-test-applications)) |
+| P3.8 | Custom test app B — dynamic engine harness | App B runs end-to-end |
+| P3.9 | External-style build of both apps | BR §17.8 is verified without modifying ztick-bench |
+| P3.10 | Phase 3 verification pass | Both test apps run end-to-end |
+
+### 2.4 Phase 4 — CLI and results
+
+| Step | Increment | Complete when |
+| --- | --- | --- |
+| P4.1 | Config document schema and parser | Round-trip test passes; version field is present ([RESULTS §6](RESULTS_FORMAT.md#6-config-document)) |
+| P4.2 | Result document schema and atomic writer | Incomplete runs are marked; writes use temporary file plus rename |
+| P4.3 | CSV projection | Shared fields agree between JSON and CSV |
+| P4.4 | Build, machine and workload metadata attachment | Metadata is present; comparability warnings fire on mismatch |
+| P4.5 | CLI skeleton and `list` | Command dispatch and documented exit codes work |
+| P4.6 | `run` command with config files and overrides | Runs execute with overrides applied |
+| P4.7 | `system` command using the platform abstraction | It prints availability states (BR §22) |
+| P4.8 | `report` and `compare` commands | Stored results render through both commands |
+| P4.9 | Regression thresholds and significance checks | Sub-threshold or normal-variability differences are not flagged |
+| P4.10 | `plugin list` / `plugin inspect`, CI exit codes, machine-readable output | CI-oriented tests pass |
+| P4.11 | Phase 4 verification pass | CLI workflows, config portability, comparisons and CI support are verified |
+
+### 2.5 Phase 5 — TUI
+
+| Step | Increment | Complete when |
+| --- | --- | --- |
+| P5.1 | Dashboard screen wired to core and results | Principal run status is visible ([TUI](TUI_SPECIFICATION.md)) |
+| P5.2 | Configuration screen | Profiles and dimensions are editable from the TUI |
+| P5.3 | Execution monitoring screen | Live progress and status are shown |
+| P5.4 | Results inspection screen | Metrics and their statuses are displayed |
+| P5.5 | Comparison and report screens | Stored comparisons are viewable |
+| P5.6 | Trust confirmation interaction | First-run consent works through the active front end |
+| P5.7 | Phase 5 verification pass | Principal TUI workflows are verified |
+
+### 2.6 Phase 6 — Reliability
+
+| Step | Increment | Complete when |
+| --- | --- | --- |
+| P6.1 | Stress and repeatability runs | Variability is established and recorded |
+| P6.2 | Overhead validation at small block sizes | Overhead estimates are reported (BR §7.3) |
+| P6.3 | Failure-injection tests | Classification, context and continuation are verified (BR §14) |
+| P6.4 | Plugin isolation and crash tests | The host survives a child crash (ARCHITECTURE §6) |
+| P6.5 | Platform warning paths for thermal, frequency and load | Warnings are recorded while measurements are retained (BR §9) |
+| P6.6 | Full BR §17 acceptance traceability run | All eight criteria verified per [TESTING_STRATEGY §10](TESTING_STRATEGY.md#10-acceptance-criteria-traceability) |
+| P6.7 | v1.0 verification pass | Phases 1–6 complete; §6 exit criteria met |
+
+### 2.7 Phase 7 — Platform expansion (post-v1.0, REQ-ROAD-02)
+
+| Step | Increment | Complete when |
+| --- | --- | --- |
+| P7.1 | macOS implementation of the platform abstraction | macOS builds; unavailable fields are reported as such |
+| P7.2 | Windows preparation | The abstraction accepts a Windows backend without core changes |
+| P7.3 | Cross-platform verification | Portability tests pass on each available platform |
+
+## 3. Mode rollout
 
 BR §2.3 defines the order:
 
@@ -54,7 +160,7 @@ The architecture must accommodate later modes without putting live-audio or
 platform-specific assumptions into the offline core (BR §2.3,
 REQ-ARCH-03).
 
-## 3. Deferred and future work
+## 4. Deferred and future work
 
 Recorded separately from v1.0 requirements per BR §19.
 
@@ -70,7 +176,7 @@ Recorded separately from v1.0 requirements per BR §19.
 | Windows preparation | BR §1, §16 | Phase 7 and beyond |
 | Benchmark suites (`suite run`) | BR §18 Q47, §21 | **Deferred 2026-11-20** — post-v1.0; config format kept suite-friendly |
 
-## 4. Decision dependencies
+## 5. Decision dependencies
 
 | Decision | Affects | Status |
 | --- | --- | --- |
@@ -82,7 +188,7 @@ See [PROJECT_SPEC §7](PROJECT_SPEC.md#7-decision-register) for the full registe
 All decisions are resolved; any future change to a confirmed decision requires
 explicit approval (BR §19).
 
-## 5. v1.0 exit criteria
+## 6. v1.0 exit criteria
 
 v1.0 ends after phase 6 (REQ-ROAD-02). Completion is defined by BR §17 and traced
 to tests in
