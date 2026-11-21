@@ -3,6 +3,9 @@
  * @file platform.cpp
  * @brief Placeholder translation unit for the Linux platform target.
  *
- * The platform abstraction and its Linux system-info implementation replace this
- * file in later phases. This placeholder intentionally declares no functions.
+ * The portable interface is included here so every platform build proves it
+ * compiles. The Linux implementation replaces this placeholder in P1.11; this
+ * translation unit intentionally declares no functions yet.
  */
+
+#include <ztick/platform.hpp>

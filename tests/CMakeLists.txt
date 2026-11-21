@@ -28,6 +28,7 @@ include(Catch)
 add_executable(ztick_tests
   unit/catch2_integration_test.cpp
   unit/core_types_test.cpp
+  unit/platform_interface_test.cpp
 )
 # Catch2 defaults to __COUNTER__ for unique test names, which Clang reports as a
 # C2y extension under -Wpedantic. Line-based names keep WERROR builds clean.
@@ -36,6 +37,7 @@ target_link_libraries(ztick_tests
   PRIVATE
     Catch2::Catch2WithMain
     ztick::sdk
+    ztick_platform
 )
 catch_discover_tests(ztick_tests)
 

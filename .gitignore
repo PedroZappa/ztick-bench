@@ -56,6 +56,7 @@ dkms.conf
 
 # CMake / build outputs
 build/
+build-sanitize/
 cmake-build-*/
 CMakeCache.txt
 CMakeFiles/

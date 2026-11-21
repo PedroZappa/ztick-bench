@@ -57,9 +57,13 @@ _INFO    = [$(BLU)INFO$(D)]
 # unmatchedSuppression and exits non-zero with --error-exitcode, so remove them
 # once they no longer match. Re-add with the finding that justifies them.
 # - checkersReport: informational summary, not a finding.
+# - missingIncludeSystem: standard/system headers are intentionally not supplied.
+# - unusedFunction: header-only platform helpers are exercised by Catch2 tests in
+#   tests/unit, which is outside the cppcheck scan roots.
 CPPCHECK_FLAGS = --std=c++20 --enable=all --check-level=exhaustive \
                  --error-exitcode=1 --inline-suppr -I include \
-                 --suppress=checkersReport
+                 -I src/platform/include --suppress=checkersReport \
+                 --suppress=missingIncludeSystem --suppress=unusedFunction
 
 # Valgrind Memcheck: definite/indirect/possible leaks are hard errors;
 # still-reachable third-party statics (Catch2) are logged, not fatal.

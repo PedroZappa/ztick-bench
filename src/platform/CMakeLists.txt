@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Platform abstraction and OS-selected implementations.
-# Phase 1.10–1.11 populate the implementation; P1.2 establishes the target.
+# P1.10 defines the portable interface; P1.11–1.12 populate and test the
+# Linux implementation. P1.2 established the target.
 
 add_library(ztick_platform STATIC
   linux/platform.cpp
