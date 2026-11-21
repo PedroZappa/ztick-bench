@@ -62,7 +62,7 @@ only state the increment and its completion condition.
 - [x] **P1.5 — Add `include/ztick/sdk.h` with opaque handles, `ZTICK_API` and the C-only surface.** Done when: Header is self-contained C11; no C++ types, exceptions or ABI leak.
 - [x] **P1.6 — Add C++20 wrapper scaffolding under `include/ztick/cpp/`.** Done when: Wrappers include the C headers and compile in namespace `ztick::sdk`.
 - [x] **P1.7 — Define the `ztick_sdk` target, install rules and `cmake/ztick-sdk-config.cmake.in`.** Done when: A scratch consumer outside the repo can `find_package(ztick-sdk)` and include headers (BR §17.8).
-- [ ] **P1.8 — Integrate Catch2 v3 (pinned, FetchContent fallback) and register the first CTest.** Done when: `ctest --test-dir build --output-on-failure` passes.
+- [x] **P1.8 — Integrate Catch2 v3 (pinned, FetchContent fallback) and register the first CTest.** Done when: `ctest --test-dir build --output-on-failure` passes.
 - [ ] **P1.9 — Unit-test core types and version macros.** Done when: Statuses, availability states and version constants are covered.
 - [ ] **P1.10 — Define the platform abstraction interface in `src/platform/include/`.** Done when: Interface compiles; operations expose explicit availability states (ARCHITECTURE §7).
 - [ ] **P1.11 — Implement Linux system-info collection in `src/platform/linux/`.** Done when: Every [PLATFORM_MONITORING §2](PLATFORM_MONITORING.md#2-system-information-inventory) field yields a value or an explicit state.

@@ -37,7 +37,9 @@ Catch2 v3 is used across all layers above (REQ-TEST-04). Its sections and
 parameterised tests cover the statistics, generator, validation, overhead, timing
 and failure cases in §4–§9. The version is pinned for offline/reproducible builds;
 the FetchContent fallback is a build-time convenience only and does not make
-Catch2 a runtime dependency.
+Catch2 a runtime dependency. The pinned release is Catch2 v3.9.1 (commit
+`644821ce28cb25d7992a4d0375b1d83214392592`, BSL-1.0); it is dev-only and is
+never linked into installed SDK, core, CLI or TUI targets.
 
 **Unit-test scope (Derived design).** Every function introduced or modified in
 ztick-bench has a deterministic unit test asserting its observable behavior,
