@@ -35,4 +35,4 @@ jobs:
         run: make verify
 
       - name: Demonstrate system-info inventory
-        run: ./build-ci/bin/ztick-sysinfo
+        run: ./build/ci/bin/ztick-sysinfo

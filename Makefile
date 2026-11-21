@@ -18,8 +18,8 @@
 
 # Directories
 BUILD_DIR         = build
-CI_BUILD_DIR      = build-ci
-SANITIZE_DIR      = build-sanitize
+CI_BUILD_DIR      = build/ci
+SANITIZE_DIR      = build/sanitize
 DOCS_DIR          = docs
 DOXYGEN_BUILD_DIR = build/doxygen
 FORMAT_DIRS       = include src tests tools examples
@@ -64,7 +64,7 @@ _INFO    = [$(BLU)INFO$(D)]
 # - missingIncludeSystem: standard/system headers are intentionally not supplied.
 CPPCHECK_FLAGS = --std=c++20 --enable=all --check-level=exhaustive \
                  --error-exitcode=1 --inline-suppr -I include \
-                 -I src/platform/include -I tools/ztick-sysinfo/include \
+                 -I src/core/include -I src/platform/include -I tools/ztick-sysinfo/include \
                  --suppress=checkersReport --suppress=missingIncludeSystem
 
 # Valgrind Memcheck: definite/indirect/possible leaks are hard errors;
@@ -133,7 +133,7 @@ sysinfo: build	## Print the system-info inventory with availability states
 
 clean:	## Remove build trees
 	@echo "$(YEL)Removing build trees...$(D)"
-	@rm -rf $(BUILD_DIR) $(SANITIZE_DIR)
+	@rm -rf $(BUILD_DIR)
 	@echo "$(YEL)* $(_SUCCESS) Build trees cleaned$(D)"
 
 ##@ Static Analysis 🔍
@@ -203,6 +203,7 @@ docs:	## Generate Doxygen documentation (requires Doxyfile)
 		echo "$(RED)Error: $(DOXYFILE) not found.$(D)"; \
 		exit 1; \
 	fi
+	@mkdir -p $(DOXYGEN_BUILD_DIR)
 	@doxygen $(DOXYFILE)
 	@echo "$(YEL)* $(_SUCCESS) Documentation generated in $(DOXYGEN_BUILD_DIR)$(D)"
 

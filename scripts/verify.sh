@@ -10,7 +10,7 @@ cd "${repo_root}"
 cmake_bin="${CMAKE:-cmake}"
 ctest_bin="${CTEST:-ctest}"
 build_type="${CMAKE_BUILD_TYPE:-Release}"
-ci_build_dir="${CI_BUILD_DIR:-build-ci}"
+ci_build_dir="${CI_BUILD_DIR:-build/ci}"
 ci_cmake_args="${CI_CMAKE_ARGS:--DZTICK_WERROR=ON}"
 
 echo "== Formatting =="

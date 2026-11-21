@@ -35,6 +35,6 @@ INPUT                  = .
 FILE_PATTERNS          = *.h *.hpp *.cpp
 RECURSIVE              = YES
 EXCLUDE                = .git build
-EXCLUDE_PATTERNS       = */build/* */build-*/* */cmake-build-*/*
+EXCLUDE_PATTERNS       = */build/* */cmake-build-*/*
 
 HAVE_DOT               = NO
