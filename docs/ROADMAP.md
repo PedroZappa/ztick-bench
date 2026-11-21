@@ -75,7 +75,7 @@ only state the increment and its completion condition.
 - [x] **P2.1 — Model processor, chain and engine workloads and profile settings.** Done when: Model round-trips from config-shaped data with unit tests.
 - [x] **P2.2 — Implement sine, multi-tone/harmonic and impulse generators.** Done when: Outputs match the fixed definitions in [BENCHMARK §3](BENCHMARK_SPECIFICATION.md#3-built-in-input-generators) and reproducibility tests pass (BR §4.3).
 - [x] **P2.3 — Implement execution sequencing with generation, setup and warm-up outside the primary interval.** Done when: A test asserts no measurement is recorded for those phases.
-- [ ] **P2.4 — Implement per-block, whole-run and opt-in end-to-end timing.** Done when: All three levels are selectable; raw samples are retained.
+- [x] **P2.4 — Implement per-block, whole-run and opt-in end-to-end timing.** Done when: All three levels are selectable; raw samples are retained.
 - [ ] **P2.5 — Record overhead estimates separately from raw timings.** Done when: No subtraction occurs before reporting; estimates are independently visible.
 - [ ] **P2.6 — Implement statistics: mean, median, percentiles, standard deviation, throughput, RTF and scaling efficiency.** Done when: Values match independent reference calculations ([METRICS](METRICS_REFERENCE.md#3-definitions-and-formulas)).
 - [ ] **P2.7 — Implement Basic/Standard/Strict validation as a separate phase.** Done when: All levels are exercised and timing results are unchanged.

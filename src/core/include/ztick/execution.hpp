@@ -1,24 +1,26 @@
 // SPDX-License-Identifier: MIT
 /**
  * @file execution.hpp
- * @brief Execution sequencing for one benchmark test point and its timing boundary.
+ * @brief Execution sequencing, timing levels and raw timing retention.
  *
  * BENCHMARK_SPECIFICATION §6 fixes the lifecycle of a test point: generation,
  * setup and warm-up run before the primary DSP interval, and validation runs
  * after it. REQ-BENCH-06 requires those surrounding phases to stay outside the
  * primary measurement unless end-to-end timing is explicitly selected. This
- * module sequences the phases and records a measurement only for the primary
- * interval, making the boundary an observable property of a run.
+ * module sequences the phases, records a phase-attributed primary measurement
+ * and retains raw durations for the selectable levels of REQ-BENCH-07.
  * This header is private to ztick-bench and is not installed.
  */
 
 #ifndef ZTICK_EXECUTION_HPP
 #define ZTICK_EXECUTION_HPP
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ztick {
@@ -36,6 +38,30 @@ enum class ExecutionPhase : std::uint8_t {
   /** @brief Correctness validation; outside the primary interval. */
   validation = 4,
 };
+
+/** @brief Selectable timing levels for one test point (REQ-BENCH-07). */
+enum class TimingLevel : std::uint8_t {
+  /** @brief One raw duration per processed block; opt-in detailed timing. */
+  per_block = 0,
+  /** @brief One raw duration spanning the primary DSP interval; the default. */
+  whole_run = 1,
+  /** @brief One raw duration spanning generation through primary; opt-in. */
+  end_to_end = 2,
+};
+
+/**
+ * @brief Parse a config token into a @ref ztick::TimingLevel.
+ * @param token Token from the config document, such as `whole_run`.
+ * @return The matching level, or `std::nullopt` for an unknown token.
+ */
+std::optional<TimingLevel> parse_timing_level(std::string_view token) noexcept;
+
+/**
+ * @brief Render a @ref ztick::TimingLevel as its config token.
+ * @param level Level to render.
+ * @return Stable token used by the config document.
+ */
+std::string_view timing_level_name(TimingLevel level) noexcept;
 
 /** @brief One recorded time interval and the phase it belongs to. */
 struct PhaseMeasurement {
@@ -55,6 +81,14 @@ struct PhaseMeasurement {
   [[nodiscard]] double duration_seconds() const noexcept;
 };
 
+/** @brief Retained raw durations for one timing level (REQ-MET-03). */
+struct TimingSamples {
+  /** @brief Level these samples were collected at. */
+  TimingLevel level{TimingLevel::whole_run};
+  /** @brief Raw durations in seconds, in collection order; never aggregated in place. */
+  std::vector<double> durations_seconds;
+};
+
 /** @brief Phase actions for one test point; absent actions are skipped. */
 struct SequenceActions {
   /** @brief Input generation action, typically a `generate_samples` call; untimed. */
@@ -63,43 +97,63 @@ struct SequenceActions {
   std::function<void()> setup;
   /** @brief One warm-up iteration, repeated by @ref ztick::SequenceOptions; untimed. */
   std::function<void()> warmup;
-  /** @brief Primary DSP work; the required action bracketed by the measurement timer. */
+  /** @brief Primary DSP work used when no block action is supplied. */
   std::function<void()> primary;
+  /** @brief Process one block, receiving its zero-based index; used for per-block timing. */
+  std::function<void(std::size_t)> block;
   /** @brief Correctness validation action; untimed. */
   std::function<void()> validation;
 };
 
-/** @brief Controls that affect sequencing without entering the measured interval. */
+/** @brief Controls that affect sequencing and timing selection. */
 struct SequenceOptions {
   /** @brief Number of times to run the warm-up action before the primary interval. */
   std::uint32_t warmup_iterations{0};
+  /** @brief Levels to collect; whole-run aggregate only by default (REQ-BENCH-08). */
+  std::vector<TimingLevel> timing_levels{TimingLevel::whole_run};
+  /** @brief Number of block invocations when a @ref ztick::SequenceActions::block is used. */
+  std::uint32_t block_count{0};
 };
 
 /** @brief Observable result of one sequenced test point. */
 struct ExecutionTrace {
   /** @brief Phases whose actions ran, in order; warm-up appears once per iteration. */
   std::vector<ExecutionPhase> executed_phases;
-  /** @brief Recorded intervals; the primary interval is the only entry by default. */
+  /** @brief Phase-attributed primary interval; empty when no primary work ran. */
   std::vector<PhaseMeasurement> measurements;
+  /** @brief Raw duration samples keyed by level; only selected levels are present. */
+  std::vector<TimingSamples> timing;
 };
 
 /** @brief Monotonic clock returning elapsed seconds; injectable for deterministic tests. */
 using Clock = std::function<double()>;
 
 /**
- * @brief Run one test point, measuring only the primary DSP interval.
+ * @brief Run one test point with the selected timing levels.
  * @param actions Phase actions to invoke in lifecycle order.
- * @param options Sequencing controls such as the warm-up iteration count.
- * @param clock Monotonic clock used only to bracket the primary interval.
+ * @param options Sequencing controls such as warm-up count and timing levels.
+ * @param clock Monotonic clock used to bracket the primary and selected intervals.
  * @param error Optional receiver for a human-readable failure explanation.
- * @return The execution trace, or `std::nullopt` when a required input is missing.
- * @note generation, setup, warm-up and validation actions run but never call
- *       @p clock, so no measurement is recorded for those phases. Raw clock
- *       readings are retained in @ref ztick::PhaseMeasurement.
+ * @return The execution trace with retained raw samples, or `std::nullopt` on error.
+ * @note generation, setup, warm-up and validation are never bracketed by the
+ *       clock unless the opt-in end-to-end level is present in
+ *       @ref ztick::SequenceOptions::timing_levels. Whole-run uses the same
+ *       bracket as @ref ztick::ExecutionTrace::measurements. Per-block requires
+ *       a block action and a positive @ref ztick::SequenceOptions::block_count.
  */
 std::optional<ExecutionTrace> run_sequence(const SequenceActions &actions,
                                            const SequenceOptions &options, const Clock &clock,
                                            std::string *error = nullptr);
+
+/**
+ * @brief Find the retained raw durations for a timing level.
+ * @param trace Trace to search.
+ * @param level Level whose samples are requested.
+ * @return Pointer to the retained durations, or `nullptr` when the level was not collected.
+ * @note The returned pointer refers to storage owned by @p trace and is valid while
+ *       @p trace lives.
+ */
+const std::vector<double> *find_samples(const ExecutionTrace &trace, TimingLevel level) noexcept;
 
 } // namespace ztick
 
