@@ -36,6 +36,7 @@ redefining them.
 | **Input generator** | A deterministic producer of audio data for a workload (v1.0: sine, multi-tone/harmonic, impulse). |
 | **Profile** | A named, reusable set of benchmark settings defining more than duration: warm-up, repetitions, coverage, detail and reliability checks. |
 | **Dimension** | A configurable benchmark axis: sample rate, block size, channels, oversampling, instances, duration, iterations, repetitions. |
+| **Test point** | One combination of workload and dimensions whose lifecycle is sequenced as generation, setup, warm-up, primary DSP interval and validation (BENCHMARK §6). |
 | **Iteration** | One measured execution within a single repetition or test point. |
 | **Repetition** | A repeated measurement of the same test point, used to establish variability. |
 | **Warm-up** | Unmeasured execution before the measured interval, used to stabilize caches and frequency. |
