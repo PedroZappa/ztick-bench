@@ -75,6 +75,11 @@ add_subdirectory(src/plugin)
 add_subdirectory(src/cli)
 add_subdirectory(src/tui)
 
+# Standalone public-header checks are built and registered only with testing on.
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
+
 # Optional example SDK test applications (Phase 3 implementations, BR §17.2).
 option(ZTICK_BUILD_EXAMPLES "Build placeholder/example SDK test applications" ON)
 if(ZTICK_BUILD_EXAMPLES)
