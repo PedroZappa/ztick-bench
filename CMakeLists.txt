@@ -128,6 +128,9 @@ add_subdirectory(src/plugin)
 add_subdirectory(src/cli)
 add_subdirectory(src/tui)
 
+# Phase 1 developer tool; prints the inventory with explicit availability states.
+add_subdirectory(tools/ztick-sysinfo)
+
 # Standalone public-header checks are built and registered only with testing on.
 if(BUILD_TESTING)
   add_subdirectory(tests)

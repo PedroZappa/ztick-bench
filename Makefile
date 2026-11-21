@@ -22,9 +22,10 @@ SANITIZE_DIR      = build-sanitize
 DOCS_DIR          = docs
 DOXYGEN_BUILD_DIR = build/doxygen
 FORMAT_DIRS       = include src tests tools examples
-CPPCHECK_DIRS     = include src
+CPPCHECK_DIRS     = include src tools
 TEST_BINARY       = $(BUILD_DIR)/bin/ztick_tests
 CLI_BINARY        = $(BUILD_DIR)/bin/ztick-bench
+SYSINFO_BINARY    = $(BUILD_DIR)/bin/ztick-sysinfo
 VALGRIND_LOG      = $(BUILD_DIR)/memcheck.log
 
 # Tools (override on the command line, e.g. make CMAKE=cmake3)
@@ -58,12 +59,10 @@ _INFO    = [$(BLU)INFO$(D)]
 # once they no longer match. Re-add with the finding that justifies them.
 # - checkersReport: informational summary, not a finding.
 # - missingIncludeSystem: standard/system headers are intentionally not supplied.
-# - unusedFunction: header-only platform helpers are exercised by Catch2 tests in
-#   tests/unit, which is outside the cppcheck scan roots.
 CPPCHECK_FLAGS = --std=c++20 --enable=all --check-level=exhaustive \
                  --error-exitcode=1 --inline-suppr -I include \
-                 -I src/platform/include --suppress=checkersReport \
-                 --suppress=missingIncludeSystem --suppress=unusedFunction
+                 -I src/platform/include -I tools/ztick-sysinfo/include \
+                 --suppress=checkersReport --suppress=missingIncludeSystem
 
 # Valgrind Memcheck: definite/indirect/possible leaks are hard errors;
 # still-reachable third-party statics (Catch2) are logged, not fatal.
@@ -86,7 +85,7 @@ else
 SANITIZE_ASAN_OPTIONS = detect_leaks=1:detect_stack_use_after_return=1:halt_on_error=1
 endif
 
-.PHONY: all build test test-verbose clean cppcheck memcheck sanitize run \
+.PHONY: all build test test-verbose clean cppcheck memcheck sanitize run sysinfo \
 	format-check format sdk-consumer-check docs docs-open clean-docs help
 
 #==============================================================================#
@@ -123,6 +122,11 @@ run: build	## Run a config: make run CONFIG=path/to/config.json
 	@echo "$(YEL)Running $(CONFIG)...$(D)"
 	@$(CLI_BINARY) run $(CONFIG)
 	@echo "$(YEL)* $(_SUCCESS) Benchmark completed$(D)"
+
+sysinfo: build	## Print the system-info inventory with availability states
+	@echo "$(YEL)Collecting system information...$(D)"
+	@$(SYSINFO_BINARY)
+	@echo "$(YEL)* $(_SUCCESS) System information printed$(D)"
 
 clean:	## Remove build trees
 	@echo "$(YEL)Removing build trees...$(D)"

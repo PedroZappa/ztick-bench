@@ -30,6 +30,7 @@ add_executable(ztick_tests
   unit/core_types_test.cpp
   unit/platform_interface_test.cpp
   unit/linux_system_info_test.cpp
+  unit/sysinfo_report_test.cpp
 )
 # Catch2 defaults to __COUNTER__ for unique test names, which Clang reports as a
 # C2y extension under -Wpedantic. Line-based names keep WERROR builds clean.
@@ -39,6 +40,7 @@ target_link_libraries(ztick_tests
     Catch2::Catch2WithMain
     ztick::sdk
     ztick_platform
+    ztick_sysinfo_report
 )
 catch_discover_tests(ztick_tests)
 
@@ -90,6 +92,15 @@ target_include_directories(ztick_cpp_wrapper_cpp20_test
     "${PROJECT_SOURCE_DIR}/include"
 )
 add_test(NAME unit.cpp_wrapper.cpp20 COMMAND ztick_cpp_wrapper_cpp20_test)
+
+# P1.13: verify the installed developer tool prints a complete inventory whose
+# lines all carry an explicit availability state.
+add_test(
+  NAME integration.sysinfo_output
+  COMMAND "${CMAKE_COMMAND}"
+          "-DSYSINFO_BINARY=$<TARGET_FILE:ztick-sysinfo>"
+          -P "${PROJECT_SOURCE_DIR}/tests/check_sysinfo_output.cmake"
+)
 
 # BR §17.8: verify an out-of-tree consumer with find_package(ztick-sdk).
 add_test(

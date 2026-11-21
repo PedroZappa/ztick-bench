@@ -67,7 +67,7 @@ only state the increment and its completion condition.
 - [x] **P1.10 — Define the platform abstraction interface in `src/platform/include/`.** Done when: Interface compiles; operations expose explicit availability states (ARCHITECTURE §7).
 - [x] **P1.11 — Implement Linux system-info collection in `src/platform/linux/`.** Done when: Every [PLATFORM_MONITORING §2](PLATFORM_MONITORING.md#2-system-information-inventory) field yields a value or an explicit state.
 - [x] **P1.12 — Test missing and unsupported platform-data paths.** Done when: All availability states are produced by tests; no field is silently omitted.
-- [ ] **P1.13 — Add `tools/ztick-sysinfo/` printing the system-info inventory.** Done when: Running the tool prints every inventory field with its availability state.
+- [x] **P1.13 — Add `tools/ztick-sysinfo/` printing the system-info inventory.** Done when: Running the tool prints every inventory field with its availability state.
 - [ ] **P1.14 — Phase 1 verification pass.** Done when: The §1 exit criterion is demonstrated with CI flags active.
 
 ### 2.2 Phase 2 — Benchmark engine
