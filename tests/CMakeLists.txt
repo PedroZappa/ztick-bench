@@ -25,7 +25,10 @@ endif()
 
 include(Catch)
 
-add_executable(ztick_tests unit/catch2_integration_test.cpp)
+add_executable(ztick_tests
+  unit/catch2_integration_test.cpp
+  unit/core_types_test.cpp
+)
 # Catch2 defaults to __COUNTER__ for unique test names, which Clang reports as a
 # C2y extension under -Wpedantic. Line-based names keep WERROR builds clean.
 target_compile_definitions(ztick_tests PRIVATE CATCH_CONFIG_NO_COUNTER)
