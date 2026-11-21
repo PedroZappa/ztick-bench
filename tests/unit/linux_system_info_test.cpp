@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+/** @brief Short alias for the portable platform namespace. */
+namespace platform = ztick::platform;
 /** @brief Short alias for the Linux system-info implementation namespace. */
 namespace sysinfo = ztick::platform::linux_sysinfo;
 
@@ -138,6 +140,46 @@ void populate_complete_source(FakeSystemInfoSource &source) {
   source.environment = {{"DISPLAY", ":0"}};
   source.affinity = {0, 1, 2, 3};
   source.scheduling = "policy=SCHED_OTHER";
+}
+
+/**
+ * @brief Require that a result was explicitly assigned by the provider.
+ * @tparam T Result value type.
+ * @param result Result to inspect.
+ * @note The default reason "not collected" means a field was left untouched and
+ *       would therefore be silently omitted from the inventory.
+ */
+template <typename T> void require_explicit_state(const platform::Result<T> &result) {
+  // A value result has no reason; any non-value state must name a real cause.
+  if (result.reason != nullptr) {
+    REQUIRE(std::string{result.reason} != "not collected");
+  }
+}
+
+/**
+ * @brief Assert that every inventory field carries an explicit provider state.
+ * @param collected Collected inventory result.
+ */
+void require_all_fields_explicit(const platform::Result<platform::SystemInfo> &collected) {
+  REQUIRE(collected.has_value());
+  const auto &info = collected.value;
+  require_explicit_state(info.cpu_model);
+  require_explicit_state(info.cpu_architecture);
+  require_explicit_state(info.physical_core_count);
+  require_explicit_state(info.logical_core_count);
+  require_explicit_state(info.cpu_frequency_hz);
+  require_explicit_state(info.scaling_governor);
+  require_explicit_state(info.caches);
+  require_explicit_state(info.simd_features);
+  require_explicit_state(info.total_ram_bytes);
+  require_explicit_state(info.available_ram_bytes);
+  require_explicit_state(info.os_name);
+  require_explicit_state(info.kernel_version);
+  require_explicit_state(info.audio_backend);
+  require_explicit_state(info.audio_device);
+  require_explicit_state(info.process_affinity);
+  require_explicit_state(info.scheduling_configuration);
+  require_explicit_state(info.environment_metadata);
 }
 
 /**
@@ -369,6 +411,89 @@ TEST_CASE("empty Linux inventory reports explicit states", "[platform][linux][pr
   REQUIRE(info.environment_metadata.state == ztick_availability_unavailable);
   REQUIRE(info.audio_backend.state == ztick_availability_not_applicable);
   REQUIRE(info.audio_device.state == ztick_availability_not_applicable);
+}
+
+/**
+ * @brief Verify unsupported capability groups emit `unsupported` for their fields.
+ * @note This is the data-path counterpart of the Result factory test: every
+ *       inventory field must be reachable as unsupported, not just constructible.
+ */
+TEST_CASE("unsupported capabilities are reported explicitly", "[platform][linux][availability]") {
+  FakeSystemInfoSource source;
+  populate_complete_source(source);
+  const std::vector<sysinfo::Capability> all{
+      sysinfo::Capability::cpu_identity,  sysinfo::Capability::cpu_topology,
+      sysinfo::Capability::cpu_frequency, sysinfo::Capability::caches,
+      sysinfo::Capability::simd_features, sysinfo::Capability::memory,
+      sysinfo::Capability::os_info,       sysinfo::Capability::audio,
+      sysinfo::Capability::scheduling,    sysinfo::Capability::environment};
+  sysinfo::LinuxSystemInfoProvider provider{std::make_unique<FakeSystemInfoSource>(source), all};
+
+  const auto collected = provider.collect();
+  REQUIRE(collected.has_value());
+  const auto &info = collected.value;
+
+  REQUIRE(info.cpu_model.state == ztick_availability_unsupported);
+  REQUIRE(info.cpu_architecture.state == ztick_availability_unsupported);
+  REQUIRE(info.physical_core_count.state == ztick_availability_unsupported);
+  REQUIRE(info.logical_core_count.state == ztick_availability_unsupported);
+  REQUIRE(info.cpu_frequency_hz.state == ztick_availability_unsupported);
+  REQUIRE(info.scaling_governor.state == ztick_availability_unsupported);
+  REQUIRE(info.caches.state == ztick_availability_unsupported);
+  REQUIRE(info.simd_features.state == ztick_availability_unsupported);
+  REQUIRE(info.total_ram_bytes.state == ztick_availability_unsupported);
+  REQUIRE(info.available_ram_bytes.state == ztick_availability_unsupported);
+  REQUIRE(info.os_name.state == ztick_availability_unsupported);
+  REQUIRE(info.kernel_version.state == ztick_availability_unsupported);
+  REQUIRE(info.audio_backend.state == ztick_availability_unsupported);
+  REQUIRE(info.audio_device.state == ztick_availability_unsupported);
+  REQUIRE(info.process_affinity.state == ztick_availability_unsupported);
+  REQUIRE(info.scheduling_configuration.state == ztick_availability_unsupported);
+  REQUIRE(info.environment_metadata.state == ztick_availability_unsupported);
+}
+
+/**
+ * @brief Verify an unsupported group does not change unaffected fields.
+ */
+TEST_CASE("unsupported capability is scoped to its fields", "[platform][linux][availability]") {
+  FakeSystemInfoSource source;
+  populate_complete_source(source);
+  sysinfo::LinuxSystemInfoProvider provider{std::make_unique<FakeSystemInfoSource>(source),
+                                            {sysinfo::Capability::cpu_frequency}};
+
+  const auto collected = provider.collect();
+  REQUIRE(collected.has_value());
+  const auto &info = collected.value;
+
+  REQUIRE(info.cpu_frequency_hz.state == ztick_availability_unsupported);
+  REQUIRE(info.scaling_governor.state == ztick_availability_unsupported);
+  REQUIRE(info.cpu_model.state == ztick_availability_value);
+  REQUIRE(info.total_ram_bytes.state == ztick_availability_value);
+  REQUIRE(info.os_name.state == ztick_availability_value);
+  REQUIRE(info.audio_backend.state == ztick_availability_not_applicable);
+}
+
+/**
+ * @brief Verify no field is left unassigned in any availability configuration.
+ * @note Together these scenarios produce all four states through real data paths:
+ *       value, unavailable, unsupported and not_applicable.
+ */
+TEST_CASE("no inventory field is silently omitted", "[platform][linux][availability]") {
+  FakeSystemInfoSource complete;
+  populate_complete_source(complete);
+  require_all_fields_explicit(
+      sysinfo::LinuxSystemInfoProvider{std::make_unique<FakeSystemInfoSource>(complete)}.collect());
+
+  FakeSystemInfoSource empty;
+  empty.affinity_available = false;
+  require_all_fields_explicit(
+      sysinfo::LinuxSystemInfoProvider{std::make_unique<FakeSystemInfoSource>(empty)}.collect());
+
+  FakeSystemInfoSource partial;
+  populate_complete_source(partial);
+  require_all_fields_explicit(sysinfo::LinuxSystemInfoProvider{
+      std::make_unique<FakeSystemInfoSource>(partial), {sysinfo::Capability::audio}}
+                                  .collect());
 }
 
 /**

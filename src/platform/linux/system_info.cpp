@@ -103,6 +103,20 @@ std::optional<std::string> field_value(const std::string &line, std::string_view
   return trim(line.substr(colon + 1));
 }
 
+/**
+ * @brief Override a parsed result with `unsupported` for an absent capability.
+ * @tparam T Result value type.
+ * @param is_unsupported Whether the capability is unimplemented here.
+ * @param reason Reason used when the capability is unsupported.
+ * @param result Parsed result retained when the capability is supported.
+ * @return Unsupported result or the original parsed result.
+ */
+template <typename T>
+ztick::platform::Result<T> apply_capability(bool is_unsupported, const char *reason,
+                                            ztick::platform::Result<T> result) {
+  return is_unsupported ? ztick::platform::make_unsupported<T>(reason) : std::move(result);
+}
+
 } // namespace
 
 namespace ztick::platform::linux_sysinfo {
@@ -403,65 +417,108 @@ Result<std::vector<CacheInfo>> collect_caches(const SystemInfoSource &source) {
   return make_value(std::move(caches));
 }
 
-LinuxSystemInfoProvider::LinuxSystemInfoProvider(std::unique_ptr<const SystemInfoSource> source)
-    : source_(std::move(source)) {}
+LinuxSystemInfoProvider::LinuxSystemInfoProvider(std::unique_ptr<const SystemInfoSource> source,
+                                                 std::vector<Capability> unsupported_capabilities)
+    : source_(std::move(source)), unsupported_capabilities_(std::move(unsupported_capabilities)) {}
+
+bool LinuxSystemInfoProvider::unsupported(Capability capability) const {
+  return std::find(unsupported_capabilities_.begin(), unsupported_capabilities_.end(),
+                   capability) != unsupported_capabilities_.end();
+}
 
 Result<SystemInfo> LinuxSystemInfoProvider::collect() const {
   SystemInfo info;
 
   std::string cpuinfo;
   const bool cpuinfo_ok = source_->read_file(kCpuInfoPath, cpuinfo);
-  info.cpu_model = cpuinfo_ok ? parse_cpu_model(cpuinfo)
-                              : make_unavailable<std::string>("/proc/cpuinfo unreadable");
-  info.physical_core_count = cpuinfo_ok
-                                 ? parse_physical_core_count(cpuinfo)
-                                 : make_unavailable<std::uint32_t>("/proc/cpuinfo unreadable");
-  info.logical_core_count = cpuinfo_ok
-                                ? parse_logical_core_count(cpuinfo)
-                                : make_unavailable<std::uint32_t>("/proc/cpuinfo unreadable");
-  info.simd_features = cpuinfo_ok
-                           ? parse_simd_features(cpuinfo)
-                           : make_unavailable<std::vector<std::string>>("/proc/cpuinfo unreadable");
-
   const UnameInfo identity = source_->uname();
-  info.cpu_architecture = parse_nonempty_string(identity.machine, "CPU architecture not exposed");
-  info.os_name = parse_nonempty_string(identity.sysname, "OS name not exposed");
-  info.kernel_version = parse_nonempty_string(identity.release, "kernel version not exposed");
 
+  constexpr const char *identity_reason = "CPU identity not implemented on this platform";
+  info.cpu_model =
+      apply_capability(unsupported(Capability::cpu_identity), identity_reason,
+                       cpuinfo_ok ? parse_cpu_model(cpuinfo)
+                                  : make_unavailable<std::string>("/proc/cpuinfo unreadable"));
+  info.cpu_architecture =
+      apply_capability(unsupported(Capability::cpu_identity), identity_reason,
+                       parse_nonempty_string(identity.machine, "CPU architecture not exposed"));
+
+  constexpr const char *topology_reason = "CPU topology not implemented on this platform";
+  info.physical_core_count =
+      apply_capability(unsupported(Capability::cpu_topology), topology_reason,
+                       cpuinfo_ok ? parse_physical_core_count(cpuinfo)
+                                  : make_unavailable<std::uint32_t>("/proc/cpuinfo unreadable"));
+  info.logical_core_count =
+      apply_capability(unsupported(Capability::cpu_topology), topology_reason,
+                       cpuinfo_ok ? parse_logical_core_count(cpuinfo)
+                                  : make_unavailable<std::uint32_t>("/proc/cpuinfo unreadable"));
+
+  constexpr const char *frequency_reason = "CPU frequency control not implemented on this platform";
   std::string frequency;
-  info.cpu_frequency_hz = source_->read_file(kCpuFrequencyPath, frequency)
-                              ? parse_cpu_frequency_hz(frequency)
-                              : make_unavailable<double>("CPU frequency source unreadable");
+  info.cpu_frequency_hz =
+      apply_capability(unsupported(Capability::cpu_frequency), frequency_reason,
+                       source_->read_file(kCpuFrequencyPath, frequency)
+                           ? parse_cpu_frequency_hz(frequency)
+                           : make_unavailable<double>("CPU frequency source unreadable"));
 
   std::string governor;
-  info.scaling_governor = source_->read_file(kScalingGovernorPath, governor)
-                              ? parse_nonempty_string(governor, "scaling governor empty")
-                              : make_unavailable<std::string>("scaling governor source unreadable");
+  info.scaling_governor =
+      apply_capability(unsupported(Capability::cpu_frequency), frequency_reason,
+                       source_->read_file(kScalingGovernorPath, governor)
+                           ? parse_nonempty_string(governor, "scaling governor empty")
+                           : make_unavailable<std::string>("scaling governor source unreadable"));
 
-  info.caches = collect_caches(*source_);
+  info.caches =
+      apply_capability(unsupported(Capability::caches),
+                       "cache topology not implemented on this platform", collect_caches(*source_));
 
+  info.simd_features = apply_capability(
+      unsupported(Capability::simd_features), "SIMD detection not implemented on this platform",
+      cpuinfo_ok ? parse_simd_features(cpuinfo)
+                 : make_unavailable<std::vector<std::string>>("/proc/cpuinfo unreadable"));
+
+  constexpr const char *memory_reason = "memory reporting not implemented on this platform";
   std::string meminfo;
-  if (source_->read_file(kMemInfoPath, meminfo)) {
-    info.total_ram_bytes = parse_memory_bytes(meminfo, "MemTotal");
-    info.available_ram_bytes = parse_memory_bytes(meminfo, "MemAvailable");
-  } else {
-    const char *reason = "/proc/meminfo unreadable";
-    info.total_ram_bytes = make_unavailable<std::uint64_t>(reason);
-    info.available_ram_bytes = make_unavailable<std::uint64_t>(reason);
-  }
+  const bool meminfo_ok = source_->read_file(kMemInfoPath, meminfo);
+  info.total_ram_bytes =
+      apply_capability(unsupported(Capability::memory), memory_reason,
+                       meminfo_ok ? parse_memory_bytes(meminfo, "MemTotal")
+                                  : make_unavailable<std::uint64_t>("/proc/meminfo unreadable"));
+  info.available_ram_bytes =
+      apply_capability(unsupported(Capability::memory), memory_reason,
+                       meminfo_ok ? parse_memory_bytes(meminfo, "MemAvailable")
+                                  : make_unavailable<std::uint64_t>("/proc/meminfo unreadable"));
 
+  constexpr const char *os_reason = "OS identification not implemented on this platform";
+  info.os_name = apply_capability(unsupported(Capability::os_info), os_reason,
+                                  parse_nonempty_string(identity.sysname, "OS name not exposed"));
+  info.kernel_version =
+      apply_capability(unsupported(Capability::os_info), os_reason,
+                       parse_nonempty_string(identity.release, "kernel version not exposed"));
+
+  constexpr const char *audio_reason = "audio discovery not implemented on this platform";
+  constexpr const char *audio_mode_reason = "audio discovery requires a selected benchmark mode";
+  info.audio_backend = unsupported(Capability::audio)
+                           ? make_unsupported<std::string>(audio_reason)
+                           : make_not_applicable<std::string>(audio_mode_reason);
+  info.audio_device = unsupported(Capability::audio)
+                          ? make_unsupported<std::string>(audio_reason)
+                          : make_not_applicable<std::string>(audio_mode_reason);
+
+  constexpr const char *scheduling_reason = "scheduling control not implemented on this platform";
   std::vector<std::uint32_t> cpus;
-  info.process_affinity = source_->current_affinity(cpus) && !cpus.empty()
-                              ? make_value(CpuSet{std::move(cpus)})
-                              : make_unavailable<CpuSet>("process affinity not exposed");
+  info.process_affinity =
+      apply_capability(unsupported(Capability::scheduling), scheduling_reason,
+                       source_->current_affinity(cpus) && !cpus.empty()
+                           ? make_value(CpuSet{std::move(cpus)})
+                           : make_unavailable<CpuSet>("process affinity not exposed"));
+  info.scheduling_configuration =
+      apply_capability(unsupported(Capability::scheduling), scheduling_reason,
+                       parse_nonempty_string(source_->scheduling_configuration(),
+                                             "scheduling configuration not exposed"));
 
-  info.scheduling_configuration = parse_nonempty_string(source_->scheduling_configuration(),
-                                                        "scheduling configuration not exposed");
-  info.environment_metadata = collect_environment_metadata(*source_);
-
-  constexpr const char *audio_reason = "audio discovery requires a selected benchmark mode";
-  info.audio_backend = make_not_applicable<std::string>(audio_reason);
-  info.audio_device = make_not_applicable<std::string>(audio_reason);
+  info.environment_metadata = apply_capability(
+      unsupported(Capability::environment), "environment metadata not implemented on this platform",
+      collect_environment_metadata(*source_));
 
   return make_value(std::move(info));
 }

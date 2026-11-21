@@ -244,6 +244,34 @@ Result<std::vector<std::string>> collect_environment_metadata(const SystemInfoSo
 Result<std::vector<CacheInfo>> collect_caches(const SystemInfoSource &source);
 
 /**
+ * @brief Individually reported groups of system-information capabilities.
+ * @note A group marked unsupported yields `ztick_availability_unsupported` for
+ *       its fields rather than an omission (PLATFORM_MONITORING §6).
+ */
+enum class Capability : std::uint32_t {
+  /** CPU model and architecture. */
+  cpu_identity = 0,
+  /** Physical and logical core counts. */
+  cpu_topology,
+  /** CPU frequency and scaling governor. */
+  cpu_frequency,
+  /** Cache topology. */
+  caches,
+  /** Declared SIMD features. */
+  simd_features,
+  /** Installed and available RAM. */
+  memory,
+  /** OS name and kernel version. */
+  os_info,
+  /** Audio backend and device discovery. */
+  audio,
+  /** Process affinity and scheduling configuration. */
+  scheduling,
+  /** Environment metadata. */
+  environment,
+};
+
+/**
  * @brief Linux implementation of the static system information provider.
  */
 class LinuxSystemInfoProvider final : public SystemInfoProvider {
@@ -251,8 +279,12 @@ public:
   /**
    * @brief Construct a provider over an owned data source.
    * @param source Source used for every subsequent collection; must not be null.
+   * @param unsupported_capabilities Capability groups this platform does not
+   *        implement; their fields are reported as `unsupported`. Defaults to
+   *        an empty set, meaning every group is implemented.
    */
-  explicit LinuxSystemInfoProvider(std::unique_ptr<const SystemInfoSource> source);
+  explicit LinuxSystemInfoProvider(std::unique_ptr<const SystemInfoSource> source,
+                                   std::vector<Capability> unsupported_capabilities = {});
 
   /**
    * @brief Collect the complete inventory from the configured source.
@@ -261,8 +293,17 @@ public:
   Result<SystemInfo> collect() const override;
 
 private:
+  /**
+   * @brief Report whether a capability group is unimplemented on this platform.
+   * @param capability Capability to check.
+   * @return True when @p capability is in the configured unsupported set.
+   */
+  bool unsupported(Capability capability) const;
+
   /** @brief Owned source of raw system data. */
   std::unique_ptr<const SystemInfoSource> source_;
+  /** @brief Capability groups reported as unsupported rather than collected. */
+  std::vector<Capability> unsupported_capabilities_;
 };
 
 /**
