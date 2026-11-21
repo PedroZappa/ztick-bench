@@ -44,3 +44,10 @@ target_include_directories(ztick_sdk_cpp20_test
     "${PROJECT_SOURCE_DIR}/include"
 )
 add_test(NAME unit.sdk.cpp20 COMMAND ztick_sdk_cpp20_test)
+
+add_executable(ztick_cpp_wrapper_cpp20_test unit/cpp_wrapper_cpp20_test.cpp)
+target_include_directories(ztick_cpp_wrapper_cpp20_test
+  PRIVATE
+    "${PROJECT_SOURCE_DIR}/include"
+)
+add_test(NAME unit.cpp_wrapper.cpp20 COMMAND ztick_cpp_wrapper_cpp20_test)
