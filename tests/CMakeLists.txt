@@ -51,3 +51,10 @@ target_include_directories(ztick_cpp_wrapper_cpp20_test
     "${PROJECT_SOURCE_DIR}/include"
 )
 add_test(NAME unit.cpp_wrapper.cpp20 COMMAND ztick_cpp_wrapper_cpp20_test)
+
+# BR §17.8: verify an out-of-tree consumer with find_package(ztick-sdk).
+add_test(
+  NAME integration.sdk_consumer
+  COMMAND "${PROJECT_SOURCE_DIR}/scripts/check_sdk_consumer.sh"
+          "${CMAKE_BINARY_DIR}/sdk-consumer-check"
+)

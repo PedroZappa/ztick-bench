@@ -12,6 +12,8 @@ project(ztick-bench
 # separately so the displayed tool version is "0.1.0-dev" (BR §22).
 set(ZTICK_VERSION_SUFFIX "dev")
 set(ZTICK_VERSION_DISPLAY "${PROJECT_VERSION}-${ZTICK_VERSION_SUFFIX}")
+# Tool maturity and the frozen C ABI contract are independent: the ABI version
+# drives find_package compatibility, while the project version is informational.
 set(ZTICK_SDK_ABI_VERSION "1.0.0")
 
 message(STATUS "ztick-bench ${ZTICK_VERSION_DISPLAY} (SDK ABI ${ZTICK_SDK_ABI_VERSION})")
@@ -62,6 +64,57 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# SDK target and installation (P1.7, BR §17.8). The C ABI headers and C++20
+# wrappers are header-only at this stage, so ztick_sdk is an INTERFACE target.
+# It is exported as ztick::sdk for third-party consumers using find_package.
+include(GNUInstallDirs)
+
+add_library(ztick_sdk INTERFACE)
+add_library(ztick::sdk ALIAS ztick_sdk)
+set_target_properties(ztick_sdk PROPERTIES EXPORT_NAME sdk)
+
+target_include_directories(ztick_sdk
+  INTERFACE
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+install(TARGETS ztick_sdk
+  EXPORT ztick-sdk-targets
+)
+
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/include/ztick/"
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ztick"
+  FILES_MATCHING
+    PATTERN "*.h"
+    PATTERN "*.hpp"
+)
+
+install(EXPORT ztick-sdk-targets
+  FILE ztick-sdk-targets.cmake
+  NAMESPACE ztick::
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ztick-sdk"
+)
+
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+  "${PROJECT_SOURCE_DIR}/cmake/ztick-sdk-config.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/ztick-sdk-config.cmake"
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ztick-sdk"
+)
+# find_package requests the SDK ABI version (SDK_SPECIFICATION §2); the package
+# config exposes the tool version separately as ztick-sdk_PROJECT_VERSION.
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/ztick-sdk-config-version.cmake"
+  VERSION "${ZTICK_SDK_ABI_VERSION}"
+  COMPATIBILITY SameMajorVersion
+)
+install(FILES
+  "${CMAKE_CURRENT_BINARY_DIR}/ztick-sdk-config.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/ztick-sdk-config-version.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ztick-sdk"
+)
 
 # Defines BUILD_TESTING and enables CTest. Test registration starts at P1.8.
 include(CTest)

@@ -14,4 +14,7 @@ target_include_directories(ztick_platform
     "${CMAKE_CURRENT_SOURCE_DIR}/linux"
 )
 
-# Links to ztick_sdk are added with the SDK target in P1.7.
+target_link_libraries(ztick_platform
+  PUBLIC
+    ztick_sdk
+)

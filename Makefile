@@ -83,7 +83,7 @@ SANITIZE_ASAN_OPTIONS = detect_leaks=1:detect_stack_use_after_return=1:halt_on_e
 endif
 
 .PHONY: all build test test-verbose clean cppcheck memcheck sanitize run \
-	format-check format docs docs-open clean-docs help
+	format-check format sdk-consumer-check docs docs-open clean-docs help
 
 #==============================================================================#
 #                                  RULES                                       #
@@ -172,6 +172,11 @@ format:	## Format C/C++ files with clang-format
 	@find $(FORMAT_DIRS) -type f \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' \) \
 		-print0 2>/dev/null | xargs -0 -r clang-format -i
 	@echo "$(YEL)* $(_SUCCESS) Codebase formatted$(D)"
+
+sdk-consumer-check:	## Verify an external consumer can find_package(ztick-sdk)
+	@echo "$(YEL)Checking SDK consumer...$(D)"
+	@./scripts/check_sdk_consumer.sh
+	@echo "$(YEL)* $(_SUCCESS) SDK consumer check passed$(D)"
 
 ##@ Documentation Rules 📚
 
