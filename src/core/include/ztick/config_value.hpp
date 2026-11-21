@@ -114,6 +114,13 @@ public:
   static ConfigValue array() noexcept;
 
   /**
+   * @brief Create an array value from existing elements.
+   * @param elements Elements to move into the value.
+   * @return A value whose @ref type is `array` containing @p elements.
+   */
+  static ConfigValue array(Array elements) noexcept;
+
+  /**
    * @brief Read the stored discriminant.
    * @return The active @ref ConfigValueType.
    */

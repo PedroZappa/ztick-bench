@@ -6,7 +6,9 @@
 
 #include "ztick/profile.hpp"
 
+#include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -190,11 +192,11 @@ bool read_optional_string_list(const ConfigValue &section, std::string_view key,
  * @return Array value holding one string element per input value.
  */
 ConfigValue string_list_to_config(const std::vector<std::string> &values) {
-  ConfigValue array = ConfigValue::array();
-  for (const auto &value : values) {
-    array.push_back(ConfigValue::string(value));
-  }
-  return array;
+  ConfigValue::Array elements;
+  elements.reserve(values.size());
+  std::transform(values.begin(), values.end(), std::back_inserter(elements),
+                 [](const std::string &value) { return ConfigValue::string(value); });
+  return ConfigValue::array(std::move(elements));
 }
 
 } // namespace

@@ -6,6 +6,8 @@
 
 #include "ztick/workload.hpp"
 
+#include <algorithm>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -59,11 +61,12 @@ ConfigValue workload_to_config(const Workload &workload) {
   ConfigValue data = ConfigValue::object();
   data.set("level", ConfigValue::string(std::string{workload_level_name(workload.level)}));
 
-  ConfigValue processors = ConfigValue::array();
-  for (const auto &identifier : workload.processors) {
-    processors.push_back(ConfigValue::string(identifier));
-  }
-  data.set("processors", std::move(processors));
+  ConfigValue::Array identifiers;
+  identifiers.reserve(workload.processors.size());
+  std::transform(workload.processors.begin(), workload.processors.end(),
+                 std::back_inserter(identifiers),
+                 [](const std::string &identifier) { return ConfigValue::string(identifier); });
+  data.set("processors", ConfigValue::array(std::move(identifiers)));
   data.set("generator", workload.generator);
   return data;
 }
@@ -101,16 +104,17 @@ std::optional<Workload> workload_from_config(const ConfigValue &data, std::strin
     record_error(error, "workload.processors must be an array");
     return std::nullopt;
   }
+  const bool all_strings =
+      std::all_of(elements->begin(), elements->end(),
+                  [](const ConfigValue &element) { return element.as_string().has_value(); });
+  if (!all_strings) {
+    record_error(error, "workload.processors entries must be strings");
+    return std::nullopt;
+  }
   std::vector<std::string> processors;
   processors.reserve(elements->size());
-  for (const auto &element : *elements) {
-    const auto identifier = element.as_string();
-    if (!identifier.has_value()) {
-      record_error(error, "workload.processors entries must be strings");
-      return std::nullopt;
-    }
-    processors.push_back(*identifier);
-  }
+  std::transform(elements->begin(), elements->end(), std::back_inserter(processors),
+                 [](const ConfigValue &element) { return *element.as_string(); });
 
   const ConfigValue *generator_value = data.find("generator");
   if (generator_value == nullptr) {

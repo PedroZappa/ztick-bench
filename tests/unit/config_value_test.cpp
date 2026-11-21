@@ -32,6 +32,14 @@ TEST_CASE("config value factories preserve type and scalar", "[core][config]") {
   REQUIRE(ConfigValue::integer(-7).as_integer() == std::int64_t{-7});
   REQUIRE(ConfigValue::real(2.25).as_real() == 2.25);
   REQUIRE(ConfigValue::string("abc").as_string() == std::string{"abc"});
+
+  ConfigValue::Array elements;
+  elements.push_back(ConfigValue::integer(1));
+  elements.push_back(ConfigValue::integer(2));
+  const ConfigValue from_elements = ConfigValue::array(elements);
+  REQUIRE(from_elements.type() == ConfigValueType::array);
+  REQUIRE(from_elements.as_array()->size() == 2);
+  REQUIRE(from_elements.as_array()->at(1).as_integer() == std::int64_t{2});
 }
 
 /**

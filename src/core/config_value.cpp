@@ -59,6 +59,10 @@ ConfigValue ConfigValue::object() noexcept { return ConfigValue(Storage{Object{}
 
 ConfigValue ConfigValue::array() noexcept { return ConfigValue(Storage{Array{}}); }
 
+ConfigValue ConfigValue::array(Array elements) noexcept {
+  return ConfigValue(Storage{std::move(elements)});
+}
+
 ConfigValueType ConfigValue::type() const noexcept {
   // The Storage variant alternatives are ordered to match ConfigValueType.
   return static_cast<ConfigValueType>(storage_.index());
