@@ -93,7 +93,7 @@ TEST_CASE("availability states map to stable tokens", "[tools][sysinfo]") {
   REQUIRE(std::string{tools::availability_name(ztick_availability_unsupported)} == "unsupported");
   REQUIRE(std::string{tools::availability_name(ztick_availability_not_applicable)} ==
           "not_applicable");
-  REQUIRE(std::string{tools::availability_name(static_cast<ztick_availability>(99))} == "unknown");
+  REQUIRE(std::string{tools::availability_name(99)} == "unknown");
 }
 
 /**

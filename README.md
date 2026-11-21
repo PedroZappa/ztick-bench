@@ -2,10 +2,9 @@
 
 **General-purpose, offline-first DSP and audio benchmarking application.**
 
-> **Repository status:** requirements baseline and v1.0 technical specification complete; implementation not started.
-> This repository currently contains **specification documents only**. No buildable
-> application, `CMakeLists.txt`, or source tree exists yet — see
-> [ROADMAP](docs/ROADMAP.md) for implementation sequencing.
+> **Repository status:** requirements baseline and v1.0 technical specification complete;
+> roadmap phase 1 (Foundation) implemented and verified. Later phases are in progress —
+> see [ROADMAP](docs/ROADMAP.md) for sequencing.
 > **v1.0 scope:** roadmap phases 1–6; phase 7 (macOS/Windows) is post-v1.0.
 
 ---
@@ -60,9 +59,8 @@ record sections.
 | [GLOSSARY.md](docs/GLOSSARY.md) | Canonical definitions for all domain terms |
 | [AGENTS.md](AGENTS.md) | Concise rules for coding agents and contributors |
 
-## Planned build and test commands
+## Build and test commands
 
-These are **planned**, not yet usable (the Foundation phase has not landed).
 C++20 and CMake are confirmed (Q46); the integration boundary is a versioned C ABI
 with C++ wrappers. Phase 1 targets GCC 13+/Clang 16+, uses Catch2 v3 as a dev-only
 test framework, and starts at tool version `0.1.0-dev` with SDK ABI `1.0.0` (BR §22).
@@ -73,6 +71,14 @@ The source layout is in
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
+make sysinfo             # print the inventory with availability states
+```
+
+Run the full CI gate locally — warnings-as-errors build, tests, formatting,
+static analysis, Doxygen, sanitizers and the SDK consumer check:
+
+```bash
+make verify              # CI_CMAKE_ARGS overrides the default -DZTICK_WERROR=ON
 ```
 
 ## Contributing to the specification

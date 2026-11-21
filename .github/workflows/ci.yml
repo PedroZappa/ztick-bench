@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: MIT
+# Continuous verification gate. ROADMAP P1.14: demonstrate the Phase 1 exit
+# criterion with CI flags active (-Wall -Wextra -Wpedantic -Werror, sanitizers).
+
+name: CI
+
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: verify (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    env:
+      CC: ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }}
+      CXX: ${{ matrix.compiler == 'clang' && 'clang++' || 'g++' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install toolchain and analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build cppcheck clang-format clang-tidy doxygen
+
+      - name: Run full verification with CI flags
+        run: make verify
+
+      - name: Demonstrate system-info inventory
+        run: ./build-ci/bin/ztick-sysinfo

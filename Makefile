@@ -18,6 +18,7 @@
 
 # Directories
 BUILD_DIR         = build
+CI_BUILD_DIR      = build-ci
 SANITIZE_DIR      = build-sanitize
 DOCS_DIR          = docs
 DOXYGEN_BUILD_DIR = build/doxygen
@@ -37,6 +38,7 @@ DOXYFILE          = Doxyfile
 # Build options
 BUILD_TYPE        ?= Release
 CMAKE_ARGS        ?=
+CI_CMAKE_ARGS     ?= -DZTICK_WERROR=ON
 HOST_OS           := $(shell uname -s)
 
 # Colors
@@ -85,7 +87,7 @@ else
 SANITIZE_ASAN_OPTIONS = detect_leaks=1:detect_stack_use_after_return=1:halt_on_error=1
 endif
 
-.PHONY: all build test test-verbose clean cppcheck memcheck sanitize run sysinfo \
+.PHONY: all build test test-verbose clean cppcheck memcheck sanitize run sysinfo verify \
 	format-check format sdk-consumer-check docs docs-open clean-docs help
 
 #==============================================================================#
@@ -163,6 +165,13 @@ sanitize:	## Run tests under ASan + UBSan (LSan on non-Darwin hosts)
 		exit 1; \
 	}
 	@echo "$(YEL)* $(_SUCCESS) Sanitizers: no findings$(D)"
+
+##@ Verification ✅
+
+verify:	## Run the full CI gate (CI_CMAKE_ARGS defaults to -DZTICK_WERROR=ON)
+	@CI_BUILD_DIR="$(CI_BUILD_DIR)" CI_CMAKE_ARGS="$(CI_CMAKE_ARGS)" \
+		CMAKE="$(CMAKE)" CTEST="$(CTEST)" CMAKE_BUILD_TYPE="$(BUILD_TYPE)" \
+		./scripts/verify.sh
 
 ##@ Utility Rules 🛠
 

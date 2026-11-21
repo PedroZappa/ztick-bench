@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 /**
@@ -29,11 +30,12 @@ namespace ztick::tools {
 
 /**
  * @brief Map an availability state to its stable report token.
- * @param state State to render.
+ * @param state Numeric state to render. An integer is used instead of the enum so
+ *        malformed C ABI values can be reported without undefined behavior.
  * @return `value`, `unavailable`, `unsupported`, `not_applicable`, or `unknown`
  *         for a value outside the declared enumeration.
  */
-const char *availability_name(ztick_availability state);
+const char *availability_name(std::underlying_type_t<ztick_availability> state);
 
 /**
  * @brief Render a byte count using binary units up to TiB.

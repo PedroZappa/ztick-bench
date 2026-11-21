@@ -35,7 +35,7 @@ void append_line(std::string &out, std::string_view label, const platform::Resul
 
 } // namespace
 
-const char *availability_name(ztick_availability state) {
+const char *availability_name(std::underlying_type_t<ztick_availability> state) {
   switch (state) {
   case ztick_availability_value:
     return "value";
