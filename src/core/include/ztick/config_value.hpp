@@ -27,7 +27,7 @@
 /** @brief Portable benchmarking core: workload models and execution models. */
 namespace ztick {
 
-/** @brief Discriminant for the scalar and container forms of @ref ConfigValue. */
+/** @brief Discriminant for the scalar and container forms of @ref ztick::ConfigValue. */
 enum class ConfigValueType : std::uint8_t {
   /** @brief Absence of a value; never used to silently omit a config field. */
   null = 0,
