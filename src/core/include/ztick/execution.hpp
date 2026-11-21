@@ -89,6 +89,41 @@ struct TimingSamples {
   std::vector<double> durations_seconds;
 };
 
+/**
+ * @brief Availability status of a reported metric value (REQ-MET-01).
+ * @note An unavailable or not-applicable value is still reported, never omitted.
+ */
+enum class ValueStatus : std::uint8_t {
+  /** @brief Directly observed by instrumentation or monitoring. */
+  measured = 0,
+  /** @brief Derived or approximated. */
+  estimated = 1,
+  /** @brief The platform or integration could not provide it. */
+  unavailable = 2,
+  /** @brief Undefined for this benchmark type or mode. */
+  not_applicable = 3,
+};
+
+/**
+ * @brief Separately preserved measurement-overhead estimate (MET-17).
+ * @note Overhead is never subtracted from raw timing samples. The estimate is
+ *       reported alongside them and remains independently observable (BR §7.3).
+ */
+struct OverheadEstimate {
+  /** @brief Availability status; `estimated` once a calibration has run. */
+  ValueStatus status{ValueStatus::unavailable};
+  /** @brief Estimated overhead in seconds across @ref interval_count intervals. */
+  double seconds{0.0};
+  /** @brief DSP processing seconds used as the percentage denominator. */
+  double dsp_time_seconds{0.0};
+  /** @brief Number of bracketed intervals the estimate covers. */
+  std::size_t interval_count{0};
+  /** @brief Raw empty-interval calibration durations in seconds. */
+  std::vector<double> calibration_samples_seconds;
+  /** @brief Human-readable derivation method, or `unavailable` when not estimated. */
+  std::string method{"unavailable"};
+};
+
 /** @brief Phase actions for one test point; absent actions are skipped. */
 struct SequenceActions {
   /** @brief Input generation action, typically a `generate_samples` call; untimed. */
@@ -113,6 +148,8 @@ struct SequenceOptions {
   std::vector<TimingLevel> timing_levels{TimingLevel::whole_run};
   /** @brief Number of block invocations when a @ref ztick::SequenceActions::block is used. */
   std::uint32_t block_count{0};
+  /** @brief Calibrated overhead estimate carried into the trace; unavailable by default. */
+  OverheadEstimate overhead_estimate{};
 };
 
 /** @brief Observable result of one sequenced test point. */
@@ -123,6 +160,8 @@ struct ExecutionTrace {
   std::vector<PhaseMeasurement> measurements;
   /** @brief Raw duration samples keyed by level; only selected levels are present. */
   std::vector<TimingSamples> timing;
+  /** @brief Overhead estimate reported separately; never applied to @ref timing. */
+  OverheadEstimate overhead;
 };
 
 /** @brief Monotonic clock returning elapsed seconds; injectable for deterministic tests. */
@@ -154,6 +193,27 @@ std::optional<ExecutionTrace> run_sequence(const SequenceActions &actions,
  *       @p trace lives.
  */
 const std::vector<double> *find_samples(const ExecutionTrace &trace, TimingLevel level) noexcept;
+
+/**
+ * @brief Estimate clock overhead from repeated empty intervals.
+ * @param clock Monotonic clock to calibrate.
+ * @param sample_count Number of empty intervals to measure.
+ * @param error Optional receiver for a human-readable failure explanation.
+ * @return An estimate with status `estimated` on success, or `unavailable` otherwise.
+ * @note Each sample measures two consecutive clock reads with no work between,
+ *       isolating the clock's intrinsic cost. Raw calibration durations are retained.
+ */
+OverheadEstimate estimate_overhead(const Clock &clock, std::size_t sample_count,
+                                   std::string *error = nullptr);
+
+/**
+ * @brief Compute estimated overhead as a percentage of DSP processing time.
+ * @param estimate Estimate to convert.
+ * @return The percentage, or `std::nullopt` when the estimate is unavailable or
+ *         the DSP-time denominator is not positive.
+ * @note This is a derived reporting value; it never alters raw measurements.
+ */
+std::optional<double> overhead_percent(const OverheadEstimate &estimate) noexcept;
 
 } // namespace ztick
 

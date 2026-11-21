@@ -381,3 +381,135 @@ TEST_CASE("block action drives primary work when supplied", "[core][execution]")
   REQUIRE(trace->executed_phases ==
           std::vector<ztick::ExecutionPhase>{ztick::ExecutionPhase::primary});
 }
+
+/**
+ * @brief Verify overhead calibration retains raw empty-interval samples.
+ */
+TEST_CASE("overhead calibration retains raw samples", "[core][execution]") {
+  const std::vector<double> readings{0.0, 2.0, 10.0, 11.0, 20.0, 23.0};
+  std::size_t cursor = 0;
+  ztick::Clock clock = [&readings, &cursor]() { return readings[cursor++]; };
+
+  const ztick::OverheadEstimate estimate = ztick::estimate_overhead(clock, 3);
+  REQUIRE(estimate.status == ztick::ValueStatus::estimated);
+  REQUIRE(estimate.calibration_samples_seconds == std::vector<double>{2.0, 1.0, 3.0});
+  REQUIRE(estimate.seconds == Catch::Approx(2.0));
+  REQUIRE(estimate.interval_count == 1);
+  REQUIRE(estimate.method == "empty_interval");
+}
+
+/**
+ * @brief Verify overhead calibration rejects invalid inputs with a diagnostic.
+ */
+TEST_CASE("overhead calibration rejects invalid input", "[core][execution]") {
+  ztick::Clock empty_clock;
+  std::string error;
+  const auto no_clock = ztick::estimate_overhead(empty_clock, 3, &error);
+  REQUIRE(no_clock.status == ztick::ValueStatus::unavailable);
+  REQUIRE(error == "a clock and a positive sample count are required");
+
+  ztick::Clock clock = []() { return 0.0; };
+  error.clear();
+  const auto no_samples = ztick::estimate_overhead(clock, 0, &error);
+  REQUIRE(no_samples.status == ztick::ValueStatus::unavailable);
+  REQUIRE(no_samples.calibration_samples_seconds.empty());
+  REQUIRE(error == "a clock and a positive sample count are required");
+}
+
+/**
+ * @brief Verify the overhead percentage uses an independent formula.
+ */
+TEST_CASE("overhead percent is derived independently", "[core][execution]") {
+  ztick::OverheadEstimate estimate;
+  estimate.status = ztick::ValueStatus::estimated;
+  estimate.seconds = 0.5;
+  estimate.dsp_time_seconds = 2.0;
+  const auto percent = ztick::overhead_percent(estimate);
+  REQUIRE(percent.has_value());
+  REQUIRE(*percent == Catch::Approx(25.0));
+}
+
+/**
+ * @brief Verify overhead percentage is unavailable without a positive denominator.
+ */
+TEST_CASE("overhead percent needs a positive denominator", "[core][execution]") {
+  ztick::OverheadEstimate estimate;
+  REQUIRE_FALSE(ztick::overhead_percent(estimate).has_value());
+
+  estimate.status = ztick::ValueStatus::estimated;
+  estimate.seconds = 1.0;
+  estimate.dsp_time_seconds = 0.0;
+  REQUIRE_FALSE(ztick::overhead_percent(estimate).has_value());
+
+  estimate.dsp_time_seconds = -1.0;
+  REQUIRE_FALSE(ztick::overhead_percent(estimate).has_value());
+}
+
+/**
+ * @brief Verify overhead is reported separately and never changes raw samples.
+ */
+TEST_CASE("overhead is recorded separately from raw samples", "[core][execution]") {
+  ztick::SequenceActions actions;
+  actions.primary = []() {};
+
+  int plain_calls = 0;
+  const auto plain =
+      ztick::run_sequence(actions, ztick::SequenceOptions{}, advancing_clock(plain_calls));
+  REQUIRE(plain.has_value());
+
+  double calibration_time = 0.0;
+  ztick::Clock calibration_clock = [&calibration_time]() { return calibration_time += 0.25; };
+  const ztick::OverheadEstimate calibrated = ztick::estimate_overhead(calibration_clock, 4);
+  REQUIRE(calibrated.status == ztick::ValueStatus::estimated);
+  REQUIRE(calibrated.seconds == Catch::Approx(0.25));
+
+  ztick::SequenceOptions options;
+  options.overhead_estimate = calibrated;
+  int with_overhead_calls = 0;
+  const auto with_overhead =
+      ztick::run_sequence(actions, options, advancing_clock(with_overhead_calls));
+  REQUIRE(with_overhead.has_value());
+
+  // Calibration runs outside run_sequence, so both sequences see identical clocks.
+  REQUIRE(plain_calls == with_overhead_calls);
+  REQUIRE(*ztick::find_samples(*plain, ztick::TimingLevel::whole_run) ==
+          *ztick::find_samples(*with_overhead, ztick::TimingLevel::whole_run));
+  REQUIRE(plain->measurements[0].duration_seconds() ==
+          with_overhead->measurements[0].duration_seconds());
+
+  // The estimate is independently visible and scaled to the bracketed intervals.
+  REQUIRE(with_overhead->overhead.status == ztick::ValueStatus::estimated);
+  REQUIRE(with_overhead->overhead.interval_count == 1);
+  REQUIRE(with_overhead->overhead.seconds == Catch::Approx(0.25));
+  REQUIRE(with_overhead->overhead.dsp_time_seconds ==
+          Catch::Approx(with_overhead->measurements[0].duration_seconds()));
+  REQUIRE(with_overhead->overhead.calibration_samples_seconds.size() == 4);
+  REQUIRE(plain->overhead.status == ztick::ValueStatus::unavailable);
+}
+
+/**
+ * @brief Verify the estimate covers every bracketed interval.
+ */
+TEST_CASE("overhead estimate covers every bracketed interval", "[core][execution]") {
+  double calibration_time = 0.0;
+  ztick::Clock calibration_clock = [&calibration_time]() { return calibration_time += 0.5; };
+  const ztick::OverheadEstimate calibrated = ztick::estimate_overhead(calibration_clock, 2);
+  REQUIRE(calibrated.seconds == Catch::Approx(0.5));
+
+  ztick::SequenceActions actions;
+  actions.block = [](std::size_t) {};
+
+  ztick::SequenceOptions options;
+  options.timing_levels = {ztick::TimingLevel::per_block, ztick::TimingLevel::end_to_end};
+  options.block_count = 3;
+  options.overhead_estimate = calibrated;
+
+  int clock_calls = 0;
+  const auto trace = ztick::run_sequence(actions, options, advancing_clock(clock_calls));
+  REQUIRE(trace.has_value());
+  // One primary bracket + three per-block brackets + one end-to-end bracket.
+  REQUIRE(trace->overhead.interval_count == 5);
+  REQUIRE(trace->overhead.seconds == Catch::Approx(2.5));
+  REQUIRE(trace->overhead.dsp_time_seconds == Catch::Approx(7.0));
+  REQUIRE(clock_calls == 10);
+}

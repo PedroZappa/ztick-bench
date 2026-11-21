@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
+#include <numeric>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -117,6 +119,8 @@ std::optional<ExecutionTrace> run_sequence(const SequenceActions &actions,
   for (const TimingLevel level : options.timing_levels) {
     trace.timing.push_back(TimingSamples{level, {}});
   }
+  // The estimate travels alongside the raw samples and is never applied to them.
+  trace.overhead = options.overhead_estimate;
 
   const double sequence_start = wants_end_to_end ? clock() : 0.0;
 
@@ -161,6 +165,19 @@ std::optional<ExecutionTrace> run_sequence(const SequenceActions &actions,
     append_sample(trace.timing, TimingLevel::end_to_end, sequence_end - sequence_start);
   }
 
+  if (trace.overhead.status == ValueStatus::estimated) {
+    std::size_t intervals = 1;
+    if (wants_per_block) {
+      intervals += options.block_count;
+    }
+    if (wants_end_to_end) {
+      intervals += 1;
+    }
+    trace.overhead.seconds *= static_cast<double>(intervals);
+    trace.overhead.interval_count = intervals;
+    trace.overhead.dsp_time_seconds = primary_end - primary_start;
+  }
+
   if (actions.validation) {
     trace.executed_phases.push_back(ExecutionPhase::validation);
     actions.validation();
@@ -178,6 +195,40 @@ const std::vector<double> *find_samples(const ExecutionTrace &trace, TimingLevel
     return &found->durations_seconds;
   }
   return nullptr;
+}
+
+// cppcheck-suppress unusedFunction
+OverheadEstimate estimate_overhead(const Clock &clock, std::size_t sample_count,
+                                   std::string *error) {
+  OverheadEstimate estimate;
+  if (!clock || sample_count == 0) {
+    record_error(error, "a clock and a positive sample count are required");
+    return estimate;
+  }
+
+  std::vector<double> samples;
+  samples.reserve(sample_count);
+  std::generate_n(std::back_inserter(samples), sample_count, [&clock]() {
+    const double start = clock();
+    const double end = clock();
+    return end - start;
+  });
+
+  const double total = std::accumulate(samples.begin(), samples.end(), 0.0);
+  estimate.status = ValueStatus::estimated;
+  estimate.seconds = total / static_cast<double>(sample_count);
+  estimate.interval_count = 1;
+  estimate.calibration_samples_seconds = std::move(samples);
+  estimate.method = "empty_interval";
+  return estimate;
+}
+
+// cppcheck-suppress unusedFunction
+std::optional<double> overhead_percent(const OverheadEstimate &estimate) noexcept {
+  if (estimate.status != ValueStatus::estimated || !(estimate.dsp_time_seconds > 0.0)) {
+    return std::nullopt;
+  }
+  return estimate.seconds / estimate.dsp_time_seconds * 100.0;
 }
 
 } // namespace ztick
