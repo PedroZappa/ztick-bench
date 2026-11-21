@@ -29,6 +29,7 @@ add_executable(ztick_tests
   unit/catch2_integration_test.cpp
   unit/config_value_test.cpp
   unit/core_types_test.cpp
+  unit/generator_test.cpp
   unit/platform_interface_test.cpp
   unit/linux_system_info_test.cpp
   unit/profile_model_test.cpp

@@ -66,6 +66,8 @@ redefining them.
 | Term | Definition |
 | --- | --- |
 | **Sample rate** | Samples per second, explicitly declared for a workload (v1.0: 44.1–192 kHz values). |
+| **Frame index** | Zero-based position `n` of a sample in a generated signal; the independent variable of the generator formulas. |
+| **Tone weight** | Normalised coefficient `a_k` of a multi-tone generator; absolute weights sum to one so `|x[n]| <= A`. |
 | **Block size** | Number of samples processed per call (v1.0: 16–2048). |
 | **Channel layout** | Arrangement of channel samples: interleaved or planar. |
 | **Interleaved** | Layout where samples for all channels are alternated within one buffer. |
