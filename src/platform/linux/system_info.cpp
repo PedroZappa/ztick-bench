@@ -149,7 +149,7 @@ std::vector<std::string> FilesystemSystemInfoSource::cache_index_paths() const {
 UnameInfo FilesystemSystemInfoSource::uname() const {
   UnameInfo info;
 #if defined(__linux__)
-  struct utsname data{};
+  utsname data{};
   if (::uname(&data) == 0) {
     info.sysname = data.sysname;
     info.release = data.release;

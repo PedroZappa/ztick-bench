@@ -41,15 +41,16 @@ CMAKE_ARGS        ?=
 CI_CMAKE_ARGS     ?= -DZTICK_WERROR=ON
 HOST_OS           := $(shell uname -s)
 
-# Colors
-B   = $(shell tput bold)
-RED = $(shell tput setaf 1)
-GRN = $(shell tput setaf 2)
-YEL = $(shell tput setaf 3)
-BLU = $(shell tput setaf 4)
-MAG = $(shell tput setaf 5)
-CYA = $(shell tput setaf 6)
-D   = $(shell tput sgr0)
+# Colors. tput is silenced when TERM is unset (for example in CI), leaving the
+# escape sequences empty without polluting every make invocation with errors.
+B   = $(shell tput bold 2>/dev/null)
+RED = $(shell tput setaf 1 2>/dev/null)
+GRN = $(shell tput setaf 2 2>/dev/null)
+YEL = $(shell tput setaf 3 2>/dev/null)
+BLU = $(shell tput setaf 4 2>/dev/null)
+MAG = $(shell tput setaf 5 2>/dev/null)
+CYA = $(shell tput setaf 6 2>/dev/null)
+D   = $(shell tput sgr0 2>/dev/null)
 
 # Message vars
 _SUCCESS = [$(GRN)SUCCESS$(D)]
