@@ -106,6 +106,7 @@ redefining them.
 | --- | --- |
 | **Result document** | The canonical versioned JSON representation of a run, including metadata and per-metric statuses. |
 | **Config document** | The portable, versioned JSON description of a benchmark configuration. |
+| **Config-shaped data** | The in-memory object/array/scalar representation of a config document used by core models before JSON serialization (RESULTS_FORMAT §6). |
 | **Build metadata** | Recorded git commit, compiler, version, optimization flags, build configuration and toolchain details. |
 | **Machine metadata** | Recorded CPU, memory, cache, SIMD, OS, kernel and environment information. |
 | **Validation level** | Basic (NaN/Inf, invalid output), Standard (+ reference comparisons), or Strict (+ adapter checks and broader tests); independently selectable. |
