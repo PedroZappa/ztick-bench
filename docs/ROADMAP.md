@@ -59,7 +59,7 @@ only state the increment and its completion condition.
 - [x] **P1.2 — Create the source-tree skeleton and per-directory targets from [ARCHITECTURE §3.1](ARCHITECTURE.md#31-source-tree-layout-derived-design).** Done when: Layout matches the frozen tree; every declared target builds from a placeholder source.
 - [x] **P1.3 — Add `include/ztick/version.h` with SDK ABI `1.0.0` macros.** Done when: Header compiles standalone as C11 and C++20; values asserted by a test.
 - [x] **P1.4 — Add `include/ztick/types.h` with the frozen [core-type inventory](SDK_SPECIFICATION.md#12-core-type-inventory).** Done when: Every listed type is defined once; C11 and C++20 compile checks pass.
-- [ ] **P1.5 — Add `include/ztick/sdk.h` with opaque handles, `ZTICK_API` and the C-only surface.** Done when: Header is self-contained C11; no C++ types, exceptions or ABI leak.
+- [x] **P1.5 — Add `include/ztick/sdk.h` with opaque handles, `ZTICK_API` and the C-only surface.** Done when: Header is self-contained C11; no C++ types, exceptions or ABI leak.
 - [ ] **P1.6 — Add C++20 wrapper scaffolding under `include/ztick/cpp/`.** Done when: Wrappers include the C headers and compile in namespace `ztick::sdk`.
 - [ ] **P1.7 — Define the `ztick_sdk` target, install rules and `cmake/ztick-sdk-config.cmake.in`.** Done when: A scratch consumer outside the repo can `find_package(ztick-sdk)` and include headers (BR §17.8).
 - [ ] **P1.8 — Integrate Catch2 v3 (pinned, FetchContent fallback) and register the first CTest.** Done when: `ctest --test-dir build --output-on-failure` passes.

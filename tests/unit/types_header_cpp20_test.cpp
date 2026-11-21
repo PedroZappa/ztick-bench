@@ -13,6 +13,7 @@
 #include <ztick/types.h>
 
 #include <cstddef>
+#include <type_traits>
 
 // The build selects C++20 with extensions disabled; verify the effective mode.
 static_assert(__cplusplus >= 202002L, "types.h test requires C++20");
@@ -86,49 +87,84 @@ static_assert(offsetof(ztick_validation_result, version) == sizeof(uint32_t),
 static_assert(sizeof(((ztick_validation_result *)0)->version) == sizeof(uint32_t),
               "ztick_validation_result::version type");
 
-// Every remaining inventory field must be declared.
-static_assert(sizeof(((ztick_version *)0)->major) > 0 && sizeof(((ztick_version *)0)->minor) > 0 &&
-                  sizeof(((ztick_version *)0)->patch) > 0,
-              "ztick_version inventory incomplete");
-static_assert(sizeof(((ztick_audio_format *)0)->format) > 0 &&
-                  sizeof(((ztick_audio_format *)0)->layout) > 0 &&
-                  sizeof(((ztick_audio_format *)0)->sample_rate) > 0 &&
-                  sizeof(((ztick_audio_format *)0)->channels) > 0 &&
-                  sizeof(((ztick_audio_format *)0)->frames) > 0,
-              "ztick_audio_format inventory incomplete");
-static_assert(sizeof(((ztick_parameter_descriptor *)0)->name) > 0 &&
-                  sizeof(((ztick_parameter_descriptor *)0)->type) > 0 &&
-                  sizeof(((ztick_parameter_descriptor *)0)->units) > 0 &&
-                  sizeof(((ztick_parameter_descriptor *)0)->minimum) > 0 &&
-                  sizeof(((ztick_parameter_descriptor *)0)->maximum) > 0 &&
-                  sizeof(((ztick_parameter_descriptor *)0)->default_value) > 0 &&
-                  sizeof(((ztick_parameter_descriptor *)0)->allowed_values) > 0 &&
-                  sizeof(((ztick_parameter_descriptor *)0)->allowed_value_count) > 0 &&
-                  sizeof(((ztick_parameter_descriptor *)0)->description) > 0,
-              "ztick_parameter_descriptor inventory incomplete");
-static_assert(sizeof(((ztick_adapter_info *)0)->identifier) > 0 &&
-                  sizeof(((ztick_adapter_info *)0)->name) > 0 &&
-                  sizeof(((ztick_adapter_info *)0)->adapter_version) > 0 &&
-                  sizeof(((ztick_adapter_info *)0)->sdk_version) > 0 &&
-                  sizeof(((ztick_adapter_info *)0)->capabilities) > 0 &&
-                  sizeof(((ztick_adapter_info *)0)->metadata) > 0,
-              "ztick_adapter_info inventory incomplete");
-static_assert(sizeof(((ztick_buffer_view *)0)->planes) > 0 &&
-                  sizeof(((ztick_buffer_view *)0)->strides) > 0 &&
-                  sizeof(((ztick_buffer_view *)0)->plane_count) > 0 &&
-                  sizeof(((ztick_buffer_view *)0)->frames) > 0 &&
-                  sizeof(((ztick_buffer_view *)0)->format) > 0,
-              "ztick_buffer_view inventory incomplete");
-static_assert(sizeof(((ztick_timing_sample *)0)->block_index) > 0 &&
-                  sizeof(((ztick_timing_sample *)0)->duration_seconds) > 0,
-              "ztick_timing_sample inventory incomplete");
-static_assert(sizeof(((ztick_validation_result *)0)->check_name) > 0 &&
-                  sizeof(((ztick_validation_result *)0)->outcome) > 0 &&
-                  sizeof(((ztick_validation_result *)0)->absolute_tolerance) > 0 &&
-                  sizeof(((ztick_validation_result *)0)->relative_tolerance) > 0 &&
-                  sizeof(((ztick_validation_result *)0)->reference_source) > 0 &&
-                  sizeof(((ztick_validation_result *)0)->details) > 0,
-              "ztick_validation_result inventory incomplete");
+// Every remaining inventory field must have its declared type.
+static_assert(std::is_same_v<decltype(((ztick_version *)0)->major), uint32_t>,
+              "ztick_version::major missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_version *)0)->minor), uint32_t>,
+              "ztick_version::minor missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_version *)0)->patch), uint32_t>,
+              "ztick_version::patch missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_audio_format *)0)->format), ztick_sample_format>,
+              "ztick_audio_format::format missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_audio_format *)0)->layout), ztick_channel_layout>,
+              "ztick_audio_format::layout missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_audio_format *)0)->sample_rate), uint32_t>,
+              "ztick_audio_format::sample_rate missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_audio_format *)0)->channels), uint32_t>,
+              "ztick_audio_format::channels missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_audio_format *)0)->frames), uint32_t>,
+              "ztick_audio_format::frames missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_parameter_descriptor *)0)->name), const char *>,
+              "ztick_parameter_descriptor::name missing or wrong type");
+static_assert(
+    std::is_same_v<decltype(((ztick_parameter_descriptor *)0)->type), ztick_parameter_type>,
+    "ztick_parameter_descriptor::type missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_parameter_descriptor *)0)->units), const char *>,
+              "ztick_parameter_descriptor::units missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_parameter_descriptor *)0)->minimum), double>,
+              "ztick_parameter_descriptor::minimum missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_parameter_descriptor *)0)->maximum), double>,
+              "ztick_parameter_descriptor::maximum missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_parameter_descriptor *)0)->default_value), double>,
+              "ztick_parameter_descriptor::default_value missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_parameter_descriptor *)0)->allowed_values),
+                             const char *const *>,
+              "ztick_parameter_descriptor::allowed_values missing or wrong type");
+static_assert(
+    std::is_same_v<decltype(((ztick_parameter_descriptor *)0)->allowed_value_count), uint32_t>,
+    "ztick_parameter_descriptor::allowed_value_count missing or wrong type");
+static_assert(
+    std::is_same_v<decltype(((ztick_parameter_descriptor *)0)->description), const char *>,
+    "ztick_parameter_descriptor::description missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_adapter_info *)0)->identifier), const char *>,
+              "ztick_adapter_info::identifier missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_adapter_info *)0)->name), const char *>,
+              "ztick_adapter_info::name missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_adapter_info *)0)->adapter_version), ztick_version>,
+              "ztick_adapter_info::adapter_version missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_adapter_info *)0)->sdk_version), ztick_version>,
+              "ztick_adapter_info::sdk_version missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_adapter_info *)0)->capabilities), uint64_t>,
+              "ztick_adapter_info::capabilities missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_adapter_info *)0)->metadata), const char *>,
+              "ztick_adapter_info::metadata missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_buffer_view *)0)->planes), void *const *>,
+              "ztick_buffer_view::planes missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_buffer_view *)0)->strides), const size_t *>,
+              "ztick_buffer_view::strides missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_buffer_view *)0)->plane_count), uint32_t>,
+              "ztick_buffer_view::plane_count missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_buffer_view *)0)->frames), uint32_t>,
+              "ztick_buffer_view::frames missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_buffer_view *)0)->format), ztick_audio_format>,
+              "ztick_buffer_view::format missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_timing_sample *)0)->block_index), uint64_t>,
+              "ztick_timing_sample::block_index missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_timing_sample *)0)->duration_seconds), double>,
+              "ztick_timing_sample::duration_seconds missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_validation_result *)0)->check_name), const char *>,
+              "ztick_validation_result::check_name missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_validation_result *)0)->outcome), ztick_status>,
+              "ztick_validation_result::outcome missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_validation_result *)0)->absolute_tolerance), double>,
+              "ztick_validation_result::absolute_tolerance missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_validation_result *)0)->relative_tolerance), double>,
+              "ztick_validation_result::relative_tolerance missing or wrong type");
+static_assert(
+    std::is_same_v<decltype(((ztick_validation_result *)0)->reference_source), const char *>,
+    "ztick_validation_result::reference_source missing or wrong type");
+static_assert(std::is_same_v<decltype(((ztick_validation_result *)0)->details), const char *>,
+              "ztick_validation_result::details missing or wrong type");
 
 /**
  * @brief Entry point for the standalone C++20 types check.

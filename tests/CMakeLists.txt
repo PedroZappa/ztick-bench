@@ -30,3 +30,17 @@ target_include_directories(ztick_types_cpp20_test
     "${PROJECT_SOURCE_DIR}/include"
 )
 add_test(NAME unit.types.cpp20 COMMAND ztick_types_cpp20_test)
+
+add_executable(ztick_sdk_c11_test unit/sdk_header_c11_test.c)
+target_include_directories(ztick_sdk_c11_test
+  PRIVATE
+    "${PROJECT_SOURCE_DIR}/include"
+)
+add_test(NAME unit.sdk.c11 COMMAND ztick_sdk_c11_test)
+
+add_executable(ztick_sdk_cpp20_test unit/sdk_header_cpp20_test.cpp)
+target_include_directories(ztick_sdk_cpp20_test
+  PRIVATE
+    "${PROJECT_SOURCE_DIR}/include"
+)
+add_test(NAME unit.sdk.cpp20 COMMAND ztick_sdk_cpp20_test)

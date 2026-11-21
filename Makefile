@@ -52,14 +52,14 @@ D   = $(shell tput sgr0)
 _SUCCESS = [$(GRN)SUCCESS$(D)]
 _INFO    = [$(BLU)INFO$(D)]
 
-# Suppression policy: suppress ids globally only with a stated reason.
-# - missingIncludeSystem: standard/third-party headers (Catch2) need no copy here.
+# Suppression policy: suppress ids globally only with a stated reason, and only
+# while a matching finding exists. Cppcheck reports stale suppressions as
+# unmatchedSuppression and exits non-zero with --error-exitcode, so remove them
+# once they no longer match. Re-add with the finding that justifies them.
 # - checkersReport: informational summary, not a finding.
-# - unusedFunction: public SDK/core API is surface, not dead code.
 CPPCHECK_FLAGS = --std=c++20 --enable=all --check-level=exhaustive \
                  --error-exitcode=1 --inline-suppr -I include \
-                 --suppress=missingIncludeSystem --suppress=checkersReport \
-                 --suppress=unusedFunction
+                 --suppress=checkersReport
 
 # Valgrind Memcheck: definite/indirect/possible leaks are hard errors;
 # still-reachable third-party statics (Catch2) are logged, not fatal.
