@@ -82,6 +82,12 @@ of one binary, so a shared defect cannot validate both.
 - Verify result encoding of measured/estimated/unavailable/N-A statuses and of
   validation outcomes ([RESULTS](RESULTS_FORMAT.md#3-result-document-structure)).
 
+The Phase 2 verification pass (ROADMAP P2.8) is an integration test in
+`tests/integration/phase2_engine_test.cpp`. It chains deterministic generation,
+all three timing levels, validation and the METRICS §3 aggregates into one run,
+checking each expected value against an independent calculation so the Phase 2
+exit criterion is demonstrated across component boundaries.
+
 ## 5. Measurement overhead and timing tests
 
 - Verify aggregate mode is the default and per-block collection is opt-in

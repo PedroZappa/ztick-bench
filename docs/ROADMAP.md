@@ -79,7 +79,7 @@ only state the increment and its completion condition.
 - [x] **P2.5 — Record overhead estimates separately from raw timings.** Done when: No subtraction occurs before reporting; estimates are independently visible.
 - [x] **P2.6 — Implement statistics: mean, median, percentiles, standard deviation, throughput, RTF and scaling efficiency.** Done when: Values match independent reference calculations ([METRICS](METRICS_REFERENCE.md#3-definitions-and-formulas)).
 - [x] **P2.7 — Implement Basic/Standard/Strict validation as a separate phase.** Done when: All levels are exercised and timing results are unchanged.
-- [ ] **P2.8 — Phase 2 verification pass.** Done when: Generators and timing levels work; metrics compute per [METRICS](METRICS_REFERENCE.md).
+- [x] **P2.8 — Phase 2 verification pass.** Done when: Generators and timing levels work; metrics compute per [METRICS](METRICS_REFERENCE.md).
 
 ### 2.3 Phase 3 — Integrations
 

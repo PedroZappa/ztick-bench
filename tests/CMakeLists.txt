@@ -26,6 +26,7 @@ endif()
 include(Catch)
 
 add_executable(ztick_tests
+  integration/phase2_engine_test.cpp
   unit/catch2_integration_test.cpp
   unit/config_value_test.cpp
   unit/core_types_test.cpp
