@@ -15,6 +15,8 @@
 #ifndef ZTICK_EXECUTION_HPP
 #define ZTICK_EXECUTION_HPP
 
+#include "ztick/metric_status.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -87,21 +89,6 @@ struct TimingSamples {
   TimingLevel level{TimingLevel::whole_run};
   /** @brief Raw durations in seconds, in collection order; never aggregated in place. */
   std::vector<double> durations_seconds;
-};
-
-/**
- * @brief Availability status of a reported metric value (REQ-MET-01).
- * @note An unavailable or not-applicable value is still reported, never omitted.
- */
-enum class ValueStatus : std::uint8_t {
-  /** @brief Directly observed by instrumentation or monitoring. */
-  measured = 0,
-  /** @brief Derived or approximated. */
-  estimated = 1,
-  /** @brief The platform or integration could not provide it. */
-  unavailable = 2,
-  /** @brief Undefined for this benchmark type or mode. */
-  not_applicable = 3,
 };
 
 /**

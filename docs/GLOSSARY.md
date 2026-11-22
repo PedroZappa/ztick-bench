@@ -56,6 +56,8 @@ redefining them.
 | **Unavailable value** | A metric the platform or integration could not provide. |
 | **Not-applicable value** | A metric that is undefined for the benchmark type or mode. |
 | **Overhead estimate** | A separately preserved estimate of the cost introduced by measurement and instrumentation; never silently subtracted. |
+| **Raw basis** | The single retained population from which aggregates are computed: per-block durations of one run or whole-run durations across repetitions. Populations are never mixed. |
+| **Nearest-rank quantile** | A percentile taken as the observed sample at ascending rank `ceil(q × n)`, with no interpolation; used for P90, P95, P99 and P99.9. |
 | **Throughput** | Processing rate in frames/s (canonical); samples/s = frames/s × channels and blocks/s = frames/s ÷ block size. Samples are counted per channel. |
 | **Real-time factor** | Ratio of DSP processing time to the duration of the audio represented; below 1 means faster than real time. |
 | **Scaling efficiency** | How processing capacity grows with added instances or worker threads relative to ideal linear scaling. |
