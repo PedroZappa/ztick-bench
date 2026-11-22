@@ -36,6 +36,7 @@ redefining them.
 | **Input generator** | A deterministic producer of audio data for a workload (v1.0: sine, multi-tone/harmonic, impulse). |
 | **Profile** | A named, reusable set of benchmark settings defining more than duration: warm-up, repetitions, coverage, detail and reliability checks. |
 | **Dimension** | A configurable benchmark axis: sample rate, block size, channels, oversampling, instances, duration, iterations, repetitions. |
+| **Test point** | One combination of workload and dimensions whose lifecycle is sequenced as generation, setup, warm-up, primary DSP interval and validation (BENCHMARK §6). |
 | **Iteration** | One measured execution within a single repetition or test point. |
 | **Repetition** | A repeated measurement of the same test point, used to establish variability. |
 | **Warm-up** | Unmeasured execution before the measured interval, used to stabilize caches and frequency. |
@@ -55,6 +56,8 @@ redefining them.
 | **Unavailable value** | A metric the platform or integration could not provide. |
 | **Not-applicable value** | A metric that is undefined for the benchmark type or mode. |
 | **Overhead estimate** | A separately preserved estimate of the cost introduced by measurement and instrumentation; never silently subtracted. |
+| **Raw basis** | The single retained population from which aggregates are computed: per-block durations of one run or whole-run durations across repetitions. Populations are never mixed. |
+| **Nearest-rank quantile** | A percentile taken as the observed sample at ascending rank `ceil(q × n)`, with no interpolation; used for P90, P95, P99 and P99.9. |
 | **Throughput** | Processing rate in frames/s (canonical); samples/s = frames/s × channels and blocks/s = frames/s ÷ block size. Samples are counted per channel. |
 | **Real-time factor** | Ratio of DSP processing time to the duration of the audio represented; below 1 means faster than real time. |
 | **Scaling efficiency** | How processing capacity grows with added instances or worker threads relative to ideal linear scaling. |
@@ -66,6 +69,8 @@ redefining them.
 | Term | Definition |
 | --- | --- |
 | **Sample rate** | Samples per second, explicitly declared for a workload (v1.0: 44.1–192 kHz values). |
+| **Frame index** | Zero-based position `n` of a sample in a generated signal; the independent variable of the generator formulas. |
+| **Tone weight** | Normalised coefficient `a_k` of a multi-tone generator; absolute weights sum to one so `|x[n]| <= A`. |
 | **Block size** | Number of samples processed per call (v1.0: 16–2048). |
 | **Channel layout** | Arrangement of channel samples: interleaved or planar. |
 | **Interleaved** | Layout where samples for all channels are alternated within one buffer. |
@@ -106,10 +111,13 @@ redefining them.
 | --- | --- |
 | **Result document** | The canonical versioned JSON representation of a run, including metadata and per-metric statuses. |
 | **Config document** | The portable, versioned JSON description of a benchmark configuration. |
+| **Config-shaped data** | The in-memory object/array/scalar representation of a config document used by core models before JSON serialization (RESULTS_FORMAT §6). |
 | **Build metadata** | Recorded git commit, compiler, version, optimization flags, build configuration and toolchain details. |
 | **Machine metadata** | Recorded CPU, memory, cache, SIMD, OS, kernel and environment information. |
 | **Validation level** | Basic (NaN/Inf, invalid output), Standard (+ reference comparisons), or Strict (+ adapter checks and broader tests); independently selectable. |
+| **Check outcome** | The recorded result of one validation check, including its status, tolerances, reference source and observed error; a single pass/fail flag is not sufficient. |
 | **Reference output** | Expected output supplied by an adapter, a workload reference file, deterministic generation, or a designated reference implementation. |
+| **Reference source** | The origin of a reference output: adapter data, workload file, deterministic generation, or a designated reference implementation. |
 | **Tolerance** | Configurable absolute and relative error limits for reference comparisons. |
 | **Workload failure** | An adapter crash, invalid data or processing failure. |
 | **Infrastructure failure** | Plugin load failure, benchmark process error or unavailable system monitoring. |
