@@ -115,7 +115,9 @@ redefining them.
 | **Build metadata** | Recorded git commit, compiler, version, optimization flags, build configuration and toolchain details. |
 | **Machine metadata** | Recorded CPU, memory, cache, SIMD, OS, kernel and environment information. |
 | **Validation level** | Basic (NaN/Inf, invalid output), Standard (+ reference comparisons), or Strict (+ adapter checks and broader tests); independently selectable. |
+| **Check outcome** | The recorded result of one validation check, including its status, tolerances, reference source and observed error; a single pass/fail flag is not sufficient. |
 | **Reference output** | Expected output supplied by an adapter, a workload reference file, deterministic generation, or a designated reference implementation. |
+| **Reference source** | The origin of a reference output: adapter data, workload file, deterministic generation, or a designated reference implementation. |
 | **Tolerance** | Configurable absolute and relative error limits for reference comparisons. |
 | **Workload failure** | An adapter crash, invalid data or processing failure. |
 | **Infrastructure failure** | Plugin load failure, benchmark process error or unavailable system monitoring. |

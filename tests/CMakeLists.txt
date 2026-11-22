@@ -36,6 +36,7 @@ add_executable(ztick_tests
   unit/profile_model_test.cpp
   unit/statistics_test.cpp
   unit/sysinfo_report_test.cpp
+  unit/validation_test.cpp
   unit/workload_model_test.cpp
 )
 # Catch2 defaults to __COUNTER__ for unique test names, which Clang reports as a

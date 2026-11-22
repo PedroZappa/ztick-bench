@@ -78,7 +78,7 @@ only state the increment and its completion condition.
 - [x] **P2.4 — Implement per-block, whole-run and opt-in end-to-end timing.** Done when: All three levels are selectable; raw samples are retained.
 - [x] **P2.5 — Record overhead estimates separately from raw timings.** Done when: No subtraction occurs before reporting; estimates are independently visible.
 - [x] **P2.6 — Implement statistics: mean, median, percentiles, standard deviation, throughput, RTF and scaling efficiency.** Done when: Values match independent reference calculations ([METRICS](METRICS_REFERENCE.md#3-definitions-and-formulas)).
-- [ ] **P2.7 — Implement Basic/Standard/Strict validation as a separate phase.** Done when: All levels are exercised and timing results are unchanged.
+- [x] **P2.7 — Implement Basic/Standard/Strict validation as a separate phase.** Done when: All levels are exercised and timing results are unchanged.
 - [ ] **P2.8 — Phase 2 verification pass.** Done when: Generators and timing levels work; metrics compute per [METRICS](METRICS_REFERENCE.md).
 
 ### 2.3 Phase 3 — Integrations
