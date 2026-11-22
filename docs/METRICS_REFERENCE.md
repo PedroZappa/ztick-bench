@@ -3,7 +3,7 @@
 | | |
 | --- | --- |
 | **Status** | Technical specification — v1.0 baseline complete |
-| **Source of truth** | [DECISIONS.md](DECISIONS.md) BR §7.1, §11.3 |
+| **Source of truth** | [DECISIONS.md](DECISIONS.md) BR §2.2, §7.1, §7.3, §8–§9, §11.2–§11.3, §13, §17 |
 | **Authoritative for** | Metric definitions, formulas, units, value statuses, aggregation rules, comparison/regression statistics |
 | **Not authoritative for** | When metrics are collected ([BENCHMARK](BENCHMARK_SPECIFICATION.md)), platform collection mechanisms ([PLATFORM](PLATFORM_MONITORING.md)), JSON encoding ([RESULTS](RESULTS_FORMAT.md)) |
 

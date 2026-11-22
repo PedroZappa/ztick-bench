@@ -21,6 +21,7 @@ jobs:
     env:
       CC: ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }}
       CXX: ${{ matrix.compiler == 'clang' && 'clang++' || 'g++' }}
+      TERM: '' # verify.sh must also pass with TERM unset locally
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

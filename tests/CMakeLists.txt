@@ -5,7 +5,7 @@
 
 # Catch2 v3 is dev-only (REQ-TEST-04). Prefer an installed package; fall back to
 # a pinned FetchContent checkout so the version is reproducible.
-find_package(Catch2 3 QUIET CONFIG)
+find_package(Catch2 3.9.1 EXACT QUIET CONFIG)
 if(Catch2_FOUND)
   list(APPEND CMAKE_MODULE_PATH "${Catch2_DIR}")
 else()

@@ -207,8 +207,10 @@ CheckOutcome check_reference(const ValidationCase &input, const Tolerance &toler
  * @param input Case to check.
  * @param tolerance Allowances used to decide whether samples differ.
  * @param level Level requiring the check.
- * @return One outcome; `not_applicable` unless a change is expected and a
- *         reference is available, `failed` when all samples remain within tolerance.
+ * @return One outcome: `not_applicable` when no change is expected; otherwise
+ *         `unavailable` with reason `no_reference` when no usable reference is
+ *         supplied, `failed` when all samples remain within tolerance, and
+ *         `passed` when a change is observed.
  */
 CheckOutcome check_expected_change(const ValidationCase &input, const Tolerance &tolerance,
                                    ValidationLevel level);

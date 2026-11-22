@@ -3,7 +3,7 @@
 | | |
 | --- | --- |
 | **Status** | Technical specification — v1.0 baseline complete |
-| **Source of truth** | [DECISIONS.md](DECISIONS.md) BR §8, §9 |
+| **Source of truth** | [DECISIONS.md](DECISIONS.md) BR §1, §8–§9, §15, §17 |
 | **Authoritative for** | System information inventory, runtime monitoring, CPU affinity/topology/scheduling/priority, reliability modes at the platform level, availability reporting |
 | **Not authoritative for** | When measurements are taken ([BENCHMARK](BENCHMARK_SPECIFICATION.md)), metric formulas ([METRICS](METRICS_REFERENCE.md)), result encoding ([RESULTS](RESULTS_FORMAT.md)) |
 

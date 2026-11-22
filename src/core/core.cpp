@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 /**
  * @file core.cpp
- * @brief Placeholder translation unit for the core engine target.
+ * @brief Anchor translation unit for the core engine target.
  *
- * The engine, workload, timing, statistics and validation sources replace this
- * file in later phases. This placeholder intentionally declares no functions.
+ * The engine, workload, timing, statistics and validation sources now implement
+ * the core. This file intentionally declares no functions and remains only as a
+ * stable source-list entry.
  */

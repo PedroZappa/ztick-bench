@@ -161,11 +161,13 @@ using Clock = std::function<double()>;
  * @param clock Monotonic clock used to bracket the primary and selected intervals.
  * @param error Optional receiver for a human-readable failure explanation.
  * @return The execution trace with retained raw samples, or `std::nullopt` on error.
- * @note generation, setup, warm-up and validation are never bracketed by the
- *       clock unless the opt-in end-to-end level is present in
- *       @ref ztick::SequenceOptions::timing_levels. Whole-run uses the same
- *       bracket as @ref ztick::ExecutionTrace::measurements. Per-block requires
- *       a block action and a positive @ref ztick::SequenceOptions::block_count.
+ * @note Generation, setup and warm-up are bracketed only by the opt-in
+ *       end-to-end level in @ref ztick::SequenceOptions::timing_levels.
+ *       Validation is never bracketed by any timing level, including
+ *       end-to-end: it runs after all timed intervals are closed (BR §7.3).
+ *       Whole-run uses the same bracket as
+ *       @ref ztick::ExecutionTrace::measurements. Per-block requires a block
+ *       action and a positive @ref ztick::SequenceOptions::block_count.
  */
 std::optional<ExecutionTrace> run_sequence(const SequenceActions &actions,
                                            const SequenceOptions &options, const Clock &clock,

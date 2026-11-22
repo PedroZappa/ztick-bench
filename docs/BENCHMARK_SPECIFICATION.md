@@ -3,7 +3,7 @@
 | | |
 | --- | --- |
 | **Status** | Technical specification — v1.0 baseline complete |
-| **Source of truth** | [DECISIONS.md](DECISIONS.md) BR §2–§4, §7.2–§7.4, §8, §10 |
+| **Source of truth** | [DECISIONS.md](DECISIONS.md) BR §2–§4, §7.2–§7.4, §8–§10, §14 |
 | **Authoritative for** | Workloads, generators, dimensions/profiles, run lifecycle, parallelism behavior, validation behavior |
 | **Not authoritative for** | Metric formulas/statuses ([METRICS](METRICS_REFERENCE.md)), platform monitoring details ([PLATFORM](PLATFORM_MONITORING.md)), serialization ([RESULTS](RESULTS_FORMAT.md)) |
 

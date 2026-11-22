@@ -1,8 +1,7 @@
 # ztick-bench Makefile
 #
-# Convenience wrapper around CMake and CTest. CMake remains the build system.
-# The CMake project lands in Phase 1 (step P1.1); until then these targets have
-# nothing to configure.
+# Convenience wrapper around CMake and CTest. CMake is the active build system;
+# these targets configure, build, test, analyse and document the existing project.
 #
 # Structure adapted from the ALIENMETAL Makefile. ztick-bench is an independent
 # project (AGENTS.md, BR §22): ALIENMETAL names, scripts, vendored dependencies
@@ -77,11 +76,10 @@ VALGRIND_FLAGS = --leak-check=full \
                  --trace-children=no \
                  --error-exitcode=99
 
-# Sanitizers: ASan + UBSan in a separate tree so normal builds are untouched.
-# LeakSanitizer is unsupported on Darwin and aborts at startup, so it is enabled
-# only on other hosts. Catch2 is instrumented too (dev-only dependency).
-SANITIZE_CXXFLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer \
-                    -fsanitize-address-use-after-scope -fno-sanitize-recover=all
+# Sanitizers: CMake's ZTICK_ENABLE_SANITIZERS option is the single source of the
+# ASan/UBSan flags; this target only selects the separate build tree and runs the
+# full CTest suite under it. LeakSanitizer is unsupported on Darwin and aborts at
+# startup, so it is enabled only on other hosts.
 ifeq ($(HOST_OS),Darwin)
 SANITIZE_ASAN_OPTIONS = detect_stack_use_after_return=1:halt_on_error=1
 else
@@ -122,6 +120,10 @@ run: build	## Run a config: make run CONFIG=path/to/config.json
 		echo "$(RED)Set CONFIG=path/to/config.json$(D)"; \
 		exit 1; \
 	fi
+	@if [ ! -x "$(CLI_BINARY)" ]; then \
+		echo "$(RED)$(CLI_BINARY) is not built: the CLI arrives with Phase 4.$(D)"; \
+		exit 1; \
+	fi
 	@echo "$(YEL)Running $(CONFIG)...$(D)"
 	@$(CLI_BINARY) run $(CONFIG)
 	@echo "$(YEL)* $(_SUCCESS) Benchmark completed$(D)"
@@ -156,12 +158,12 @@ memcheck: build	## Run the test binary under Valgrind (FILTER passes Catch2 args
 sanitize:	## Run tests under ASan + UBSan (LSan on non-Darwin hosts)
 	@echo "$(YEL)Configuring sanitizer build ($(SANITIZE_DIR))...$(D)"
 	@$(CMAKE) -S . -B $(SANITIZE_DIR) -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
-		-DCMAKE_CXX_FLAGS="$(SANITIZE_CXXFLAGS)" $(CMAKE_ARGS)
+		-DZTICK_ENABLE_SANITIZERS=ON $(CMAKE_ARGS)
 	@$(CMAKE) --build $(SANITIZE_DIR) --parallel
 	@echo "$(YEL)Running sanitized tests...$(D)"
 	@ASAN_OPTIONS="$(SANITIZE_ASAN_OPTIONS)" \
 		UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
-		$(SANITIZE_DIR)/bin/ztick_tests || { \
+		$(CTEST) --test-dir $(SANITIZE_DIR) --output-on-failure || { \
 		echo "$(RED)Sanitizer findings above! Fix before shipping.$(D)"; \
 		exit 1; \
 	}
@@ -193,7 +195,7 @@ format:	## Format C/C++ files with clang-format
 
 sdk-consumer-check:	## Verify an external consumer can find_package(ztick-sdk)
 	@echo "$(YEL)Checking SDK consumer...$(D)"
-	@./scripts/check_sdk_consumer.sh
+	@CMAKE="$(CMAKE)" ./scripts/check_sdk_consumer.sh
 	@echo "$(YEL)* $(_SUCCESS) SDK consumer check passed$(D)"
 
 ##@ Documentation Rules 📚
@@ -222,7 +224,7 @@ docs-open:	## Open the generated documentation
 
 clean-docs:	## Remove generated documentation artifacts
 	@echo "$(YEL)Removing generated documentation...$(D)"
-	@rm -rf $(DOXYGEN_BUILD_DIR) html latex
+	@rm -rf $(DOXYGEN_BUILD_DIR)
 	@echo "$(YEL)* $(_SUCCESS) Documentation cleaned$(D)"
 
 ##@ Help 󰛵
