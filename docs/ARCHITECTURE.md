@@ -30,17 +30,20 @@ later on the same abstractions. *Source: BR §2.3.*
 
 **REQ-ARCH-04 (Required).** Dependencies are maintained, permissively licensed, and
 documented with versions and licenses when introduced. No specific third-party
-runtime library is mandated for JSON, TUI or IPC. Catch2 v3 is the confirmed
-**dev-only** test framework (BR §22); it is never a runtime or installed dependency.
+runtime library is mandated for JSON or IPC, and none was mandated for the TUI at
+baseline; ratatui 0.30.2 (MIT, Rust 1.88+) is now the confirmed TUI library
+(BR §21, confirmed 2026-11-22). Catch2 v3 is the confirmed **dev-only** C/C++
+test framework (BR §22); it is never a runtime or installed dependency.
 *Source: BR §15, §21, §22.*
 
-Build system is CMake and the implementation language is C++20, with a versioned
-C ABI at the integration boundary. *Source: BR §15; BR §18 Q46 confirmed
-2026-11-20.*
+Build system is CMake; the implementation language is C++20 for the core, CLI and
+SDK, with the TUI as the sole Rust/ratatui exception (BR §21). A versioned C ABI
+is the integration boundary for adapters and for the Rust TUI's FFI calls.
+*Source: BR §15; BR §18 Q46, amended 2026-11-20 and 2026-11-22.*
 
 Toolchain baseline is GCC 13+ or Clang 16+ with `-Wall -Wextra -Wpedantic`,
-`-Werror` in CI and ASan/UBSan in debug builds. The tool version is `0.1.0-dev`
-and the SDK ABI version is `1.0.0`. *Source: BR §22.*
+`-Werror` in CI and ASan/UBSan in debug builds. The tool version is `0.2.0-dev`
+and the SDK ABI version is `1.0.0`. *Source: BR §21–§22.*
 
 ## 2. Component map
 
@@ -104,7 +107,7 @@ Planned targets (Derived design — names are not ledger requirements):
 | `ztick_results` | JSON serialization | No (CSV may be optional) |
 | `ztick_platform` | platform abstraction + Linux implementation | Monitoring implementation is platform-selected |
 | `ztick_cli` | core, results | No for CLI users |
-| `ztick_tui` | core, results, CLI command layer | **Yes** — must not be required by core/CLI |
+| `ztick_tui` | core and results through the C ABI via Rust FFI; Cargo crate driven by CMake | **Yes** — Rust toolchain and ratatui are needed only for TUI builds |
 | `ztick_static_adapters` | SDK C ABI | **Yes** |
 | `ztick_plugin_host` | SDK C ABI, platform library loader | **Yes** |
 | `ztick_runner` | SDK C ABI, IPC transport | **Yes** — needed for out-of-process execution |
@@ -123,7 +126,7 @@ src/platform/linux/             Linux implementation
 src/plugin/                     discovery, trust, loader, runner/IPC
 src/results/                    JSON, CSV, config, comparisons
 src/cli/                        CLI command layer
-src/tui/                        dashboard front end
+src/tui/                        Rust/ratatui dashboard front end (Cargo crate)
 tools/ztick-sysinfo/            Phase 1 developer system-info executable
 tests/unit/                     unit tests (Catch2 v3)
 tests/integration/              integration tests
@@ -237,7 +240,8 @@ and the persisted representation by [RESULTS_FORMAT](RESULTS_FORMAT.md). The
 ## 9. Decision dependencies
 
 - **Q46 is confirmed:** C++20, CMake and a versioned C ABI are fixed; it is no
-  longer a pending dependency.
+  longer a pending dependency. The TUI clause was superseded on 2026-11-22
+  (Rust/ratatui; BR §21); the C ABI remains the boundary the TUI calls via FFI.
 - **Q47 is deferred:** suites are post-v1.0; no suite orchestration or `suite`
   CLI component is specified, though the config format stays suite-friendly.
 - **Q48 is confirmed:** this document set is the adopted layout and the ownership

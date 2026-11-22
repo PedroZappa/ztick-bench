@@ -3,8 +3,8 @@
 **General-purpose, offline-first DSP and audio benchmarking application.**
 
 > **Repository status:** requirements baseline and v1.0 technical specification complete;
-> roadmap phase 1 (Foundation) implemented and verified. Later phases are in progress —
-> see [ROADMAP](docs/ROADMAP.md) for sequencing.
+> roadmap phases 1–2 (Foundation, Benchmark engine) implemented and verified. Later
+> phases are planned — see [ROADMAP](docs/ROADMAP.md) for sequencing.
 > **v1.0 scope:** roadmap phases 1–6; phase 7 (macOS/Windows) is post-v1.0.
 
 ---
@@ -61,16 +61,19 @@ record sections.
 
 ## Build and test commands
 
-C++20 and CMake are confirmed (Q46); the integration boundary is a versioned C ABI
-with C++ wrappers. Phase 1 targets GCC 13+/Clang 16+, uses Catch2 v3 as a dev-only
-test framework, and starts at tool version `0.1.0-dev` with SDK ABI `1.0.0` (BR §22).
-The source layout is in
+C++20 and CMake are confirmed for the core, CLI and SDK (Q46); the integration
+boundary is a versioned C ABI with C++ wrappers. The TUI is the Rust/ratatui
+exception confirmed in BR §21. The toolchain targets GCC 13+/Clang 16+, uses
+Catch2 v3 as a dev-only test framework, and is at tool version `0.2.0-dev` with
+SDK ABI `1.0.0` (BR §21–§22).
+The Phase 5 TUI is an optional Rust/ratatui front end (0.30.2, MIT; Rust 1.88+)
+that calls the C ABI via FFI. Rust and Cargo are needed only when the TUI target
+is enabled; core and CLI builds stay C++20-only. The source layout is in
 [ARCHITECTURE §3.1](docs/ARCHITECTURE.md#31-source-tree-layout-derived-design).
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-ctest --test-dir build --output-on-failure
+make build               # wraps: cmake -S . -B build && cmake --build build
+make test                # wraps: ctest --test-dir build --output-on-failure
 make sysinfo             # print the inventory with availability states
 ```
 
@@ -80,6 +83,12 @@ static analysis, Doxygen, sanitizers and the SDK consumer check:
 ```bash
 make verify              # CI_CMAKE_ARGS overrides the default -DZTICK_WERROR=ON
 ```
+
+The verification gate is defined for Doxygen 1.9.8, Cppcheck 2.13 and
+clang-format 18 (the Ubuntu 24.04 CI toolchain); C/C++ are built with
+`-DZTICK_WERROR=ON`, and tests run under ASan/UBSan with `TERM` unset. These are
+development-tool requirements only: no third-party runtime library is required
+by the core or CLI (BR §15).
 
 ## Contributing to the specification
 

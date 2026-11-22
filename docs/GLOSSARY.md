@@ -9,6 +9,27 @@
 Terms are defined once here. Other documents use these definitions without
 redefining them.
 
+## Normative language
+
+Labels used in requirement statements; see
+[PROJECT_SPEC §5](PROJECT_SPEC.md#5-normative-language).
+
+| Term | Definition |
+| --- | --- |
+| **Required / Must / Shall** | A confirmed requirement from the Baseline Record. |
+| **Expected** | Baseline guidance written as "should": a strong expectation, not an absolute mandate. |
+| **Derived design** | Concrete detail added by the specification set to make a requirement implementable; refinement does not change the underlying requirement. |
+| **Deferred** | Explicitly not a v1.0 requirement. |
+| **Open** | Not yet decided; no decision remains open as of 2026-11-20. |
+
+## Technologies and toolchain
+
+| Term | Definition |
+| --- | --- |
+| **ratatui** | The MIT-licensed Rust terminal-UI library (version 0.30.2 in v1.0 planning) used for the dashboard front end; see [TUI §1](TUI_SPECIFICATION.md#1-principles). |
+| **Cargo** | Rust's package manager and build tool; invoked by CMake only for the optional TUI target. |
+| **FFI** | Foreign-function interface: the Rust TUI's calls into the versioned `ztick_` C ABI; no C++ types or exceptions cross this boundary. |
+
 ## Project and targets
 
 | Term | Definition |
@@ -111,7 +132,7 @@ redefining them.
 | --- | --- |
 | **Result document** | The canonical versioned JSON representation of a run, including metadata and per-metric statuses. |
 | **Config document** | The portable, versioned JSON description of a benchmark configuration. |
-| **Config-shaped data** | The in-memory object/array/scalar representation of a config document used by core models before JSON serialization (RESULTS_FORMAT §6). |
+| **Config-shaped data** | The in-memory object/array/scalar representation of a config document used by core models before JSON serialization; owned by the core `config_value` model, with the portable document shape specified in [RESULTS §6](RESULTS_FORMAT.md#6-config-document). |
 | **Build metadata** | Recorded git commit, compiler, version, optimization flags, build configuration and toolchain details. |
 | **Machine metadata** | Recorded CPU, memory, cache, SIMD, OS, kernel and environment information. |
 | **Validation level** | Basic (NaN/Inf, invalid output), Standard (+ reference comparisons), or Strict (+ adapter checks and broader tests); independently selectable. |

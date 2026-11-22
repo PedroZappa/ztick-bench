@@ -3,7 +3,7 @@
 | | |
 | --- | --- |
 | **Status** | Technical specification — v1.0 baseline complete |
-| **Source of truth** | [DECISIONS.md](DECISIONS.md) BR §12.1, §2.2, §6.2, §8.1, §14 |
+| **Source of truth** | [DECISIONS.md](DECISIONS.md) BR §2.2, §6.2, §8.1, §12.1, §14, §21 (TUI technology) |
 | **Authoritative for** | Dashboard and screen-level TUI behavior, interaction rules, run-state presentation |
 | **Not authoritative for** | CLI command set ([PROJECT_SPEC §3](PROJECT_SPEC.md#31-in-scope-for-v10)), metric semantics ([METRICS](METRICS_REFERENCE.md)), result schema ([RESULTS](RESULTS_FORMAT.md)) |
 
@@ -14,6 +14,12 @@
 **REQ-TUI-01 (Required).** Provide a modern, dashboard-first TUI, with traditional
 menus/configuration/detail screens where useful. *Source: BR §12.1.*
 
+**REQ-TUI-05 (Required).** The TUI is a Rust front end using ratatui 0.30.2 (MIT;
+Rust 1.88+, edition 2024, crossterm backend). It reaches core functionality only
+through the versioned `ztick_` C ABI via FFI, performs no DSP work of its own, and
+is built by an optional Cargo target driven from CMake. *Source: BR §21
+(TUI-technology confirmation, 2026-11-22); BR §15, §22.*
+
 Derived design principles:
 
 - The dashboard is the entry point: current system state, available integrations,
@@ -22,6 +28,13 @@ Derived design principles:
   applies a setting the CLI cannot express or the config cannot record.
 - The TUI never silently changes workload or timing settings. Changes are visible
   in the run configuration before execution and are snapshotted into results.
+- The Cargo crate lives in `src/tui/`; an optional CMake target invokes Cargo only
+  when the TUI is enabled. Core/CLI-only builds need no Rust toolchain (BR §15).
+- Rust bindings mirror the C ABI's opaque handles and fixed-width types; no C++
+  types or exceptions cross the boundary. Result documents are decoded from the
+  versioned [RESULTS schema](RESULTS_FORMAT.md), never redefined in the TUI.
+- TUI code uses rustdoc comments, rustfmt and clippy, with `cargo test` joined to
+  the verification gate when Phase 5 lands.
 
 ## 2. Screens
 

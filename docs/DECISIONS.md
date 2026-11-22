@@ -18,7 +18,9 @@ documents refer to sections of this record (BR = Baseline Record).*
 -   **Project type:** Standalone application, independent of ALIENMETAL.
 -   **Engineering approach:** Follow the strict development standards
     and procedures established for the ALIENMETAL project, adapted to
-    this independent project.
+    this independent project. **(Superseded by BR §22, 2026-11-20:**
+    ztick-bench is not ALIENMETAL and does not inherit its development
+    standards; its own rules are defined in `AGENTS.md` and BR §22.)
 -   **Primary purpose:** A general-purpose audio/DSP benchmarking
     application suitable for evaluating DSP libraries and audio
     applications, including future projects and third-party
@@ -31,9 +33,10 @@ documents refer to sections of this record (BR = Baseline Record).*
 -   **Platforms:** Linux first, macOS second, Windows as a later roadmap
     target.
 -   **Language/build direction (confirmed):** C++20 for the core engine,
-    CLI, TUI and SDK convenience wrappers; versioned C-compatible ABI at
+    CLI and SDK convenience wrappers; versioned C-compatible ABI at
     the integration boundary; CMake for the build system. Confirmed under
-    Question 46 on 2026-11-20.
+    Question 46 on 2026-11-20. The TUI is the sole exception: it is implemented
+    in Rust with ratatui (BR §21, confirmed 2026-11-22).
 
 ## 2. Benchmark targets and operating modes
 
@@ -615,7 +618,9 @@ CMake for the build system.
 
 **Status:** Confirmed 2026-11-20. C++20 for core, CLI, TUI and SDK
 convenience wrappers; versioned C-compatible ABI at the integration
-boundary; CMake for the build system.
+boundary; CMake for the build system. **Amended 2026-11-22:** the TUI clause is
+superseded for the TUI only (Rust + ratatui; see BR §21); all other clauses are
+unchanged.
 
 ### 47. Benchmark suites
 
@@ -708,11 +713,25 @@ finalised. Per §19, they are requirements or explicit scope decisions.
 
 -   **Q46 (confirmed):** C++20 for the core engine, CLI, TUI and SDK
     convenience wrappers; versioned C-compatible ABI at the integration
-    boundary; CMake for the build system.
+    boundary; CMake for the build system. **TUI clause superseded 2026-11-22**
+    by the TUI-technology confirmation below.
 -   **Q47 (deferred):** Benchmark suites are post-v1.0. The portable config
     format should remain compatible with a future suite layer; no `suite` CLI
     command, schema or acceptance criterion is added to v1.0.
 -   **Q48 (confirmed):** The multi-file documentation layout in §20 is adopted.
+-   **TUI technology (confirmed 2026-11-22):** The TUI is implemented in Rust
+    with ratatui 0.30.2 (MIT; Rust 1.88+, edition 2024) using its default
+    crossterm backend. This supersedes Q46 for the TUI only: the core engine,
+    CLI, SDK C ABI and C++ convenience wrappers remain C++20 with CMake. The
+    Rust TUI calls the versioned `ztick_` C ABI through a foreign-function
+    interface; no new IPC format is introduced. CMake drives Cargo only for the
+    optional TUI target, so core/CLI-only users need no Rust toolchain. Reason:
+    the user selected ratatui for the dashboard UI. Owned by
+    [TUI_SPECIFICATION §1](TUI_SPECIFICATION.md#1-principles).
+-   **Tool versioning (confirmed 2026-11-22):** The tool minor version tracks the
+    highest completed roadmap phase (0.1.0-dev after Phase 1, 0.2.0-dev after
+    Phase 2); the SDK ABI stays 1.0.0 until the C ABI changes. Release tags follow
+    the displayed tool version. This refines §22's initial 0.1.0-dev statement.
 -   **v1.0 boundary:** Roadmap phases 1–6 constitute v1.0. Phase 7 (macOS
     support and Windows preparation) is post-v1.0.
 -   **Roadmap detail:** Phase deliverables and exit criteria are planning
@@ -723,7 +742,9 @@ finalised. Per §19, they are requirements or explicit scope decisions.
 -   **Roadmap time:** Phases are dependency-ordered only; no dates or estimates
     are added.
 -   **Dependencies:** No specific third-party library is mandated for JSON,
-    TUI, testing or process IPC. BR §15 principles remain the constraint.
+    testing or process IPC, and no TUI library was mandated at baseline. BR §15
+    principles remain the constraint. **Amended 2026-11-22:** ratatui is the
+    confirmed TUI library (see below); all other choices remain unconstrained.
 
 ## 22. Pre-implementation decisions (2026-11-20)
 
@@ -734,8 +755,8 @@ Decisions made after the specification was completed, to unblock Phase 1.
     standards is superseded by concrete naming, formatting, commit and branch
     rules in `AGENTS.md`. Reason: the user clarified the project's identity.
 -   **License:** MIT, with `SPDX-License-Identifier: MIT` on source files.
--   **Versioning:** tool `0.1.0-dev` during development; SDK ABI version `1.0.0`
-    from Phase 1.
+-   **Versioning:** tool `0.1.0-dev` at Phase 1, then `0.2.0-dev` at Phase 2
+    (BR §21 tool-versioning confirmation); SDK ABI version `1.0.0` from Phase 1.
 -   **Phase 1 system info:** a small developer `ztick-sysinfo` executable reports
     system information with availability states; the CLI `system` command remains
     in Phase 4.

@@ -26,9 +26,11 @@ the offline core. *Source: BR §1, §2.3.*
 
 Platform order is **Linux first, macOS second, Windows later**. *Source: BR §1.*
 
-**REQ-PROJ-09 (Confirmed).** C++20 is used for the core engine, CLI, TUI and SDK
+**REQ-PROJ-09 (Confirmed).** C++20 is used for the core engine, CLI and SDK
 convenience wrappers; the integration boundary is a versioned C-compatible ABI;
-CMake is the build system. *Source: BR §18 Q46, confirmed 2026-11-20.*
+CMake is the build system. The TUI is implemented in Rust with ratatui, calling
+that C ABI via FFI; this is the sole exception to Q46 (*Source: BR §18 Q46,
+confirmed 2026-11-20 and amended 2026-11-22; BR §21*).
 
 ## 2. Benchmark targets
 
@@ -119,7 +121,7 @@ codes and machine-readable output. *Source: BR §12.2.*
 | System info, monitoring, affinity, scheduling, priority | [PLATFORM_MONITORING.md](PLATFORM_MONITORING.md) | BR §8, §9 |
 | JSON/CSV schemas, config format, metadata, portability, failure encoding | [RESULTS_FORMAT.md](RESULTS_FORMAT.md) | BR §11–§14 |
 | Test strategy and acceptance traceability | [TESTING_STRATEGY.md](TESTING_STRATEGY.md) | BR §5.2, §14, §16–§17 |
-| Phase ordering and deferred work | [ROADMAP.md](ROADMAP.md) | BR §1, §2.3, §12.3, §16 |
+| Phase ordering, deferred work, decision dependencies | [ROADMAP.md](ROADMAP.md) | BR §1, §2.3, §12.3, §16, §19 |
 | Terminology | [GLOSSARY.md](GLOSSARY.md) | all |
 
 ## 5. Normative language
@@ -167,9 +169,9 @@ requirements; Q47 is an explicit deferral. No decision remains open.
 
 | | |
 | --- | --- |
-| Decision | C++20 for core, CLI, TUI and SDK convenience wrappers; versioned C ABI at the integration boundary; CMake for the build system |
+| Decision | C++20 for core, CLI and SDK convenience wrappers; versioned C ABI at the integration boundary; CMake for the build system; TUI in Rust with ratatui (amendment 2026-11-22) |
 | Effect | Fixes the Foundation phase toolchain and the SDK wrapper language; recorded as REQ-PROJ-09 |
-| Status | **Confirmed** |
+| Status | **Confirmed**; TUI clause superseded 2026-11-22 by the BR §21 TUI-technology confirmation |
 
 ### Q47 — Benchmark suites (deferred 2026-11-20)
 

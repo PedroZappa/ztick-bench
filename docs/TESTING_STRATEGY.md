@@ -34,12 +34,19 @@ never linked into installed core, SDK, CLI or TUI targets. *Source: BR §22.*
 | Acceptance | Checks mapped to BR §17 | Criteria table in §10 |
 
 Catch2 v3 is used across all layers above (REQ-TEST-04). Its sections and
-parameterised tests cover the statistics, generator, validation, overhead, timing
-and failure cases in §4–§9. The version is pinned for offline/reproducible builds;
+parameterised tests are the intended coverage mechanism for the statistics,
+generator, validation, overhead, timing and failure cases in §4–§9; cases for
+phases not yet implemented are added as those phases land. The version is pinned
+for offline/reproducible builds;
 the FetchContent fallback is a build-time convenience only and does not make
 Catch2 a runtime dependency. The pinned release is Catch2 v3.9.1 (commit
 `644821ce28cb25d7992a4d0375b1d83214392592`, BSL-1.0); it is dev-only and is
 never linked into installed SDK, core, CLI or TUI targets.
+
+**Rust TUI tests (Derived design).** The Phase 5 TUI is Rust/ratatui (BR §21), so
+its unit and screen-state tests use `cargo test`, with rustdoc comments, rustfmt
+and clippy; C ABI FFI smoke tests cover the language boundary. They join CTest and
+`make verify` from Phase 5, with no Rust dependency for core/CLI-only builds.
 
 **Unit-test scope (Derived design).** Every function introduced or modified in
 ztick-bench has a deterministic unit test asserting its observable behavior,
@@ -83,10 +90,10 @@ of one binary, so a shared defect cannot validate both.
   validation outcomes ([RESULTS](RESULTS_FORMAT.md#3-result-document-structure)).
 
 The Phase 2 verification pass (ROADMAP P2.8) is an integration test in
-`tests/integration/phase2_engine_test.cpp`. It chains deterministic generation,
-all three timing levels, validation and the METRICS §3 aggregates into one run,
-checking each expected value against an independent calculation so the Phase 2
-exit criterion is demonstrated across component boundaries.
+`tests/integration/phase2_engine_test.cpp`. Across four cases it chains
+deterministic generation, all three timing levels, validation and the METRICS §3
+aggregates, checking each expected value against an independent calculation so
+the Phase 2 exit criterion is demonstrated across component boundaries.
 
 ## 5. Measurement overhead and timing tests
 

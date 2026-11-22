@@ -3,7 +3,7 @@
 | | |
 | --- | --- |
 | **Status** | Technical specification — v1.0 baseline complete |
-| **Source of truth** | [DECISIONS.md](DECISIONS.md) BR §1, §2.3, §12.3, §16, §21 |
+| **Source of truth** | [DECISIONS.md](DECISIONS.md) BR §1, §2.3, §12.3, §16, §19, §21 |
 | **Authoritative for** | Phase ordering, sequencing rationale, deferred work, decision dependencies |
 | **Not authoritative for** | v1.0 scope detail ([PROJECT_SPEC](PROJECT_SPEC.md)), test cases ([TESTING_STRATEGY](TESTING_STRATEGY.md)) |
 
@@ -110,6 +110,10 @@ only state the increment and its completion condition.
 
 ### 2.5 Phase 5 — TUI
 
+- [ ] **P5.0 — Rust/ratatui crate, C ABI FFI bindings and optional Cargo build.**
+      Done when: `src/tui/` builds through the optional CMake target with ratatui
+      0.30.2 pinned, a C ABI FFI smoke test passes, and core/CLI builds still need
+      no Rust toolchain ([TUI §1](TUI_SPECIFICATION.md#1-principles), BR §21).
 - [ ] **P5.1 — Dashboard screen wired to core and results.** Done when: Principal run status is visible ([TUI](TUI_SPECIFICATION.md)).
 - [ ] **P5.2 — Configuration screen.** Done when: Profiles and dimensions are editable from the TUI.
 - [ ] **P5.3 — Execution monitoring screen.** Done when: Live progress and status are shown.
@@ -161,12 +165,16 @@ Recorded separately from v1.0 requirements per BR §19.
 | macOS support | BR §1, §16 | Phase 7 |
 | Windows preparation | BR §1, §16 | Phase 7 and beyond |
 | Benchmark suites (`suite run`) | BR §18 Q47, §21 | **Deferred 2026-11-20** — post-v1.0; config format kept suite-friendly |
+| SDK runtime symbols — `ztick_sdk_get_version`, `ztick_sdk_is_compatible`, `ztick_register_adapter`, `ztick_status_message` | SDK_SPECIFICATION §2, §7 | Declared in `include/ztick/sdk.h` but not yet defined by any target; Blocking item for Phase 3 (P3.1/P3.3/P3.9): add a compiled SDK implementation and consumer link tests that call each symbol |
+| Generator validation in workload configs; timing-level token validation in profiles | BENCHMARK §2, §5 | Phase 2 follow-up: `workload_from_config` copies raw generator data without calling `generator_from_config`; `profile_from_config` accepts unknown `timing_levels` tokens |
+| Per-level overhead percentage basis | METRICS §3 (MET-17) | Phase 2 follow-up: the single `OverheadEstimate` mixes bracketed intervals but uses only the whole-run DSP denominator; define per-level records or a matching interval set before results encoding (Phase 4) |
 
 ## 5. Decision dependencies
 
 | Decision | Affects | Status |
 | --- | --- | --- |
-| Q46 — language standard | Phase 1 build/toolchain, SDK wrappers, all C++ code | **Confirmed 2026-11-20:** C++20 + CMake + versioned C ABI |
+| Q46 — language standard | Phase 1 build/toolchain, SDK wrappers, all C++ code | **Confirmed 2026-11-20:** C++20 + CMake + versioned C ABI; TUI clause superseded 2026-11-22 (BR §21) |
+| TUI technology | Phase 5 build, toolchain, SDK FFI boundary | **Confirmed 2026-11-22:** Rust/ratatui 0.30.2, C ABI via FFI, optional Cargo via CMake |
 | Q47 — benchmark suites | Phase 4 CLI/config scope, acceptance criteria | **Deferred 2026-11-20:** not in v1.0; config kept suite-friendly |
 | Q48 — documentation layout | This document set and ownership map | **Confirmed 2026-11-20:** multi-file layout adopted |
 

@@ -43,8 +43,11 @@ If a topic belongs to another file, add a link instead of re-documenting it.
   must not force dependencies on core/CLI-only users.
 - **Prefer maintained, permissively licensed libraries**; document versions and
   licenses when a dependency is added.
-- **C++20 and CMake are confirmed** (Q46), with a versioned C ABI at the integration
-  boundary and C++ convenience wrappers.
+- **C++20 and CMake are confirmed** (Q46) for the core, CLI and SDK, with a versioned
+  C ABI at the integration boundary and C++ convenience wrappers. The TUI is the
+  sole exception: Rust 1.88+ with ratatui 0.30.2, calling the C ABI via FFI
+  (BR §21, confirmed 2026-11-22). See
+  [TUI §1](docs/TUI_SPECIFICATION.md#1-principles).
 - **Measurement integrity:** input generation and setup stay outside the primary
   timed DSP interval unless end-to-end timing is explicitly selected. Raw
   measurements and overhead estimates are stored independently; never silently
@@ -56,9 +59,10 @@ If a topic belongs to another file, add a link instead of re-documenting it.
 - **v1.0 is roadmap phases 1–6**; phase 7 (macOS/Windows) is post-v1.0. Phase
   detail is planning guidance, not a binding gate; only BR §16 order and BR §17
   acceptance criteria bind.
-- **No mandated runtime third-party libraries** for JSON, TUI or IPC; BR §15
-  principles govern all dependency choices. Catch2 v3 is the confirmed **dev-only**
-  test framework (BR §22); never link it into installed targets.
+- **No mandated runtime third-party libraries** for JSON or IPC; BR §15 principles
+  govern all dependency choices. ratatui is the one mandated TUI library (BR §21).
+  Catch2 v3 is the confirmed **dev-only** C/C++ test framework (BR §22); never link
+  it into installed targets.
 
 ## Naming, formatting and workflow rules
 
@@ -72,8 +76,9 @@ If a topic belongs to another file, add a link instead of re-documenting it.
 - **C ABI:** every exported symbol prefixed `ztick_`, every macro `ZTICK_`.
   Public headers use fixed-width C types only; no C++ types, exceptions or C++ ABI.
 - **Formatting:** `clang-format` with LLVM base, `ColumnLimit: 100`,
-  `IndentWidth: 2`, attached braces; run before committing. `.editorconfig`
-  enforces UTF-8, LF endings and trailing-whitespace removal.
+  `IndentWidth: 2`, attached braces; run before committing. Rust TUI sources use
+  `rustfmt` and `clippy` instead (Phase 5). `.editorconfig` enforces UTF-8, LF
+  endings and trailing-whitespace removal.
 - **Commits:** Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `build:`,
   `refactor:`, `chore:`), imperative subject of at most 72 characters, one logical
   change per commit.
@@ -104,14 +109,16 @@ If a topic belongs to another file, add a link instead of re-documenting it.
   must be tested against an independently computed expected value, never against
   the implementation itself.
 - **Keep every test registered with CTest** so `make test` runs it; Catch2 remains
-  a dev-only dependency (BR §22).
-- **Document all code with Doxygen comments.** Every file, namespace, type,
+  a dev-only dependency (BR §22). Rust `cargo test` results join the same gate when
+  the TUI lands (Phase 5).
+- **Document all C/C++ code with Doxygen comments.** Every file, namespace, type,
   function, method, enum, constant, macro and member gets a Doxygen comment
   (`/** ... */` or `///`) at its declaration, including internal code. Use
   `@brief`, `@param`, `@return` and `@note`/`@warning` as applicable; state units,
   preconditions, ownership/lifetime, status/error behavior and thread-safety where
   relevant. C ABI headers document the C11 surface and opaque handles; C++ wrappers
   name their C ABI counterpart. Comments are updated with the code they describe.
+  Rust TUI code uses `rustdoc` (`///`) comments with the same completeness standard.
 - **Keep generated documentation buildable and uncommitted.** `make docs`
   (Doxyfile → `build/doxygen`) is the single entry point; `make docs-open` views it
   and `make clean-docs` removes it. Resolve Doxygen warnings for changed code before
@@ -160,10 +167,11 @@ If a topic belongs to another file, add a link instead of re-documenting it.
   pipefail` where supported), and stay portable across the platforms in scope.
   The `make` rule keeps its `##` help text and remains the only entry point.
 
-## Planned commands (Foundation phase not yet implemented)
+## Planned commands (CLI subcommands land in Phase 4)
 
-These become `make` targets as the underlying tools land; see Reusable command
-flows above.
+The build/test steps below are already wrapped by `make build` and `make test`;
+the `ztick-bench` subcommands become available with roadmap Phase 4. See
+Reusable command flows above.
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
