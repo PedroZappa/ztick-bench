@@ -53,6 +53,8 @@ add_executable(ztick_tests
   unit/out_of_process_runner_test.cpp
   unit/profile_model_test.cpp
   unit/result_document_test.cpp
+  unit/run_command_test.cpp
+  unit/run_session_test.cpp
   unit/runner_test.cpp
   unit/sdk_runtime_test.cpp
   unit/statistics_test.cpp
@@ -203,6 +205,15 @@ add_test(
   COMMAND "${CMAKE_COMMAND}"
           "-DCLI_BINARY=$<TARGET_FILE:ztick-bench>"
           -P "${PROJECT_SOURCE_DIR}/tests/check_cli_dispatch.cmake"
+)
+
+# P4.6: verify the executable executes a config, applies overrides and writes a
+# portable result atomically.
+add_test(
+  NAME integration.cli_run
+  COMMAND "${CMAKE_COMMAND}"
+          "-DCLI_BINARY=$<TARGET_FILE:ztick-bench>"
+          -P "${PROJECT_SOURCE_DIR}/tests/check_cli_run.cmake"
 )
 
 # BR §17.8: verify an out-of-tree consumer with find_package(ztick-sdk).

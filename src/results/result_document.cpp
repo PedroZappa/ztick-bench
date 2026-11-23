@@ -281,7 +281,6 @@ ResultParseResult read_result_document(const std::filesystem::path &path) {
 
 // Public library API: exercised by the test target, which is outside the
 // cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 ResultWriteResult write_result_document(const std::filesystem::path &target,
                                         const ConfigValue &document) {
   ResultWriteResult result;

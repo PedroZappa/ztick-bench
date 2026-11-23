@@ -135,7 +135,6 @@ bool validate_config_document(const ConfigValue &document, std::string *error) {
 
 // Public library API: exercised by the test target, which is outside the
 // cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 ConfigParseResult parse_config_document(std::string_view text) {
   ConfigParseResult result;
   const JsonReadResult json = json_read(text);

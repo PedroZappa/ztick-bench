@@ -6,13 +6,17 @@
  * Dispatch never writes to a stream directly: it returns the text and exit code
  * that the executable emits. This keeps every documented path unit-testable and
  * lets later command phases replace a stub without changing argument routing.
+ * P4.6 adds `run`; other data-bearing commands remain unavailable until landed.
  */
 
 #include <ztick/cli.hpp>
 
+#include <ztick/run_command.hpp>
+
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #ifndef ZTICK_CLI_VERSION
 /** @brief Fallback tool version when CMake has not supplied one. */
@@ -80,7 +84,9 @@ Usage:
 Commands:
   system                 Print the platform inventory and availability states
   list [profiles]        List built-in benchmark profiles
-  run <config.json>      Run a benchmark configuration
+  run <config.json> [options]  Run a benchmark configuration
+    --output <path>      Write the result to <path> (default: <config>.result.json)
+    --set key=value      Override a dotted config path; repeat for multiple values
   compare <a.json> <b.json>  Compare two stored result documents
   report <run.json>      Render a stored result document
   plugin list            List discovered plugins
@@ -134,7 +140,10 @@ CommandResult dispatch(const std::vector<std::string_view> &args) {
     }
     return detail::usage_error("ztick-bench: 'list' accepts no arguments or 'profiles'\n");
   }
-  if (command == "system" || command == "run" || command == "compare" || command == "report") {
+  if (command == "run") {
+    return execute_run(std::vector<std::string_view>(args.begin() + 1U, args.end())).command;
+  }
+  if (command == "system" || command == "compare" || command == "report") {
     return detail::unavailable_command(command);
   }
   if (command == "plugin") {

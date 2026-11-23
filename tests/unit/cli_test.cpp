@@ -63,6 +63,8 @@ TEST_CASE("CLI help and list text document the command set", "[cli][results]") {
   require_contains(usage, "Usage:");
   require_contains(usage, "list [profiles]");
   require_contains(usage, "run <config.json>");
+  require_contains(usage, "--output <path>");
+  require_contains(usage, "--set key=value");
   require_contains(usage, "plugin inspect");
   require_contains(usage, "0  success");
   require_contains(usage, "3  failure");
@@ -127,7 +129,7 @@ TEST_CASE("CLI list command succeeds", "[cli][results]") {
  */
 TEST_CASE("CLI recognizes commands whose implementation lands later", "[cli][results]") {
   for (const std::string_view command :
-       {"system", "run", "compare", "report", "plugin list", "plugin inspect"}) {
+       {"system", "compare", "report", "plugin list", "plugin inspect"}) {
     const std::size_t split = command.find(' ');
     const CommandResult result =
         split == std::string_view::npos
@@ -164,4 +166,8 @@ TEST_CASE("CLI malformed input reports usage errors", "[cli][results]") {
   const CommandResult bad_plugin = ztick::cli::dispatch(arguments({"plugin", "run"}));
   REQUIRE(bad_plugin.code == ExitCode::usage_error);
   require_contains(bad_plugin.error, "unknown plugin subcommand 'run'");
+
+  const CommandResult bare_run = ztick::cli::dispatch(arguments({"run"}));
+  REQUIRE(bare_run.code == ExitCode::usage_error);
+  require_contains(bare_run.error, "run requires a config path");
 }

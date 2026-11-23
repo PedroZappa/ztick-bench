@@ -116,7 +116,6 @@ MetadataField convert_field(const char *name, const Result<T> &result, Renderer 
 
 // Public library API: exercised by the test target, which is outside the
 // cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 std::vector<MetadataField> system_info_metadata(const SystemInfo &info) {
   const auto text = [](const std::string &value) { return value; };
   const auto unsigned_value = [](std::uint32_t value) { return std::to_string(value); };

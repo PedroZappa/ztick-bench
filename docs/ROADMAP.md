@@ -139,7 +139,7 @@ and P3.10 are complete.
 - [x] **P4.3 — CSV projection.** Done when: Shared fields agree between JSON and CSV.
 - [x] **P4.4 — Build, machine and workload metadata attachment.** Done when: Metadata is present; comparability warnings fire on mismatch.
 - [x] **P4.5 — CLI skeleton and `list`.** Done when: Command dispatch and documented exit codes work.
-- [ ] **P4.6 — `run` command with config files and overrides.** Done when: Runs execute with overrides applied.
+- [x] **P4.6 — `run` command with config files and overrides.** Done when: Runs execute with overrides applied.
 - [ ] **P4.7 — `system` command using the platform abstraction.** Done when: It prints availability states (BR §22).
 - [ ] **P4.8 — `report` and `compare` commands.** Done when: Stored results render through both commands.
 - [ ] **P4.9 — Regression thresholds and significance checks.** Done when: Sub-threshold or normal-variability differences are not flagged.

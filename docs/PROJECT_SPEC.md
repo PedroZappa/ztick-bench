@@ -125,6 +125,22 @@ Other documented commands are recognized and return `unavailable` until their
 roadmap tasks land. Machine-readable output formats for data-bearing commands are
 owned by the later command tasks (BR §12.2).
 
+**Derived design (P4.6).** `run` takes one positional config path followed by
+`--output <path>` or `--output=<path>` and repeated `--set path=value` or
+`--set=path=value` assignments. Dotted paths traverse existing config objects and
+may create only the final member; an invalid assignment leaves the config
+unchanged. A value starting with `"`, `{` or `[` is JSON; otherwise the existing
+member type selects integer, real, boolean or string interpretation. The default
+result path replaces the config extension with `.result.json`. Core-owned
+orchestration validates the overridden snapshot, executes the configured
+repetitions and builds the result document; the CLI writes it atomically
+([ARCHITECTURE §4](ARCHITECTURE.md#4-execution-and-data-flow),
+[RESULTS §6](RESULTS_FORMAT.md#6-config-document)). P4.6 uses the deterministic
+built-in reference workload and records a warning that no integration plugin was
+loaded; plugin execution is owned by later roadmap tasks. Invalid overrides are
+`usage_error`; unreadable configs, semantic failures and write failures are
+`failure`.
+
 ## 4. Document ownership map
 
 | Topic | Owner | Ledger source |

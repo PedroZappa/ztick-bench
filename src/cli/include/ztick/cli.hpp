@@ -7,8 +7,9 @@
  * codes. This module parses arguments, routes them to the documented commands
  * and returns text plus an exit code instead of writing to streams, so every
  * dispatch path is deterministic and unit-testable. P4.5 implements `list` and
- * the dispatch skeleton; remaining commands report `unavailable` until their
- * roadmap tasks land. This header is private to ztick-bench and is not installed.
+ * the dispatch skeleton; P4.6 implements `run`. Remaining commands report
+ * `unavailable` until their roadmap tasks land. This header is private to
+ * ztick-bench and is not installed.
  */
 
 #ifndef ZTICK_CLI_HPP
@@ -81,9 +82,10 @@ struct CommandResult {
  * @param args Arguments excluding the executable name; may be empty.
  * @return Output text and exit code for the selected command.
  * @note `--help` and `--version` are global options and take no extra arguments.
- *       `list` accepts no argument or the single subject `profiles`. Commands
- *       with a later roadmap task return @ref ExitCode::unavailable rather than
- *       being silently ignored.
+ *       `list` accepts no argument or the single subject `profiles`. `run`
+ *       delegates to the config-driven execution path. Commands with a later
+ *       roadmap task return @ref ExitCode::unavailable rather than being silently
+ *       ignored.
  */
 CommandResult dispatch(const std::vector<std::string_view> &args);
 

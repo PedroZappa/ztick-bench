@@ -340,7 +340,6 @@ ConfigValue workload_metadata(const ConfigValue &config_snapshot) {
 
 // Public library API: exercised by the test target, which is outside the
 // cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 ConfigValue environment_metadata(const ConfigValue &config_snapshot) {
   const std::vector<MetadataField> fields{
       present_or_unavailable("isolation", nested_text(config_snapshot, {"execution", "isolation"})),
@@ -357,7 +356,6 @@ ConfigValue environment_metadata(const ConfigValue &config_snapshot) {
 
 // Public library API: exercised by the test target, which is outside the
 // cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 bool attach_metadata(ConfigValue &document, const ConfigValue &build, const ConfigValue &machine,
                      const ConfigValue &environment, std::string *error) {
   if (document.type() != ConfigValueType::object) {

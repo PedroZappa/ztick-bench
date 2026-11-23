@@ -79,7 +79,7 @@ and the SDK ABI version is `1.0.0`. *Source: BR §21–§22.*
 
 | Component | Responsibility | Ledger |
 | --- | --- | --- |
-| Core engine | Validate configuration against capabilities, sequence warm-up/run/validation, aggregate results | BR §3, §10, §13 |
+| Core engine | Validate configuration against capabilities, sequence warm-up/run/validation, build result documents, aggregate results | BR §3, §10, §13 |
 | Workload & generators | Build processor/chain/engine workloads; generate sine, multi-tone, impulse outside the timed interval | BR §4 |
 | Timing & statistics | Per-block, whole-run and optional end-to-end timing; aggregate by default; retain raw values and overhead estimates | BR §7 |
 | Validation engine | Basic/Standard/Strict checks separate from timing | BR §10 |
@@ -106,7 +106,7 @@ Planned targets (Derived design — names are not ledger requirements):
 | `ztick_core` | SDK headers, workload, timing, statistics, validation, results | No |
 | `ztick_results` | JSON serialization, config value tree, portable config and result document schemas, atomic writer, CSV projection and metadata attachment/comparison | No (CSV may be optional) |
 | `ztick_platform` | platform abstraction + Linux implementation + inventory-to-metadata adapter; depends on `ztick_results` for the field type | Monitoring implementation is platform-selected |
-| `ztick_cli` | core, results, platform; owns command dispatch, help/version and `list` | No for CLI users |
+| `ztick_cli` | core, results, platform; owns command dispatch, help/version, `list` and `run` argument parsing, overrides and file I/O | No for CLI users |
 | `ztick-bench` | `ztick_cli`; thin executable that writes dispatch output and returns its exit code | No for CLI users |
 | `ztick_tui` | core and results through the C ABI via Rust FFI; Cargo crate driven by CMake | **Yes** — Rust toolchain and ratatui are needed only for TUI builds |
 | `ztick_static_adapters` | SDK C ABI | **Yes** |
@@ -189,6 +189,17 @@ Derived design of the run pipeline:
    aggregate timings according to measurement detail settings.
 6. Stop timing. Run correctness validation as a separate phase.
 7. Attach system/build/machine/workload metadata and write results atomically.
+
+**P4.6 implementation (Derived design).** The CLI owns steps 1's file and
+override handling and step 7's atomic write. `ztick_core` owns
+`run_configured_session`, which consumes the already-parsed config, plans the
+semantic execution settings, injects input/setup/warmup/validation actions into
+`run_sequence`, computes canonical metrics and returns the result document.
+Host services (monotonic clock, machine inventory, session identity and
+timestamps) are injected so the core stays independent of the CLI, TUI and OS.
+P4.6 executes a deterministic built-in reference workload and records a warning
+that no integration plugin was loaded; plugin discovery, trust and mode selection
+are separate host subsystems owned by later tasks.
 
 Parallel workloads add wall-clock and worker-thread CPU time where available
 (BR §7.2). IPC, process management and data movement for out-of-process execution

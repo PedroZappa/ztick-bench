@@ -5,12 +5,14 @@
 # P2.6 adds metric formulas and aggregates; P2.7 adds the validation phase.
 # P4.1 moves the config-shaped value tree into ztick_results, the dependency
 # owner for JSON serialization and the portable config document schema.
+# P4.6 adds config-driven session orchestration and result rendering.
 
 add_library(ztick_core STATIC
   core.cpp
   execution.cpp
   generator.cpp
   profile.cpp
+  session.cpp
   statistics.cpp
   validation.cpp
   workload.cpp
