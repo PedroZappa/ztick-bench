@@ -26,9 +26,8 @@
 
 /**
  * @brief Host-side discovery, trust and execution support.
- * @note Metadata negotiation is implemented in P3.3; trust and the in-process runner
- *       are implemented in P3.4/P3.5, while out-of-process IPC remains later Phase 3
- *       work (ARCHITECTURE §5).
+ * @note Metadata negotiation is implemented in P3.3; trust, the in-process runner
+ *       and out-of-process IPC are implemented in P3.4–P3.6 (ARCHITECTURE §5).
  */
 namespace ztick::plugin {
 

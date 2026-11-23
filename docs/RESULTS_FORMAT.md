@@ -131,6 +131,11 @@ Derived token set: configuration may request `auto`, `in_process` or
 `out_of_process` mode when a workload was attempted, never `auto`. These tokens map to the public
 `ztick_execution_mode` defined by [SDK](SDK_SPECIFICATION.md#1-purpose-and-conformance) (BR §6.3).
 
+For out-of-process runs the IPC transport carries only the final workload status after
+the timed work has completed; launch, wait and transport are infrastructure activity
+outside the DSP timing interval. Process isolation reduces crash impact but is not a
+complete security sandbox (BR §6.3).
+
 ## 6. Config document
 
 **REQ-RES-04 (Required).** Portable JSON configuration includes SDK and config

@@ -25,6 +25,13 @@ endif()
 
 include(Catch)
 
+# POSIX-only helper for real out-of-process runner tests. It is never installed.
+if(UNIX)
+  add_executable(ztick_process_helper support/process_helper.cpp)
+  target_link_libraries(ztick_process_helper PRIVATE ztick_plugin_host)
+  add_test(NAME unit.child_process_helper COMMAND ztick_process_helper self-check)
+endif()
+
 add_executable(ztick_tests
   integration/phase2_engine_test.cpp
   unit/catch2_integration_test.cpp
@@ -36,6 +43,7 @@ add_executable(ztick_tests
   unit/generator_test.cpp
   unit/platform_interface_test.cpp
   unit/linux_system_info_test.cpp
+  unit/out_of_process_runner_test.cpp
   unit/profile_model_test.cpp
   unit/runner_test.cpp
   unit/sdk_runtime_test.cpp
@@ -48,6 +56,14 @@ add_executable(ztick_tests
 # Catch2 defaults to __COUNTER__ for unique test names, which Clang reports as a
 # C2y extension under -Wpedantic. Line-based names keep WERROR builds clean.
 target_compile_definitions(ztick_tests PRIVATE CATCH_CONFIG_NO_COUNTER)
+if(UNIX)
+  add_dependencies(ztick_tests ztick_process_helper)
+  target_compile_definitions(ztick_tests
+    PRIVATE
+      ZTICK_TEST_POSIX_CHILD_PROCESS=1
+      ZTICK_TEST_CHILD_HELPER_PATH="$<TARGET_FILE:ztick_process_helper>"
+  )
+endif()
 target_link_libraries(ztick_tests
   PRIVATE
     Catch2::Catch2WithMain

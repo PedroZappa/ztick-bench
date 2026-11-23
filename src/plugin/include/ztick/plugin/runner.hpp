@@ -7,8 +7,9 @@
  * consumes metadata and decisions only: no module is loaded and no adapter callback
  * is called while choosing a mode. The selected mode is copied into a run-record
  * fragment when a workload is attempted, so each attempt states how it was executed
- * (BR §6.3, RESULTS_FORMAT §5). The in-process runner executes a supplied workload on the
- * caller's thread; out-of-process execution remains later Phase 3 work.
+ * (BR §6.3, RESULTS_FORMAT §5). The in-process runner executes a supplied workload on
+ * the caller's thread; the out-of-process runner launches a child command and maps its
+ * final status or signal termination into the same record type.
  *
  * @note This header is private to ztick-bench and is not installed. The public
  *       <ztick/types.h> execution-mode enum is reused so host records and the SDK
@@ -17,6 +18,8 @@
 
 #ifndef ZTICK_PLUGIN_RUNNER_HPP
 #define ZTICK_PLUGIN_RUNNER_HPP
+
+#include <ztick/plugin/child_process.hpp>
 
 #include <ztick/sdk.h>
 
@@ -27,8 +30,8 @@
 
 /**
  * @brief Host-side discovery, trust and execution support.
- * @note The in-process runner is implemented in P3.5; the out-of-process transport
- *       belongs to P3.6 (ARCHITECTURE §5).
+ * @note The in-process runner is implemented in P3.5 and the out-of-process runner
+ *       with final-status IPC in P3.6 (ARCHITECTURE §5).
  */
 namespace ztick::plugin {
 
@@ -162,6 +165,8 @@ struct RunRequest {
   RunnerSelection selection{};
   /** @brief Workload returning a `ztick_status` code; must not be empty. */
   std::function<std::int32_t()> workload{};
+  /** @brief Child command used only by @ref OutOfProcessRunner. */
+  std::optional<ChildProcessSpec> child_process{};
 };
 
 /**
@@ -209,6 +214,49 @@ public:
  *       same refusal and exception behavior as @ref ztick::plugin::InProcessRunner.
  */
 RunExecutionRecord run_in_process(const RunRequest &request) noexcept;
+
+/**
+ * @brief Runner that executes a child process outside the benchmark process.
+ * @note Process isolation reduces crash impact but is not a complete security sandbox
+ *       (BR §6.3). The launcher, wait and IPC exchange surround the workload and are
+ *       not included in the child's DSP timings (ARCHITECTURE §4).
+ */
+class OutOfProcessRunner final : public Runner {
+public:
+  /**
+   * @brief Create a runner using one child-process launcher.
+   * @param launcher Launcher whose lifetime must outlive this runner.
+   * @note The launcher is not owned. Tests inject a fake launcher; production callers
+   *       use @ref ztick::plugin::platform_child_process_launcher.
+   */
+  explicit OutOfProcessRunner(const ChildProcessLauncher &launcher) noexcept;
+
+  /**
+   * @brief Execute the supplied child command out of process.
+   * @param request Selection and child command to run.
+   * @return Execution record with the out-of-process mode and the child outcome.
+   * @note No child is started for an unselectable or in-process request, an
+   *       unavailable backend, or a missing/invalid command. A signal-terminated
+   *       child becomes `ztick_status_processing_failure`; launcher and IPC failures
+   *       become infrastructure failures (BR §14).
+   */
+  RunExecutionRecord run(const RunRequest &request) noexcept override;
+
+private:
+  /** @brief Non-owning launcher used for every run. */
+  const ChildProcessLauncher *launcher_;
+};
+
+/**
+ * @brief Run one workload with a temporary out-of-process runner.
+ * @param request Selection and child command to run.
+ * @param launcher Launcher whose lifetime must outlive this call.
+ * @return Execution record with the out-of-process mode and the child outcome.
+ * @note Convenience wrapper with the same policy as @ref OutOfProcessRunner.
+ */
+RunExecutionRecord run_out_of_process(
+    const RunRequest &request,
+    const ChildProcessLauncher &launcher = platform_child_process_launcher()) noexcept;
 
 } // namespace ztick::plugin
 

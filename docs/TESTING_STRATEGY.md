@@ -174,6 +174,13 @@ in-process runner is tested with an injected workload for success, status failur
 exception paths, plus refusal paths that prove no workload is invoked without a
 selectable in-process mode.
 
+**P3.6 process coverage (Derived design).** Injected launchers verify every
+out-of-process status mapping, including child termination, launch failure, malformed
+IPC and launcher exceptions, without creating processes. On POSIX systems a test
+helper is launched for real: its final status crosses the fixed IPC message, a
+signal-terminated child is converted to a workload failure, and a later child still
+runs in the same host process (BR §14, ARCHITECTURE §6).
+
 ## 9. Portability, comparison and CI tests
 
 - Round-trip portable config documents and result documents, including metadata

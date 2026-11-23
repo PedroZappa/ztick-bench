@@ -251,7 +251,7 @@ TEST_CASE("in-process runner refuses invalid requests", "[plugin][runner]") {
     CHECK(calls == 0);
     CHECK_FALSE(record.succeeded());
     CHECK(record.status == ztick_status_unsupported);
-    CHECK(std::string(record.reason) == "out-of-process execution is not implemented");
+    CHECK(std::string(record.reason) == "in-process runner cannot execute out-of-process mode");
     REQUIRE(record.mode.has_value());
     CHECK(*record.mode == ztick_execution_mode_out_of_process);
   }

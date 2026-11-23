@@ -120,6 +120,8 @@ Labels used in requirement statements; see
 | **Runner selection** | The metadata-only decision that chooses in-process or out-of-process execution from the requested mode, prior trust authorization and backend availability; the chosen mode is recorded in the run record. |
 | **In-process execution** | Running an integration inside the benchmark process for simplicity and low overhead. |
 | **Out-of-process execution** | Running an integration in a separate process for fault isolation; not a complete security sandbox. |
+| **Child process launcher** | Platform-specific host abstraction that creates, reaps and reads the final status of a child workload without loading plugin code into the host. |
+| **Final-status IPC** | Fixed one-message transport that reports only the child workload's final status after its timed work; it carries no per-block samples. |
 
 ## Platform and reliability
 

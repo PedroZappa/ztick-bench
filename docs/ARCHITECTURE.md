@@ -230,7 +230,13 @@ Derived design:
   `InProcessRunner` executes an injected workload on the caller's thread and records
   the selected mode for every workload attempt; a refused selection leaves the mode
   explicitly absent. Selection never loads a module or calls adapter code.
-  Out-of-process transport remains P3.6 work (BR §6.3).
+  **P3.6 implementation (Derived design):** `OutOfProcessRunner` launches a prepared
+  child command through a platform-selected `ChildProcessLauncher`, waits for it and
+  reads one fixed final-status message after the child workload has finished. It maps
+  signal termination to a workload failure and launch or protocol failures to
+  infrastructure failures, recording the out-of-process mode in every attempt
+  (BR §6.3, §14). IPC carries no per-block samples, so process management and
+  transport stay outside measured DSP intervals; no timing value is silently adjusted.
 - **Runner/IPC layer** carries configuration, audio blocks and measurements
   across the process boundary. Its cost is outside the DSP interval where
   practical and is reported separately when it cannot be excluded.
@@ -249,7 +255,10 @@ such; result files are not corrupted. *Source: BR §14.*
 
 Derived design: the out-of-process runner converts a crashed child into a
 workload-failure record for that test point, allowing the core to continue with
-the next independent test. Result writes use a temporary file and atomic rename
+the next independent test. **P3.6 implementation (Derived design):** signal
+termination is detected while reaping the child, before any IPC status is trusted,
+and is returned as `ztick_status_processing_failure`; the host process is never
+terminated by that signal. Result writes use a temporary file and atomic rename
 (encoding in [RESULTS](RESULTS_FORMAT.md)).
 
 ## 7. Platform abstraction boundary
