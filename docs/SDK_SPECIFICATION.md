@@ -246,6 +246,16 @@ capabilities for the trust UI (BR §6.2). Loading, discovery paths, confirmation
 isolation are host responsibilities specified in
 [ARCHITECTURE §5](ARCHITECTURE.md#5-plugin-subsystem-host-side).
 
+**Metadata-only inspection (Derived design).** The host resolves
+`ZTICK_ADAPTER_EXPORT_SYMBOL` as a read-only *data* symbol, never invokes an entry point
+or lifecycle callback, and copies identity, versions, capabilities and optional metadata
+into owning storage before closing the library. Inspection applies the shared structural
+descriptor check and the SDK compatibility rules; it registers nothing, grants no trust
+and leaves no adapter instance behind. A missing symbol is an infrastructure failure, a
+malformed descriptor is `invalid_argument`, and an SDK mismatch is `incompatible`, each
+with a human-readable reason (§8). Directory enumeration and first-run confirmation are
+host responsibilities owned by [ARCHITECTURE §5](ARCHITECTURE.md#5-plugin-subsystem-host-side).
+
 **Runtime ownership (Derived design).** `ztick_sdk` is a compiled static library whose
 implementation language is C++, so a C or Rust FFI host links a C++ runtime even though
 the boundary itself is pure C (§1.1). A dynamic adapter must not link `ztick_sdk` or

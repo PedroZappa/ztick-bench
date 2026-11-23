@@ -6,7 +6,8 @@
 > roadmap phases 1–2 (Foundation, Benchmark engine) implemented and verified. Phase 3
 > (Integrations) is in progress: the SDK runtime is compiled and link-tested and a
 > minimal static adapter registers and is discoverable through the private host registry,
-> while full adapters, trust and runners remain to be built — see [ROADMAP](docs/ROADMAP.md).
+> and the dynamic loader inspects adapter metadata without executing plugin code, while
+> full adapters, trust and runners remain to be built — see [ROADMAP](docs/ROADMAP.md).
 > **v1.0 scope:** roadmap phases 1–6; phase 7 (macOS/Windows) is post-v1.0.
 
 ---

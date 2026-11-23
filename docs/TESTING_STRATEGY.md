@@ -65,8 +65,11 @@ the registry and status-message paths
 Example tests read descriptors without calling lifecycle callbacks, and a
 symbol-inspection check confirms the dynamic example embeds no SDK runtime copy. A
 static registration check proves the minimal adapter registers once and is discoverable
-through the private host registry observers. These prove ABI linkability and metadata visibility; they
-do not satisfy §3 app A/B end-to-end criteria.
+through the private host registry observers. Dynamic-loader tests inject a fake library
+to cover every argument, load, symbol, header and compatibility failure path, assert that
+no adapter callback runs, and check the real platform loader against the in-tree example
+module. These prove ABI linkability and metadata visibility; they do not satisfy §3 app A/B
+end-to-end criteria.
 
 ## 3. Custom SDK test applications
 

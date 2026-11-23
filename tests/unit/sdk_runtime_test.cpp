@@ -16,6 +16,7 @@
 
 #include <ztick/sdk.h>
 #include <ztick/sdk_registry.hpp>
+#include <ztick/sdk_validation.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -59,6 +60,49 @@ ztick_adapter_descriptor register_descriptor{};
 ztick_adapter_descriptor duplicate_descriptor{};
 
 } // namespace
+
+/**
+ * @brief Verify the shared descriptor check accepts only safe, complete metadata.
+ * @note This is the same check used by registration and dynamic inspection.
+ */
+TEST_CASE("sdk runtime validates descriptor layout", "[sdk][runtime]") {
+  ztick_adapter_descriptor descriptor{};
+  init_descriptor(&descriptor, "runtime.test.validation");
+  REQUIRE(ztick::sdk::detail::has_valid_descriptor_layout(&descriptor));
+  CHECK_FALSE(ztick::sdk::detail::has_valid_descriptor_layout(nullptr));
+
+  ztick_adapter_descriptor candidate = descriptor;
+  candidate.size = 1U;
+  CHECK_FALSE(ztick::sdk::detail::has_valid_descriptor_layout(&candidate));
+
+  candidate = descriptor;
+  candidate.info.size = 1U;
+  CHECK_FALSE(ztick::sdk::detail::has_valid_descriptor_layout(&candidate));
+
+  candidate = descriptor;
+  candidate.ops.version = 0U;
+  CHECK_FALSE(ztick::sdk::detail::has_valid_descriptor_layout(&candidate));
+
+  candidate = descriptor;
+  candidate.info.adapter_version.size = 1U;
+  CHECK_FALSE(ztick::sdk::detail::has_valid_descriptor_layout(&candidate));
+
+  candidate = descriptor;
+  candidate.info.sdk_version.version = 0U;
+  CHECK_FALSE(ztick::sdk::detail::has_valid_descriptor_layout(&candidate));
+
+  candidate = descriptor;
+  candidate.info.identifier = "";
+  CHECK_FALSE(ztick::sdk::detail::has_valid_descriptor_layout(&candidate));
+
+  candidate = descriptor;
+  candidate.info.name = nullptr;
+  CHECK_FALSE(ztick::sdk::detail::has_valid_descriptor_layout(&candidate));
+
+  candidate = descriptor;
+  candidate.info.sdk_version.major = ZTICK_SDK_VERSION_MAJOR + 1U;
+  CHECK(ztick::sdk::detail::has_valid_descriptor_layout(&candidate));
+}
 
 /**
  * @brief Verify the runtime version query matches the compile-time macros.

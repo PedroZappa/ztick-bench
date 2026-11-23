@@ -111,6 +111,7 @@ Labels used in requirement statements; see
 | **SDK version check** | Mandatory negotiation of SDK version and capabilities before an integration is used. |
 | **Struct layout version** | The value required in a public struct's `version` header field, published as `ZTICK_STRUCT_LAYOUT_VERSION`; independent of the SDK ABI version (SDK_SPECIFICATION §1.1). |
 | **Adapter registry** | The host-owned, thread-safe set of non-owning static adapter descriptor pointers populated by `ztick_register_adapter` (SDK_SPECIFICATION §2). |
+| **Metadata-only inspection** | Reading a dynamic adapter's exported read-only descriptor as a data symbol without calling any plugin code; yields an owning metadata copy and no registration or trust (SDK_SPECIFICATION §10). |
 | **Trusted plugin** | A plugin explicitly installed or supplied by the user and recorded in the trusted-plugin list. |
 | **First-run confirmation** | Explicit user consent required before an untrusted plugin is executed for the first time. |
 | **In-process execution** | Running an integration inside the benchmark process for simplicity and low overhead. |

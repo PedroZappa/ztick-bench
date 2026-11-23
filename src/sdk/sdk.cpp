@@ -3,14 +3,16 @@
  * @file sdk.cpp
  * @brief Compiled implementation of the host-side C ABI runtime symbols.
  *
- * Defines the four functions declared by <ztick/sdk.h> and the private registry
- * observers declared by <ztick/sdk_registry.hpp>. Follows the versioning rules in
+ * Defines the four functions declared by <ztick/sdk.h>, the private registry
+ * observers declared by <ztick/sdk_registry.hpp> and the shared descriptor check
+ * declared by <ztick/sdk_validation.hpp>. Follows the versioning rules in
  * SDK_SPECIFICATION §2 and contains every exception so none crosses the C boundary
  * (SDK_SPECIFICATION §8).
  */
 
 #include <ztick/sdk.h>
 #include <ztick/sdk_registry.hpp>
+#include <ztick/sdk_validation.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -53,6 +55,25 @@ AdapterRegistry &registry() noexcept {
 
 } // namespace
 
+namespace ztick::sdk::detail {
+
+bool has_valid_descriptor_layout(const ztick_adapter_descriptor *descriptor) noexcept {
+  if (descriptor == nullptr ||
+      !has_valid_layout(descriptor->size, descriptor->version, sizeof(ztick_adapter_descriptor))) {
+    return false;
+  }
+  const ztick_adapter_info &info = descriptor->info;
+  const ztick_adapter_ops &ops = descriptor->ops;
+  return has_valid_layout(info.size, info.version, sizeof(ztick_adapter_info)) &&
+         has_valid_layout(ops.size, ops.version, sizeof(ztick_adapter_ops)) &&
+         has_valid_layout(info.adapter_version.size, info.adapter_version.version,
+                          sizeof(ztick_version)) &&
+         has_valid_layout(info.sdk_version.size, info.sdk_version.version, sizeof(ztick_version)) &&
+         info.identifier != nullptr && info.identifier[0] != '\0' && info.name != nullptr;
+}
+
+} // namespace ztick::sdk::detail
+
 extern "C" {
 
 ZTICK_API int32_t ztick_sdk_get_version(ztick_version *out_version) {
@@ -82,21 +103,10 @@ ZTICK_API int32_t ztick_sdk_is_compatible(const ztick_version *adapter_sdk_versi
 }
 
 ZTICK_API int32_t ztick_register_adapter(const ztick_adapter_descriptor *descriptor) {
-  if (descriptor == nullptr ||
-      !has_valid_layout(descriptor->size, descriptor->version, sizeof(ztick_adapter_descriptor))) {
+  if (!ztick::sdk::detail::has_valid_descriptor_layout(descriptor)) {
     return ztick_status_invalid_argument;
   }
   const ztick_adapter_info &info = descriptor->info;
-  const ztick_adapter_ops &ops = descriptor->ops;
-  if (!has_valid_layout(info.size, info.version, sizeof(ztick_adapter_info)) ||
-      !has_valid_layout(ops.size, ops.version, sizeof(ztick_adapter_ops)) ||
-      !has_valid_layout(info.adapter_version.size, info.adapter_version.version,
-                        sizeof(ztick_version))) {
-    return ztick_status_invalid_argument;
-  }
-  if (info.identifier == nullptr || info.identifier[0] == '\0' || info.name == nullptr) {
-    return ztick_status_invalid_argument;
-  }
   const int32_t compatibility = ztick_sdk_is_compatible(&info.sdk_version);
   if (compatibility != ztick_status_success) {
     return compatibility;

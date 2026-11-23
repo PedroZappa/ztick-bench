@@ -117,7 +117,9 @@ The Phase 3 example targets are `ztick_test_app_static`, which links the compile
 runtime, and `ztick_test_app_dynamic`, which stays header-only so the host owns the
 single adapter registry (SDK_SPECIFICATION §10). The static target exposes
 `ztick_test_app_static_register` for host initialization (P3.1); its lifecycle
-callbacks arrive in P3.7.
+callbacks arrive in P3.7. `ztick_plugin_host` consumes the dynamic example through its
+private POSIX loader abstraction (P3.2); on non-POSIX platforms the fallback reports
+infrastructure failure until platform work resumes post-v1.0.
 
 ### 3.1 Source-tree layout (derived design)
 
@@ -196,6 +198,13 @@ Derived design:
   descriptor/manifest so identity and capabilities can be shown without calling
   plugin code. The exact manifest encoding is implementation detail, but the
   no-execution guarantee is required.
+  **P3.2 implementation (Derived design):** `ztick_plugin_host` resolves the dynamic
+  adapter's `ZTICK_ADAPTER_EXPORT_SYMBOL` data symbol through a private platform
+  loader abstraction, validates it with the SDK's shared structural check, copies
+  identity into owning storage and releases the library. It never calls a lifecycle
+  callback or entry point; directory enumeration and trust decisions remain separate
+  host work. Modules without the symbol or with malformed/incompatible metadata are
+  rejected with a reason rather than silently skipped (SDK_SPECIFICATION §10).
 - **Trust manager** compares discovered identity against the persisted trusted
   list and requests confirmation through the active front end before first use.
 - **Runner selection** prefers in-process for trusted integrations and

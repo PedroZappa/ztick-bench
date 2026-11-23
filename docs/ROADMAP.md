@@ -94,12 +94,14 @@ is header-only by contract so the host owns a single registry. P3.1–P3.10 rema
 no full adapter, trust enforcement, runner or end-to-end test application exists yet.
 P3.10 also bumps the development version to `0.3.0-dev` per BR §21.
 
-**Progress (after P3.1).** The minimal static adapter now has an explicit registration
-entry point and is discoverable in-process through the private host registry observers;
-its lifecycle callbacks remain P3.7 work. P3.2–P3.10 remain open.
+**Progress (after P3.2).** The minimal static adapter registers and is discoverable in
+process through the private host registry observers; its lifecycle callbacks remain P3.7
+work. The dynamic loader resolves the exported read-only descriptor as a data symbol,
+copies identity metadata into owning storage and calls no plugin code (BR §6.1).
+P3.3–P3.10 remain open.
 
 - [x] **P3.1 — Static adapter registry and one minimal static adapter.** Done when: The adapter registers and is discoverable (verified through the private host registry observers).
-- [ ] **P3.2 — Dynamic loader with metadata-only inspection.** Done when: Metadata is readable without executing plugin code (BR §6.1).
+- [x] **P3.2 — Dynamic loader with metadata-only inspection.** Done when: Metadata is readable without executing plugin code (BR §6.1).
 - [ ] **P3.3 — SDK version and capability negotiation before use.** Done when: Incompatible integrations are refused with a reason.
 - [ ] **P3.4 — Trust list and first-run confirmation flow.** Done when: An untrusted plugin requires explicit consent (BR §6.2).
 - [ ] **P3.5 — In-process runner.** Done when: Mode is selectable and recorded in the run record.
