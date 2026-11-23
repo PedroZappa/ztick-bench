@@ -135,6 +135,15 @@ Both apps must exercise the full adapter contract in
 ztick-bench itself (BR §17.8). They are distinct applications, not two configurations
 of one binary, so a shared defect cannot validate both.
 
+The Phase 3 verification pass (ROADMAP P3.10) is an integration test in
+`tests/integration/phase3_integrations_test.cpp`. It drives the static processor/chain
+harness and the dynamic engine harness end-to-end in one process, checks the App B
+child entry point for the isolation path, and derives every expected count and status
+from the published app contracts and written validation levels rather than from the
+results under test. This demonstrates the §1 exit criterion that both test apps run
+end-to-end; the out-of-tree builds in §2 and the component tests in §8 remain separate
+evidence for BR §17.8 and isolation.
+
 ## 4. Correctness tests
 
 - Generate deterministic inputs (sine, multi-tone, impulse) with fixed parameters
@@ -242,7 +251,7 @@ runs in the same host process (BR §14, ARCHITECTURE §6).
 | BR §17 criterion | Verifying tests |
 | --- | --- |
 | 1. Linux fully supported | System tests on Linux; platform fields checked for `unsupported`/`unavailable` reporting |
-| 2. Two independent SDK test apps | §3 App A built and run (P3.7); App B built and run in both runner modes (P3.8) |
+| 2. Two independent SDK test apps | §3 App A built and run (P3.7); App B built and run in both runner modes (P3.8); Phase 3 end-to-end verification pass (P3.10) |
 | 3. Static and dynamic integrations | §3 apps A/B; §8 discovery/load tests |
 | 4. Initial metrics and workload levels | §4, §5, §6 tests across processor/chain/engine |
 | 5. CLI, JSON, comparisons, regressions | §9 tests; §6 comparison tests |

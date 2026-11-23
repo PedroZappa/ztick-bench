@@ -3,7 +3,7 @@
 # Generated documentation lives in build/doxygen (gitignored via build/).
 
 PROJECT_NAME           = "ztick-bench"
-PROJECT_NUMBER         = 0.2.0-dev
+PROJECT_NUMBER         = 0.3.0-dev
 PROJECT_BRIEF          = "Portable DSP benchmarking framework"
 
 OUTPUT_DIRECTORY       = build/doxygen

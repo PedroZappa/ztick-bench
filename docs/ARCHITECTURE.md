@@ -42,7 +42,7 @@ is the integration boundary for adapters and for the Rust TUI's FFI calls.
 *Source: BR §15; BR §18 Q46, amended 2026-11-20 and 2026-11-22.*
 
 Toolchain baseline is GCC 13+ or Clang 16+ with `-Wall -Wextra -Wpedantic`,
-`-Werror` in CI and ASan/UBSan in debug builds. The tool version is `0.2.0-dev`
+`-Werror` in CI and ASan/UBSan in debug builds. The tool version is `0.3.0-dev`
 and the SDK ABI version is `1.0.0`. *Source: BR §21–§22.*
 
 ## 2. Component map

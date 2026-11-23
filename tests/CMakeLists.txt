@@ -93,6 +93,7 @@ if(ZTICK_BUILD_EXAMPLES AND UNIX AND NOT APPLE)
     PRIVATE
       unit/example_adapter_export_test.cpp
       unit/dynamic_adapter_app_b_test.cpp
+      integration/phase3_integrations_test.cpp
   )
   target_link_libraries(ztick_tests
     PRIVATE

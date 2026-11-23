@@ -3,13 +3,13 @@
 **General-purpose, offline-first DSP and audio benchmarking application.**
 
 > **Repository status:** requirements baseline and v1.0 technical specification complete;
-> roadmap phases 1–2 (Foundation, Benchmark engine) implemented and verified. Phase 3
-> (Integrations) is in progress: the SDK runtime is compiled and link-tested; metadata
-> inspection, version/capability negotiation, trust enforcement, in-process and
-> out-of-process runners, and both custom SDK apps are implemented. Static and dynamic
-> integrations are also built and run out of tree against the installed SDK package,
-> verifying [BR §17.8](docs/DECISIONS.md#17-v10-acceptance-criteria). The final Phase 3 verification pass remains —
-> see [ROADMAP](docs/ROADMAP.md).
+> roadmap phases 1–3 (Foundation, Benchmark engine, Integrations) implemented and
+> verified. The SDK runtime is compiled and link-tested; metadata inspection,
+> version/capability negotiation, trust enforcement, in-process and out-of-process
+> runners, and both custom SDK apps are implemented. Static and dynamic integrations
+> are also built and run out of tree against the installed SDK package, verifying
+> [BR §17.8](docs/DECISIONS.md#17-v10-acceptance-criteria). Phase 4 (CLI and results) is
+> next — see [ROADMAP](docs/ROADMAP.md).
 > **v1.0 scope:** roadmap phases 1–6; phase 7 (macOS/Windows) is post-v1.0.
 
 ---
@@ -69,7 +69,7 @@ record sections.
 C++20 and CMake are confirmed for the core, CLI and SDK (Q46); the integration
 boundary is a versioned C ABI with C++ wrappers. The TUI is the Rust/ratatui
 exception confirmed in BR §21. The toolchain targets GCC 13+/Clang 16+, uses
-Catch2 v3 as a dev-only test framework, and is at tool version `0.2.0-dev` with
+Catch2 v3 as a dev-only test framework, and is at tool version `0.3.0-dev` with
 SDK ABI `1.0.0` (BR §21–§22).
 The Phase 5 TUI is an optional Rust/ratatui front end (0.30.2, MIT; Rust 1.88+)
 that calls the C ABI via FFI. Rust and Cargo are needed only when the TUI target

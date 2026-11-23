@@ -90,9 +90,9 @@ The public `ZTICK_STRUCT_LAYOUT_VERSION` macro tells third parties what to put i
 struct's `version` field. Catch2 unit tests, a standalone C11 link test, the
 external-style consumer check and a dynamic-module symbol check exercise the runtime;
 the plugin host and the static example link the compiled library. The dynamic example
-does not link `ztick_sdk` so the host owns a single registry. P3.1–P3.9 are complete;
-P3.10 remains open. P3.10 also bumps the development version to `0.3.0-dev` per
-BR §21.
+does not link `ztick_sdk` so the host owns a single registry. P3.1–P3.10 are
+complete and Phase 3 is verified. P3.10 bumped the development version to
+`0.3.0-dev` per BR §21.
 
 **Progress (after P3.8).** The static App A adapter registers and is discoverable in
 process through the private host registry observers, and its executable host harness
@@ -115,7 +115,11 @@ A standalone fixture now installs the SDK and builds two independent application
 from outside the repository using only `find_package(ztick-sdk)` and the public C
 ABI: a static processor/chain app and a dynamic engine module plus its host. The
 check is wired into CTest and `make external-apps-check`, so BR §17.8 is verified
-without modifying ztick-bench. P3.9 is complete; P3.10 remains open.
+without modifying ztick-bench. The Phase 3 verification pass drives both apps
+end-to-end with expectations derived from their published contracts, covers the
+isolated child path, and is registered with CTest
+([TESTING_STRATEGY §3](TESTING_STRATEGY.md#3-custom-sdk-test-applications)). P3.9
+and P3.10 are complete.
 
 - [x] **P3.1 — Static adapter registry and one minimal static adapter.** Done when: The adapter registers and is discoverable (verified through the private host registry observers).
 - [x] **P3.2 — Dynamic loader with metadata-only inspection.** Done when: Metadata is readable without executing plugin code (BR §6.1).
@@ -126,7 +130,7 @@ without modifying ztick-bench. P3.9 is complete; P3.10 remains open.
 - [x] **P3.7 — Custom test app A — static processor/chain harness.** Done when: App A runs end-to-end ([TESTING_STRATEGY §3](TESTING_STRATEGY.md#3-custom-sdk-test-applications)).
 - [x] **P3.8 — Custom test app B — dynamic engine harness.** Done when: App B runs end-to-end.
 - [x] **P3.9 — External-style build of both apps.** Done when: BR §17.8 is verified without modifying ztick-bench ([TESTING_STRATEGY §10](TESTING_STRATEGY.md#10-acceptance-criteria-traceability)).
-- [ ] **P3.10 — Phase 3 verification pass.** Done when: Both test apps run end-to-end.
+- [x] **P3.10 — Phase 3 verification pass.** Done when: Both test apps run end-to-end ([TESTING_STRATEGY §3](TESTING_STRATEGY.md#3-custom-sdk-test-applications)).
 
 ### 2.4 Phase 4 — CLI and results
 
