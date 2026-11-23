@@ -94,7 +94,7 @@ does not link `ztick_sdk` so the host owns a single registry. P3.1–P3.10 are
 complete and Phase 3 is verified. P3.10 bumped the development version to
 `0.3.0-dev` per BR §21.
 
-**Progress (after P3.8).** The static App A adapter registers and is discoverable in
+**Progress (after P3.10).** The static App A adapter registers and is discoverable in
 process through the private host registry observers, and its executable host harness
 drives the complete processor/chain lifecycle end-to-end. The dynamic loader resolves
 the exported read-only descriptor as a data symbol, copies identity metadata into
