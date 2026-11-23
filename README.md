@@ -9,8 +9,8 @@
 > runners, and both custom SDK apps are implemented. Static and dynamic integrations
 > are also built and run out of tree against the installed SDK package, verifying
 > [BR §17.8](docs/DECISIONS.md#17-v10-acceptance-criteria). Phase 4 (CLI and results) is
-> in progress; the portable config and result schemas, JSON parser and atomic
-> writer are implemented — see [ROADMAP](docs/ROADMAP.md).
+> in progress; the portable config and result schemas, JSON parser, atomic
+> writer and CSV projection are implemented — see [ROADMAP](docs/ROADMAP.md).
 > **v1.0 scope:** roadmap phases 1–6; phase 7 (macOS/Windows) is post-v1.0.
 
 ---

@@ -40,6 +40,7 @@ add_executable(ztick_tests
   unit/config_document_test.cpp
   unit/config_value_test.cpp
   unit/core_types_test.cpp
+  unit/csv_projection_test.cpp
   unit/dynamic_loader_test.cpp
   unit/dynamic_runtime_test.cpp
   unit/execution_test.cpp

@@ -260,6 +260,14 @@ create and replace, verify that a failed replacement preserves the target and
 leaves no temporary file, and check that invalid documents create no file. A
 write/read round trip confirms that the derived statuses survive serialization.
 
+**P4.3 CSV coverage (Derived design).** Tests parse the exported CSV with an
+independent line reader and assert that run, metric, value, unit, status and
+source cells equal values specified in the source document. They cover the fixed
+header and omitted-fields marker, escaping of commas and quotes, unavailable
+metrics with an empty value and a retained reason, both row modes including the
+aggregate fallback, metric-less runs, invalid-document rejection and atomic file
+replacement.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |

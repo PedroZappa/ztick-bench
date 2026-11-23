@@ -104,7 +104,7 @@ Planned targets (Derived design — names are not ledger requirements):
 | --- | --- | --- |
 | `ztick_sdk` | C ABI headers, compiled runtime symbols, version definitions | No |
 | `ztick_core` | SDK headers, workload, timing, statistics, validation, results | No |
-| `ztick_results` | JSON serialization, config value tree, portable config document schema, result document schema and atomic writer | No (CSV may be optional) |
+| `ztick_results` | JSON serialization, config value tree, portable config and result document schemas, atomic writer and CSV projection | No (CSV may be optional) |
 | `ztick_platform` | platform abstraction + Linux implementation | Monitoring implementation is platform-selected |
 | `ztick_cli` | core, results | No for CLI users |
 | `ztick_tui` | core and results through the C ABI via Rust FFI; Cargo crate driven by CMake | **Yes** — Rust toolchain and ratatui are needed only for TUI builds |

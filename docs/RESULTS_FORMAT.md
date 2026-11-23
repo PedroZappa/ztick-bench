@@ -212,6 +212,31 @@ CSV is a convenience projection, not the canonical format (BR §12.3).
 - Raw per-block series and complex metadata remain in JSON; CSV export states
   which fields were omitted.
 
+### 8.1 CSV projection behavior (Derived design)
+
+An export validates the result document with §9.1 before projecting it. The v1.0
+header is fixed and appears on every export:
+
+```text
+session_id,run_id,test_point,metric_id,metric_name,value,unit,status,source,method,reason,warning_count,failure_count,run_status,omitted_fields
+```
+
+`per_test_point` emits one row per metric record using its aggregate value;
+`per_metric_sample` emits one row per `samples` entry, falling back to the
+aggregate when a record has no samples. A scalar sample supplies the value, and
+an object sample may override `value`, `status`, `source` or `method`. A run with
+no metrics still produces a row so its test point is not lost. `test_point`
+flattens dimension values as `key=value` pairs separated by semicolons in JSON
+member order.
+
+Cells follow RFC 4180 quoting. Numbers and booleans retain their JSON text, so
+identifier, value, unit, status and source cells agree directly with the
+canonical document. `status`, `source` and `run_status` are always present, with
+an empty value cell for `unavailable` and `not_applicable` metrics and their
+`reason` carried in the `reason` column. The `omitted_fields` column names raw
+per-block series and complex metadata; those fields remain in JSON only. CSV
+files are written through the atomic mechanism in §9.1 and never replace JSON.
+
 ## 9. Failure and warning encoding
 
 **REQ-RES-05 (Required).** Workload failure, infrastructure failure and
