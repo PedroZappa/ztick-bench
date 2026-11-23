@@ -87,7 +87,7 @@ _INFO    = [$(BLU)INFO$(D)]
 # - missingIncludeSystem: standard/system headers are intentionally not supplied.
 CPPCHECK_FLAGS = --std=c++20 --enable=all --check-level=exhaustive \
                  --error-exitcode=1 --inline-suppr -I include \
-                 -I src/core/include -I src/platform/include -I src/plugin/include \
+                 -I src/core/include -I src/results/include -I src/platform/include -I src/plugin/include \
                  -I src/sdk/include -I tools/ztick-sysinfo/include \
                  --suppress=checkersReport --suppress=missingIncludeSystem
 

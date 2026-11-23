@@ -3,10 +3,10 @@
  * @file config_value.hpp
  * @brief Minimal in-memory representation of config-shaped data for core models.
  *
- * The portable config document is owned by RESULTS_FORMAT §6 and is parsed from
- * JSON in a later phase. This value tree mirrors that document's object/array/
- * scalar shape so the Phase 2 workload and profile models can be built from, and
- * rendered back to, config-shaped data without depending on a JSON library.
+ * The portable config document is owned by RESULTS_FORMAT §6. This value tree
+ * mirrors that document's object/array/scalar shape so workload and profile
+ * models, the JSON reader and the config schema checker can exchange data
+ * without a runtime JSON dependency.
  *
  * Objects preserve insertion order, which makes rendered data deterministic and
  * allows equality-based round-trip tests. This header is private to ztick-bench

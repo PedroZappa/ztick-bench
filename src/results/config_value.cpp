@@ -15,9 +15,6 @@
 
 namespace ztick {
 
-// Public library API: exercised by the test target, which is outside the
-// cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 std::string_view config_value_type_name(ConfigValueType type) noexcept {
   switch (type) {
   case ConfigValueType::null:
@@ -40,7 +37,6 @@ std::string_view config_value_type_name(ConfigValueType type) noexcept {
 
 ConfigValue::ConfigValue(Storage storage) noexcept : storage_(std::move(storage)) {}
 
-// cppcheck-suppress unusedFunction
 ConfigValue ConfigValue::null() noexcept { return ConfigValue(Storage{}); }
 
 ConfigValue ConfigValue::boolean(bool value) noexcept { return ConfigValue(Storage{value}); }

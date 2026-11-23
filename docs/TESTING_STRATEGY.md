@@ -246,6 +246,12 @@ runs in the same host process (BR §14, ARCHITECTURE §6).
 - Verify build metadata capture (git commit, compiler, flags, configuration)
   where discoverable (BR §11.1).
 
+**P4.1 config coverage (Derived design).** Unit tests read a complete v1 config,
+assert both version fields, write it as compact JSON and compare a second read by
+value. They also reject a missing or unsupported `config_version`, a future SDK
+minor version, mistyped top-level sections, malformed JSON and non-finite reals,
+and check the numeric SDK version compatibility helper directly.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |

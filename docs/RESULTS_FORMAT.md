@@ -174,6 +174,18 @@ with a future suite layer. No suite fields or commands are added to v1.0, but a
 future suite can reference multiple config documents without redesigning this
 schema.
 
+### 6.1 Config reader behavior (Derived design)
+
+A v1.0 reader requires every top-level member shown above. `config_version` must
+equal the schema version `1.0.0`; `sdk_version` must be a numeric
+`major.minor.patch` token accepted by
+[SDK_SPECIFICATION §2](SDK_SPECIFICATION.md#2-versioning-and-compatibility).
+Missing, mistyped or unsupported version tokens are rejected, and a rejected
+document is never applied partially. `integration.id` and `integration.version`
+must be non-empty strings. Semantic validation of the remaining sections belongs
+to the component that consumes each section; this reader owns only document
+shape, version tokens and integration identity.
+
 ## 7. Portability checks
 
 When a config is loaded on another machine, the host compares required

@@ -3,9 +3,10 @@
 # P1.2 establishes the target; P2.1 adds config-shaped workload/profile models;
 # P2.2 adds deterministic input generators; P2.3 adds execution sequencing;
 # P2.6 adds metric formulas and aggregates; P2.7 adds the validation phase.
+# P4.1 moves the config-shaped value tree into ztick_results, the dependency
+# owner for JSON serialization and the portable config document schema.
 
 add_library(ztick_core STATIC
-  config_value.cpp
   core.cpp
   execution.cpp
   generator.cpp
@@ -25,5 +26,6 @@ target_include_directories(ztick_core
 
 target_link_libraries(ztick_core
   PUBLIC
+    ztick_results
     ztick_sdk
 )

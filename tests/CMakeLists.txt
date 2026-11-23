@@ -36,12 +36,14 @@ add_executable(ztick_tests
   integration/phase2_engine_test.cpp
   unit/catch2_integration_test.cpp
   unit/compatibility_test.cpp
+  unit/config_document_test.cpp
   unit/config_value_test.cpp
   unit/core_types_test.cpp
   unit/dynamic_loader_test.cpp
   unit/dynamic_runtime_test.cpp
   unit/execution_test.cpp
   unit/generator_test.cpp
+  unit/json_test.cpp
   unit/platform_interface_test.cpp
   unit/linux_system_info_test.cpp
   unit/out_of_process_runner_test.cpp
@@ -70,6 +72,7 @@ target_link_libraries(ztick_tests
     Catch2::Catch2WithMain
     ztick::sdk
     ztick_core
+    ztick_results
     ztick_plugin_host
     ztick_platform
     ztick_sysinfo_report
