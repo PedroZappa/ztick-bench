@@ -47,6 +47,11 @@ Collect where available (BR §9):
 Each field is reported with an explicit availability state; an undetectable field
 is `unavailable`, not absent.
 
+**Derived design (P4.4).** The inventory is converted into availability-aware
+result metadata fields by the adapter in `ztick_platform`; the field record shape,
+attachment rules and comparability warnings are owned by
+[RESULTS_FORMAT §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design).
+
 ## 3. Runtime monitoring
 
 Collect and record during a run where available (BR §9):

@@ -48,6 +48,7 @@ add_executable(ztick_tests
   unit/json_test.cpp
   unit/platform_interface_test.cpp
   unit/linux_system_info_test.cpp
+  unit/metadata_test.cpp
   unit/out_of_process_runner_test.cpp
   unit/profile_model_test.cpp
   unit/result_document_test.cpp
@@ -55,6 +56,7 @@ add_executable(ztick_tests
   unit/sdk_runtime_test.cpp
   unit/statistics_test.cpp
   unit/sysinfo_report_test.cpp
+  unit/system_info_metadata_test.cpp
   unit/trust_test.cpp
   unit/validation_test.cpp
   unit/workload_model_test.cpp

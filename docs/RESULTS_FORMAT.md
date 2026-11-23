@@ -104,6 +104,43 @@ comparability warnings.
 - **Execution:** isolation mode (in-process/out-of-process), SDK version checks and
   capability negotiation outcome (BR §6.3, §5.1).
 
+### 4.4 Metadata attachment behavior (Derived design)
+
+The `ztick_results` module builds and attaches the §4 sections through an
+availability-aware field model. Each field is a record `{ "status", "value",
+"reason" }`; all three members are always present. `status` is one of `value`,
+`unavailable`, `unsupported` or `not_applicable`, matching the platform states in
+[PLATFORM §6](PLATFORM_MONITORING.md#6-availability-states). A non-value status
+has an empty `value` and a non-empty `reason`, so an undetectable item is
+reported rather than omitted (REQ-RES-01, BR §17).
+
+Build metadata is captured when the binary is configured: git commit when Git and
+a commit are available, C++ compiler and version, optimization/warning flags,
+build configuration and project version. Any undiscoverable item is recorded as
+`unavailable` with a reason rather than dropped (BR §11.1). Machine fields come
+from the platform inventory through the adapter in `ztick_platform`, one field
+per [PLATFORM §2](PLATFORM_MONITORING.md#2-system-information-inventory) item,
+preserving each availability state.
+
+Workload and environment sections are projected from the config snapshot:
+integration identity, workload level, processors, generator and dimensions for
+workload; isolation, duration mode, repetitions, workers, affinity and
+measurement detail for environment. Fields absent from the snapshot become
+`unavailable` records. Attaching metadata writes only the `build`, `machine` and
+`environment` sections of a §3 document; it never changes the config snapshot or
+per-run records.
+
+**Comparability checks.** Comparing two result documents walks matching
+qualified field names in `build`, `machine` and `environment`. Equal value fields
+agree. A differing value, a differing status, or a value on one side against a
+non-value status on the other produces a comparability warning record with
+`category`, `field`, `left_status`, `left_value`, `right_status`, `right_value`
+and `message`. Identical non-value statuses do not warn, and fields absent from
+both sections are ignored. The warning array is suitable for the
+`comparability_warnings` field of a §10 comparison record and is also the basis
+for the environment comparability findings in §7. A non-object document is
+reported as incomparable rather than silently treated as equal (BR §11.2, §11.3).
+
 ## 5. Per-run records
 
 Each run contains (Derived design):
@@ -285,7 +322,7 @@ Comparison records preserve the underlying measurements and context (BR §11.3):
 | `statistics` | Metric polarity, significance level `alpha`, one/two-sided choice, test method and metrics tested |
 | `significance` | Test/method used and outcome from [METRICS §6](METRICS_REFERENCE.md#6-comparison-and-regression-statistics) |
 | `classification` | `raw_difference`, `within_variability`, `regression`, `improvement` |
-| `comparability_warnings` | Build/machine/environment mismatches |
+| `comparability_warnings` | Build/machine/environment mismatches from [§4.4](#44-metadata-attachment-behavior-derived-design) |
 | `context` | Copies of relevant metadata so the comparison is self-contained |
 
 ## 11. Session export/import and storage

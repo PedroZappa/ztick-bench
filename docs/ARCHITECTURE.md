@@ -104,8 +104,8 @@ Planned targets (Derived design — names are not ledger requirements):
 | --- | --- | --- |
 | `ztick_sdk` | C ABI headers, compiled runtime symbols, version definitions | No |
 | `ztick_core` | SDK headers, workload, timing, statistics, validation, results | No |
-| `ztick_results` | JSON serialization, config value tree, portable config and result document schemas, atomic writer and CSV projection | No (CSV may be optional) |
-| `ztick_platform` | platform abstraction + Linux implementation | Monitoring implementation is platform-selected |
+| `ztick_results` | JSON serialization, config value tree, portable config and result document schemas, atomic writer, CSV projection and metadata attachment/comparison | No (CSV may be optional) |
+| `ztick_platform` | platform abstraction + Linux implementation + inventory-to-metadata adapter; depends on `ztick_results` for the field type | Monitoring implementation is platform-selected |
 | `ztick_cli` | core, results | No for CLI users |
 | `ztick_tui` | core and results through the C ABI via Rust FFI; Cargo crate driven by CMake | **Yes** — Rust toolchain and ratatui are needed only for TUI builds |
 | `ztick_static_adapters` | SDK C ABI | **Yes** |
@@ -289,6 +289,12 @@ cannot provide it), `unsupported` (never implemented on this platform/backend), 
 platform-dependent capabilities must not be silently omitted (BR §17). The mapping
 to metric value statuses is owned by
 [PLATFORM_MONITORING §6](PLATFORM_MONITORING.md#6-availability-states).
+
+**Metadata bridge (Derived design).** The platform layer converts each inventory
+item into the availability-aware metadata field type owned by `ztick_results`, so
+OS-specific collection stays in `ztick_platform` and result encoding stays in
+`ztick_results`. The field shape, attachment rules and comparability warnings are
+owned by [RESULTS_FORMAT §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design).
 
 ## 8. Comparison and reporting placement
 

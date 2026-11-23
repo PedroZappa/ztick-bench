@@ -150,6 +150,8 @@ Labels used in requirement statements; see
 | **Row mode** | The selected CSV granularity: `per_test_point` or `per_metric_sample` ([RESULTS §8.1](RESULTS_FORMAT.md#81-csv-projection-behavior-derived-design)). |
 | **Build metadata** | Recorded git commit, compiler, version, optimization flags, build configuration and toolchain details. |
 | **Machine metadata** | Recorded CPU, memory, cache, SIMD, OS, kernel and environment information. |
+| **Metadata field** | One availability-aware `status`/`value`/`reason` record in a result's build, machine or environment section ([RESULTS §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design)). |
+| **Comparability warning** | A record reporting that a build, machine or environment field differs between two result documents ([RESULTS §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design)). |
 | **Validation level** | Basic (NaN/Inf, invalid output), Standard (+ reference comparisons), or Strict (+ adapter checks and broader tests); independently selectable. |
 | **Check outcome** | The recorded result of one validation check, including its status, tolerances, reference source and observed error; a single pass/fail flag is not sufficient. |
 | **Reference output** | Expected output supplied by an adapter, a workload reference file, deterministic generation, or a designated reference implementation. |

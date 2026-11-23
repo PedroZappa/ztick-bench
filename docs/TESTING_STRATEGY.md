@@ -268,6 +268,18 @@ metrics with an empty value and a retained reason, both row modes including the
 aggregate fallback, metric-less runs, invalid-document rejection and atomic file
 replacement.
 
+**P4.4 metadata coverage (Derived design).** Unit tests assert that build metadata
+contains one record per captured fact, that an empty captured value becomes an
+`unavailable` record with a reason, and that the no-argument builder agrees with
+the compile-time captured info. They project workload and environment sections
+from a config snapshot, verify attachment populates all three sections without
+changing the snapshot, and check that invalid metadata is rejected without partial
+mutation. Comparability tests cover equal values, differing values, differing
+statuses, matching non-value statuses, an undetectable value on one side, and a
+round trip through the atomic result writer. A platform-layer test converts an
+injected inventory with all four availability states and asserts each field keeps
+its state and reason.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |
