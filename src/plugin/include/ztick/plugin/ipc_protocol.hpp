@@ -50,8 +50,8 @@ auto make_status_message(std::int32_t status) noexcept -> StatusMessage;
  * @note Leaves @p status unchanged on failure. Exactly @ref kStatusMessageSize bytes
  *       are required; partial or extra data is rejected.
  */
-auto parse_status_message(const std::uint8_t *data, std::size_t size, std::int32_t &status) noexcept
-    -> bool;
+auto parse_status_message(const std::uint8_t *data, std::size_t size,
+                          std::int32_t &status) noexcept -> bool;
 
 } // namespace ztick::plugin::ipc
 

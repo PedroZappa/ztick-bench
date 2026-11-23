@@ -264,8 +264,8 @@ auto find_metric(const std::vector<MetricReport> &metrics, const char *name,
  * @note Each call creates its own adapter so the two workloads prove that
  *       instance state is independent.
  */
-auto execute_workload(const ztick_adapter_descriptor &descriptor, WorkloadKind kind)
-    -> WorkloadResult {
+auto execute_workload(const ztick_adapter_descriptor &descriptor,
+                      WorkloadKind kind) -> WorkloadResult {
   WorkloadResult result;
   result.kind = kind;
   auto expect = [&result](bool condition, const char *message) noexcept -> bool {

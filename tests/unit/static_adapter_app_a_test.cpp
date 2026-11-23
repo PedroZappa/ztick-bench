@@ -134,8 +134,8 @@ auto collect_metric(void *context, const char *name, double value, const char *u
  * @brief Reject every metric in a report to exercise sink-failure propagation.
  * @return Always `ztick_status_internal_error`.
  */
-auto reject_metric(void *, const char *, double, const char *, ztick_metric_status, const char *)
-    -> std::int32_t {
+auto reject_metric(void *, const char *, double, const char *, ztick_metric_status,
+                   const char *) -> std::int32_t {
   return ztick_status_internal_error;
 }
 

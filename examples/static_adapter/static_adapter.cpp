@@ -175,8 +175,8 @@ using Clock = std::chrono::steady_clock;
  * @param expected Minimum expected size in bytes.
  * @return True when the struct can be safely read.
  */
-auto header_valid(std::uint32_t size, std::uint32_t version, std::size_t expected) noexcept
-    -> bool {
+auto header_valid(std::uint32_t size, std::uint32_t version,
+                  std::size_t expected) noexcept -> bool {
   return size >= expected && version == ZTICK_STRUCT_LAYOUT_VERSION;
 }
 
@@ -299,8 +299,8 @@ auto plane_stride(const ztick_buffer_view &view, std::uint32_t plane_index,
  * @return Sample value converted to double.
  * @note Uses `memcpy` so custom byte strides need not be naturally aligned.
  */
-auto read_sample(const ztick_buffer_view &view, std::uint32_t frame, std::uint32_t channel) noexcept
-    -> double {
+auto read_sample(const ztick_buffer_view &view, std::uint32_t frame,
+                 std::uint32_t channel) noexcept -> double {
   const std::size_t width = sample_size(view.format);
   const bool interleaved = view.format.layout == ztick_channel_layout_interleaved;
   const std::uint32_t plane_index = interleaved ? 0U : channel;
@@ -391,8 +391,8 @@ auto smoothing_alpha(double sample_rate, double cutoff_hz) noexcept -> double {
  * @return The sink's status code.
  */
 auto emit_metric(ztick_metric_sink_fn sink, void *context, const char *name, double value,
-                 const char *unit, ztick_metric_status status, const char *source) noexcept
-    -> std::int32_t {
+                 const char *unit, ztick_metric_status status,
+                 const char *source) noexcept -> std::int32_t {
   return sink(context, name, value, unit, status, source);
 }
 
@@ -791,8 +791,8 @@ auto validate(const ztick_adapter *adapter, const ztick_validation_result *reque
  * @param context Opaque host context.
  * @return A `ztick_status` code, including a propagated sink failure.
  */
-auto report(const ztick_adapter *adapter, ztick_metric_sink_fn sink, void *context) noexcept
-    -> std::int32_t {
+auto report(const ztick_adapter *adapter, ztick_metric_sink_fn sink,
+            void *context) noexcept -> std::int32_t {
   if (adapter == nullptr || sink == nullptr || !adapter->finished) {
     return ztick_status_invalid_argument;
   }

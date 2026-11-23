@@ -20,6 +20,7 @@ add_library(ztick_plugin_host STATIC
   plugin.cpp
   compatibility.cpp
   dynamic_loader.cpp
+  dynamic_runtime.cpp
   trust.cpp
   child_process.cpp
   ipc_protocol.cpp

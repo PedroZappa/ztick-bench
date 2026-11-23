@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Guard the Phase 3 dynamic-adapter contract (SDK_SPECIFICATION §10): a module
-# exposes read-only metadata and must not embed or import SDK runtime symbols,
-# because the host owns the single static-adapter registry.
+# exposes a read-only descriptor and lifecycle callbacks but must not embed or import
+# SDK runtime symbols, because the host owns the single static-adapter registry.
 
 if(NOT DEFINED MODULE_PATH OR "${MODULE_PATH}" STREQUAL "")
   message(FATAL_ERROR "MODULE_PATH is required")

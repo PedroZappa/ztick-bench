@@ -39,6 +39,7 @@ add_executable(ztick_tests
   unit/config_value_test.cpp
   unit/core_types_test.cpp
   unit/dynamic_loader_test.cpp
+  unit/dynamic_runtime_test.cpp
   unit/execution_test.cpp
   unit/generator_test.cpp
   unit/platform_interface_test.cpp
@@ -84,18 +85,29 @@ if(ZTICK_BUILD_EXAMPLES)
   target_link_libraries(ztick_tests PRIVATE ztick_test_app_static_harness)
 endif()
 
-# Scaffold export inspection needs the optional example targets and the platform
-# loader. Those sources are added only when the examples exist, so builds with
-# -DZTICK_BUILD_EXAMPLES=OFF do not reference those targets.
+# App B export and harness inspection needs the optional example targets and the
+# platform loader. Those sources are added only when the examples exist, so builds
+# with -DZTICK_BUILD_EXAMPLES=OFF do not reference those targets.
 if(ZTICK_BUILD_EXAMPLES AND UNIX AND NOT APPLE)
-  target_sources(ztick_tests PRIVATE unit/example_adapter_export_test.cpp)
-  target_link_libraries(ztick_tests PRIVATE ${CMAKE_DL_LIBS})
+  target_sources(ztick_tests
+    PRIVATE
+      unit/example_adapter_export_test.cpp
+      unit/dynamic_adapter_app_b_test.cpp
+  )
+  target_link_libraries(ztick_tests
+    PRIVATE
+      ${CMAKE_DL_LIBS}
+      ztick_test_app_b_harness
+  )
+  add_dependencies(ztick_tests ztick_test_app_dynamic)
   target_compile_definitions(ztick_tests
     PRIVATE
       ZTICK_DYNAMIC_EXAMPLE_PATH="$<TARGET_FILE:ztick_test_app_dynamic>"
+      ZTICK_DYNAMIC_APP_B_PATH="$<TARGET_FILE:ztick_test_app_dynamic>"
   )
 
-  # The dynamic scaffold must stay header-only so the host owns the only registry.
+  # The dynamic module exposes lifecycle callbacks but must not link the SDK runtime,
+  # so the host owns the only registry.
   find_program(ZTICK_NM_PROGRAM nm)
   if(ZTICK_NM_PROGRAM)
     add_test(

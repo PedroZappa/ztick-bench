@@ -40,6 +40,29 @@ constexpr const char *kStatusFdArgument = "--ztick-status-fd=3";
 constexpr int kExecFailureExitCode = 127;
 
 /**
+ * @brief Write every byte of one buffer to a descriptor.
+ * @param fd Descriptor to write.
+ * @param data Start of the byte buffer.
+ * @param size Number of bytes to write.
+ * @return True when all bytes were written.
+ */
+auto write_all(int fd, const std::uint8_t *data, std::size_t size) noexcept -> bool {
+  std::size_t written = 0U;
+  while (written < size) {
+    const ssize_t count = ::write(fd, data + written, size - written);
+    if (count > 0) {
+      written += static_cast<std::size_t>(count);
+      continue;
+    }
+    if (count < 0 && errno == EINTR) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+/**
  * @brief Mark one descriptor close-on-exec so only the intended child fd survives.
  * @param fd Descriptor to modify.
  * @return True when the descriptor flags were read and updated successfully.
@@ -211,6 +234,13 @@ auto platform_child_process_launcher() noexcept -> const ChildProcessLauncher & 
  */
 auto child_process_backend_available() noexcept -> bool {
   return posix::child_process_backend_available();
+}
+
+// Consumed by in-tree out-of-process child applications; cppcheck scans src/ but not those targets.
+// cppcheck-suppress unusedFunction
+auto write_child_status(std::int32_t status) noexcept -> bool {
+  const ipc::StatusMessage message = ipc::make_status_message(status);
+  return posix::write_all(posix::kStatusFd, message.data(), message.size());
 }
 
 } // namespace ztick::plugin

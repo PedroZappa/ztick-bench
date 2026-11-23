@@ -62,4 +62,9 @@ auto platform_child_process_launcher() noexcept -> const ChildProcessLauncher & 
  */
 auto child_process_backend_available() noexcept -> bool { return false; }
 
+auto write_child_status(std::int32_t status) noexcept -> bool {
+  (void)status;
+  return false;
+}
+
 } // namespace ztick::plugin

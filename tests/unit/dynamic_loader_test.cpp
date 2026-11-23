@@ -283,8 +283,10 @@ TEST_CASE("platform loader inspects the dynamic example module", "[plugin][loade
       ztick::plugin::inspect_dynamic_adapter(ZTICK_DYNAMIC_EXAMPLE_PATH);
   REQUIRE(result.status == ztick_status_success);
   REQUIRE(result.has_metadata());
-  CHECK(result.metadata.identifier == "ztick.test.dynamic.scaffold");
-  CHECK(result.metadata.name == "Dynamic SDK test application scaffold");
+  CHECK(result.metadata.identifier == "ztick.test.dynamic.app_b");
+  CHECK(result.metadata.name == "Dynamic engine SDK test adapter");
+  CHECK((result.metadata.capabilities & ZTICK_CAPABILITY_ENGINE) != 0U);
+  CHECK((result.metadata.capabilities & ZTICK_CAPABILITY_INTERNAL_THREADING) != 0U);
   CHECK(result.metadata.sdk_major == ZTICK_SDK_VERSION_MAJOR);
   CHECK(result.metadata.sdk_minor == ZTICK_SDK_VERSION_MINOR);
   CHECK(result.metadata.sdk_patch == ZTICK_SDK_VERSION_PATCH);

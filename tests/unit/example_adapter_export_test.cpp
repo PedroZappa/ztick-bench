@@ -4,9 +4,10 @@
  * @brief Verify Phase 3 example descriptors are inspectable without code execution.
  *
  * The static example is linked directly; the dynamic example is loaded as a
- * module and its read-only data symbol is read through dlsym. This test reads
- * metadata only. The static App A lifecycle is exercised separately by
- * `static_adapter_app_a_test.cpp` and `integration.sdk.app_a_static`.
+ * module and its read-only data symbol is read through dlsym. This test inspects
+ * metadata and op-table pointers without calling them. Lifecycles are exercised
+ * separately by `static_adapter_app_a_test.cpp`, `dynamic_adapter_app_b_test.cpp`
+ * and their integration harnesses.
  */
 
 #include <catch2/catch_test_macros.hpp>
@@ -89,17 +90,6 @@ bool has_all_callbacks(const ztick_adapter_ops &ops) {
          ops.finish != nullptr && ops.validate != nullptr && ops.report != nullptr;
 }
 
-/**
- * @brief Check that a lifecycle table implements no callbacks.
- * @param ops Lifecycle table to inspect.
- * @return True when every callback pointer is NULL.
- */
-bool has_no_callbacks(const ztick_adapter_ops &ops) {
-  return ops.create == nullptr && ops.destroy == nullptr && ops.describe == nullptr &&
-         ops.configure == nullptr && ops.prepare == nullptr && ops.process == nullptr &&
-         ops.finish == nullptr && ops.validate == nullptr && ops.report == nullptr;
-}
-
 } // namespace
 
 /**
@@ -112,14 +102,17 @@ TEST_CASE("static app A descriptor exposes a complete lifecycle", "[sdk][static]
 }
 
 /**
- * @brief Verify the dynamic P3.8 scaffold remains metadata-only.
+ * @brief Verify the dynamic App B descriptor exposes a complete engine lifecycle.
  */
-TEST_CASE("dynamic example descriptor exposes metadata only", "[sdk][dynamic][scaffold]") {
+TEST_CASE("dynamic app B descriptor exposes a complete lifecycle", "[sdk][dynamic][app_b]") {
   LibraryHandle library{dlopen(ZTICK_DYNAMIC_EXAMPLE_PATH, RTLD_NOW | RTLD_LOCAL)};
   REQUIRE(library.handle != nullptr);
   void *symbol = dlsym(library.handle, ZTICK_ADAPTER_EXPORT_SYMBOL);
   REQUIRE(symbol != nullptr);
   const auto *descriptor = static_cast<const ztick_adapter_descriptor *>(symbol);
-  CHECK(has_valid_identity(descriptor, "ztick.test.dynamic.scaffold"));
-  CHECK(has_no_callbacks(descriptor->ops));
+  CHECK(has_valid_identity(descriptor, "ztick.test.dynamic.app_b"));
+  CHECK(has_all_callbacks(descriptor->ops));
+  CHECK((descriptor->info.capabilities & ZTICK_CAPABILITY_ENGINE) != 0U);
+  CHECK((descriptor->info.capabilities & ZTICK_CAPABILITY_INTERNAL_THREADING) != 0U);
+  CHECK((descriptor->info.capabilities & ZTICK_CAPABILITY_CUSTOM_VALIDATION) != 0U);
 }

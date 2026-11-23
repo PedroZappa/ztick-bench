@@ -125,10 +125,10 @@ add_subdirectory(src/tui)
 # Phase 1 developer tool; prints the inventory with explicit availability states.
 add_subdirectory(tools/ztick-sysinfo)
 
-# Optional SDK test-app scaffolding (Phase 3, BR §17.2). App A is a complete
-# static harness; the dynamic app remains a metadata-only scaffold until P3.8.
-# Added before tests so CTest can exercise both example targets.
-option(ZTICK_BUILD_EXAMPLES "Build SDK test-app scaffolding" ON)
+# Optional SDK test applications (Phase 3, BR §17.2). App A is a complete static
+# harness; App B is a complete dynamic engine harness. Added before tests so CTest
+# can exercise both example targets.
+option(ZTICK_BUILD_EXAMPLES "Build the SDK test applications" ON)
 if(ZTICK_BUILD_EXAMPLES)
   add_subdirectory(examples/static_adapter)
   add_subdirectory(examples/dynamic_adapter)

@@ -135,6 +135,16 @@ auto platform_child_process_launcher() noexcept -> const ChildProcessLauncher &;
  */
 auto child_process_backend_available() noexcept -> bool;
 
+/**
+ * @brief Write one final workload status from an out-of-process child.
+ * @param status `ztick_status` code to report to the launcher.
+ * @return True when the complete IPC message was written.
+ * @note The platform implementation chooses the status descriptor installed by
+ *       @ref platform_child_process_launcher. A child that cannot report its status
+ *       returns false so the launcher can classify the attempt as a protocol failure.
+ */
+auto write_child_status(std::int32_t status) noexcept -> bool;
+
 } // namespace ztick::plugin
 
 #endif // ZTICK_PLUGIN_CHILD_PROCESS_HPP

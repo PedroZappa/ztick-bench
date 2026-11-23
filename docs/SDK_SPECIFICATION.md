@@ -280,7 +280,7 @@ implementation language is C++, so a C or Rust FFI host links a C++ runtime even
 the boundary itself is pure C (§1.1). A dynamic adapter must not link `ztick_sdk` or
 call its runtime functions: it exposes read-only metadata and the host owns the single
 registry. An in-tree CTest check inspects the example module's dynamic symbols to hold
-that boundary; P3.8 adds lifecycle callbacks without changing runtime ownership.
+that boundary; the P3.8 module adds lifecycle callbacks without changing runtime ownership.
 Static-library export decoration on Windows is deferred to Phase 7 (post-v1.0, BR §1,
 §16).
 

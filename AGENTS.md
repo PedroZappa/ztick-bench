@@ -75,10 +75,11 @@ If a topic belongs to another file, add a link instead of re-documenting it.
   macros `ZTICK_UPPER_SNAKE`.
 - **C ABI:** every exported symbol prefixed `ztick_`, every macro `ZTICK_`.
   Public headers use fixed-width C types only; no C++ types, exceptions or C++ ABI.
-- **Formatting:** `clang-format` with LLVM base, `ColumnLimit: 100`,
-  `IndentWidth: 2`, attached braces; run before committing. Rust TUI sources use
-  `rustfmt` and `clippy` instead (Phase 5). `.editorconfig` enforces UTF-8, LF
-  endings and trailing-whitespace removal.
+- **Formatting:** `clang-format` 18 with LLVM base, `ColumnLimit: 100`,
+  `IndentWidth: 2`, attached braces; run before committing. The version is pinned
+  through the Makefile's `CLANG_FORMAT` variable (override only when intentionally
+  changing the pin). Rust TUI sources use `rustfmt` and `clippy` instead (Phase 5).
+  `.editorconfig` enforces UTF-8, LF endings and trailing-whitespace removal.
 - **Commits:** Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `build:`,
   `refactor:`, `chore:`), imperative subject of at most 72 characters, one logical
   change per commit.

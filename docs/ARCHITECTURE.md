@@ -114,14 +114,17 @@ Planned targets (Derived design — names are not ledger requirements):
 | `ztick_test_apps` | SDK C ABI | Yes for installation; required for acceptance testing |
 
 The Phase 3 example targets are `ztick_test_app_static`, which links the compiled
-runtime, and `ztick_test_app_dynamic`, which stays header-only so the host owns the
-single adapter registry (SDK_SPECIFICATION §10). The static target exposes
+runtime, and `ztick_test_app_dynamic`, which does not link `ztick_sdk` so the host owns
+the single adapter registry (SDK_SPECIFICATION §10). The static target exposes
 `ztick_test_app_static_register` for host initialization and a complete
 processor/chain lifecycle. `ztick_test_app_static_harness` drives that lifecycle from
-the `ztick_test_app_a` executable registered with CTest (P3.7). `ztick_plugin_host`
-consumes the dynamic example through its private POSIX loader abstraction (P3.2); on
-non-POSIX platforms the fallback reports infrastructure failure until platform work
-resumes post-v1.0.
+the `ztick_test_app_a` executable registered with CTest (P3.7). The dynamic module
+exports a read-only descriptor with a complete engine lifecycle;
+`ztick_test_app_b_harness` drives it from the `ztick_test_app_b` executable in both
+in-process and out-of-process CTest runs (P3.8). `ztick_plugin_host` consumes the
+dynamic example through its private POSIX loader abstraction (P3.2); on non-POSIX
+platforms the fallback reports infrastructure failure until platform work resumes
+post-v1.0.
 
 ### 3.1 Source-tree layout (derived design)
 
@@ -212,7 +215,7 @@ Derived design:
   integrations with a reason, and records the outcome for the run record
   (RESULTS_FORMAT §4.3). It is metadata-only and calls no adapter code. Detailed
   format/parameter checks are performed by the App A static lifecycle harness
-  (P3.7); the dynamic App B harness adds its own checks in P3.8
+  (P3.7) and the dynamic App B harness (P3.8)
   (SDK_SPECIFICATION §4).
 - **Trust manager** compares discovered identity against the persisted trusted
   list and requests confirmation through the active front end before first use.

@@ -34,6 +34,30 @@ CTEST             ?= ctest
 VALGRIND          ?= valgrind
 DOXYFILE          = Doxyfile
 
+# The formatter is pinned to major version 18 by AGENTS.md. Normally that is the
+# native `clang-format-18` binary (as installed in CI). Hosts without one can use
+# the local fallback provisioned by `make clang-format-18`; it is selected only
+# when neither the command line nor the environment supplied CLANG_FORMAT.
+# Resolution is deferred to use time so a fallback provisioned by a prerequisite
+# is picked up in the same make invocation.
+CLANG_FORMAT_ROOT ?= $(HOME)/.cache/ztick-bench/clang-format-18
+_CF18_BIN          = $(CLANG_FORMAT_ROOT)/usr/bin/clang-format-18
+_CF18_LIB          = $(CLANG_FORMAT_ROOT)/usr/lib/x86_64-linux-gnu
+CLANG_FORMAT      ?= $(shell if command -v clang-format-18 >/dev/null 2>&1; then \
+			printf 'clang-format-18'; \
+		elif [ -x '$(_CF18_BIN)' ]; then \
+			printf '%s' '$(_CF18_BIN)'; \
+		else \
+			printf 'clang-format-18'; \
+		fi)
+export CLANG_FORMAT
+
+# The extracted binary needs its bundled LLVM libraries ahead of host ones. The
+# original value is captured first so the exported variable cannot refer to
+# itself; the path is prepended only when the local formatter was selected.
+_ZTICK_LD_LIBRARY_PATH := $(LD_LIBRARY_PATH)
+export LD_LIBRARY_PATH = $(if $(filter $(_CF18_BIN),$(CLANG_FORMAT)),$(_CF18_LIB)$(if $(_ZTICK_LD_LIBRARY_PATH),:$(_ZTICK_LD_LIBRARY_PATH)),$(_ZTICK_LD_LIBRARY_PATH))
+
 # Build options
 BUILD_TYPE        ?= Release
 CMAKE_ARGS        ?=
@@ -88,7 +112,7 @@ SANITIZE_ASAN_OPTIONS = detect_leaks=1:detect_stack_use_after_return=1:halt_on_e
 endif
 
 .PHONY: all build test test-verbose clean cppcheck memcheck sanitize run sysinfo verify \
-	format-check format sdk-consumer-check docs docs-open clean-docs help
+	format-check format clang-format-18 sdk-consumer-check docs docs-open clean-docs help
 
 #==============================================================================#
 #                                  RULES                                       #
@@ -172,26 +196,29 @@ sanitize:	## Run tests under ASan + UBSan (LSan on non-Darwin hosts)
 
 ##@ Verification ✅
 
-verify:	## Run the full CI gate (CI_CMAKE_ARGS defaults to -DZTICK_WERROR=ON)
+verify: clang-format-18	## Run the full CI gate (CI_CMAKE_ARGS defaults to -DZTICK_WERROR=ON)
 	@CI_BUILD_DIR="$(CI_BUILD_DIR)" CI_CMAKE_ARGS="$(CI_CMAKE_ARGS)" \
 		CMAKE="$(CMAKE)" CTEST="$(CTEST)" CMAKE_BUILD_TYPE="$(BUILD_TYPE)" \
 		./scripts/verify.sh
 
 ##@ Utility Rules 🛠
 
-format-check:	## Verify C/C++ files follow .clang-format (fails if not)
-	@echo "$(YEL)Checking formatting...$(D)"
+clang-format-18:	## Provision local clang-format 18 if no native pinned binary exists
+	@./scripts/setup_clang_format.sh "$(CLANG_FORMAT_ROOT)"
+
+format-check: clang-format-18	## Verify C/C++ files follow .clang-format with the pinned formatter (fails if not)
+	@echo "$(YEL)Checking formatting with $(CLANG_FORMAT)...$(D)"
 	@find $(FORMAT_DIRS) -type f \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' \) \
-		-print0 2>/dev/null | xargs -0 -r clang-format --dry-run --Werror || { \
+		-print0 2>/dev/null | xargs -0 -r $(CLANG_FORMAT) --dry-run --Werror || { \
 		echo "$(RED)Formatting errors found! Run 'make format'.$(D)"; \
 		exit 1; \
 	}
 	@echo "$(YEL)* $(_SUCCESS) All files are correctly formatted$(D)"
 
-format:	## Format C/C++ files with clang-format
-	@echo "$(YEL)Formatting C/C++ files...$(D)"
+format: clang-format-18	## Format C/C++ files with the pinned formatter
+	@echo "$(YEL)Formatting C/C++ files with $(CLANG_FORMAT)...$(D)"
 	@find $(FORMAT_DIRS) -type f \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' \) \
-		-print0 2>/dev/null | xargs -0 -r clang-format -i
+		-print0 2>/dev/null | xargs -0 -r $(CLANG_FORMAT) -i
 	@echo "$(YEL)* $(_SUCCESS) Codebase formatted$(D)"
 
 sdk-consumer-check:	## Verify an external consumer can find_package(ztick-sdk)

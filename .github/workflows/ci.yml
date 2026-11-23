@@ -21,6 +21,7 @@ jobs:
     env:
       CC: ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }}
       CXX: ${{ matrix.compiler == 'clang' && 'clang++' || 'g++' }}
+      CLANG_FORMAT: clang-format-18 # pin formatting so CI and local checks agree
       TERM: '' # verify.sh must also pass with TERM unset locally
     steps:
       - name: Check out repository
@@ -30,7 +31,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build cppcheck clang-format clang-tidy doxygen
+            cmake ninja-build cppcheck clang-format-18 clang-tidy doxygen
+          clang-format-18 --version
 
       - name: Run full verification with CI flags
         run: make verify

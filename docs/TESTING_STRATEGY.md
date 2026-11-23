@@ -72,8 +72,9 @@ to cover every argument, load, symbol, header and compatibility failure path, as
 no adapter callback runs, and check the real platform loader against the in-tree example
 module. Compatibility tests assert that major/minor mismatches, undeclared capability
 bits and unknown bits are refused with a reason and the exact rejected mask, for both
-inspected and registered adapters. These prove ABI linkability and metadata visibility;
-the App A lifecycle coverage in §3 is separate, while App B remains pending.
+inspected and registered adapters. These prove ABI linkability and metadata visibility. The App A and App B lifecycle
+coverage in §3 is separate from these inspection checks; App B additionally exercises
+the host's runtime loader, which keeps the module mapped without registering it.
 
 ## 3. Custom SDK test applications
 
@@ -99,8 +100,22 @@ processes per-block timed data for both the processor and chain workloads, then 
 Basic and Standard validation and reports measured, unavailable and not-applicable
 metrics. Unit tests cover malformed calls, instance independence, float64/planar
 buffers, sink failure and the executable's aggregate result. This satisfies App A's
-end-to-end criterion but not App B's; the dynamic example stays metadata-only until
-P3.8.
+end-to-end criterion.
+
+**P3.8 App B (Derived design).** The dynamic adapter is compiled as a shared module
+that exports the read-only descriptor and all nine lifecycle callbacks but never links
+or calls the SDK runtime. Its private host harness first inspects metadata, queries
+the SDK version, negotiates the engine capabilities and authorizes first use through
+an explicit consent prompter. Only then does a host-owned runtime loader keep the
+module mapped, revalidate the loaded descriptor and drive the engine workload through
+a selected runner. The harness generates deterministic input and an independent
+float32 reference outside the timed DSP interval, runs a discarded warm-up, processes
+per-block timed engine work using adapter-owned threads, then runs six Strict checks
+and verifies the measured, unavailable, not-applicable and estimated metric statuses.
+CTest runs the same harness in and out of process; in child mode the executable loads
+and negotiates the module itself and returns only the final status because the fixed
+IPC protocol carries no detailed evidence. Unit tests cover runtime-loader failures,
+descriptor validity, malformed callbacks, child-mode status and the in-process result.
 
 Both apps must exercise the full adapter contract in
 [SDK_SPECIFICATION](SDK_SPECIFICATION.md) and must be buildable without modifying
@@ -214,7 +229,7 @@ runs in the same host process (BR §14, ARCHITECTURE §6).
 | BR §17 criterion | Verifying tests |
 | --- | --- |
 | 1. Linux fully supported | System tests on Linux; platform fields checked for `unsupported`/`unavailable` reporting |
-| 2. Two independent SDK test apps | §3 App A built and run (P3.7); App B pending P3.8 |
+| 2. Two independent SDK test apps | §3 App A built and run (P3.7); App B built and run in both runner modes (P3.8) |
 | 3. Static and dynamic integrations | §3 apps A/B; §8 discovery/load tests |
 | 4. Initial metrics and workload levels | §4, §5, §6 tests across processor/chain/engine |
 | 5. CLI, JSON, comparisons, regressions | §9 tests; §6 comparison tests |

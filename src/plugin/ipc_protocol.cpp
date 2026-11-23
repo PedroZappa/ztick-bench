@@ -30,8 +30,6 @@ constexpr std::size_t kStatusOffset = 8U;
 
 } // namespace
 
-// Consumed by the child helper and tests; cppcheck scans src/ but not tests/.
-// cppcheck-suppress unusedFunction
 auto make_status_message(std::int32_t status) noexcept -> StatusMessage {
   StatusMessage message{};
   message[0U] = kMagic0;
@@ -50,8 +48,8 @@ auto make_status_message(std::int32_t status) noexcept -> StatusMessage {
   return message;
 }
 
-auto parse_status_message(const std::uint8_t *data, std::size_t size, std::int32_t &status) noexcept
-    -> bool {
+auto parse_status_message(const std::uint8_t *data, std::size_t size,
+                          std::int32_t &status) noexcept -> bool {
   if (data == nullptr || size != kStatusMessageSize) {
     return false;
   }
