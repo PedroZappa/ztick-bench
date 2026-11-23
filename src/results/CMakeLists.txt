@@ -2,11 +2,14 @@
 # Results, config and comparison library.
 # P1.2 establishes the target; P4.1 adds the config-shaped value tree, the
 # dependency-free JSON layer and the portable config document schema/parser.
+# P4.2 adds the result document schema, status derivation and atomic writer.
 
 add_library(ztick_results STATIC
+  atomic_writer.cpp
   config_document.cpp
   config_value.cpp
   json.cpp
+  result_document.cpp
   results.cpp
 )
 

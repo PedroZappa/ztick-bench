@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 
 /**
  * @brief Verify every factory produces the expected discriminant and value.
@@ -78,6 +79,32 @@ TEST_CASE("config value object members are addressable", "[core][config]") {
 
   REQUIRE_FALSE(ztick::ConfigValue::array().set("k", ztick::ConfigValue::null()));
   REQUIRE(ztick::ConfigValue::array().find("k") == nullptr);
+}
+
+/**
+ * @brief Verify mutable accessors allow in-place edits of nested config data.
+ */
+TEST_CASE("config value mutable accessors edit nested data", "[core][config]") {
+  ztick::ConfigValue object = ztick::ConfigValue::object();
+  object.set("count", ztick::ConfigValue::integer(1));
+  ztick::ConfigValue items = ztick::ConfigValue::array();
+  items.push_back(ztick::ConfigValue::string("old"));
+  object.set("items", std::move(items));
+
+  REQUIRE(object.find("count") != nullptr);
+  *(object.find("count")) = ztick::ConfigValue::integer(2);
+  REQUIRE(object.find("count")->as_integer() == std::int64_t{2});
+
+  ztick::ConfigValue *mutable_items = object.find("items");
+  REQUIRE(mutable_items != nullptr);
+  REQUIRE(mutable_items->as_array() != nullptr);
+  (*(mutable_items->as_array()))[0] = ztick::ConfigValue::string("new");
+  REQUIRE(object.find("items")->as_array()->at(0).as_string() == std::string{"new"});
+  REQUIRE(object.as_object()->size() == 2);
+
+  REQUIRE(ztick::ConfigValue::array().as_object() == nullptr);
+  REQUIRE(ztick::ConfigValue::object().as_array() == nullptr);
+  REQUIRE(ztick::ConfigValue::array().find("key") == nullptr);
 }
 
 /**

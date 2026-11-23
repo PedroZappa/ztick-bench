@@ -135,7 +135,7 @@ and P3.10 are complete.
 ### 2.4 Phase 4 — CLI and results
 
 - [x] **P4.1 — Config document schema and parser.** Done when: Round-trip test passes; version field is present ([RESULTS §6](RESULTS_FORMAT.md#6-config-document)).
-- [ ] **P4.2 — Result document schema and atomic writer.** Done when: Incomplete runs are marked; writes use temporary file plus rename.
+- [x] **P4.2 — Result document schema and atomic writer.** Done when: Incomplete runs are marked; writes use temporary file plus rename.
 - [ ] **P4.3 — CSV projection.** Done when: Shared fields agree between JSON and CSV.
 - [ ] **P4.4 — Build, machine and workload metadata attachment.** Done when: Metadata is present; comparability warnings fire on mismatch.
 - [ ] **P4.5 — CLI skeleton and `list`.** Done when: Command dispatch and documented exit codes work.

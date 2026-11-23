@@ -229,8 +229,24 @@ component fails. *Source: BR §14.*
 A session with any failed or interrupted run has `status: "incomplete"`; it must
 never be rendered as a successful complete benchmark.
 
-**Atomic writes (Derived design):** serialize to a temporary file, flush, then
-atomically rename into place. Failures never truncate an existing result file.
+### 9.1 Result document writer behavior (Derived design)
+
+A v1.0 result document requires the top-level fields in §3 with the types shown
+there. `schema_version` must equal `1.0.0`; `sdk_version` must satisfy
+[SDK_SPECIFICATION §2](SDK_SPECIFICATION.md#2-versioning-and-compatibility).
+`session.id` must be a non-empty string, `config_snapshot` must be a valid §6
+document, and `status` must be `complete` or `incomplete`.
+
+Before encoding, the writer derives the session status from the run records: a
+run that records failures while claiming `complete` is marked `incomplete`; any
+incomplete or failed run, or any session-level failure, makes the session
+`incomplete`. A stored `complete` token is never trusted over that evidence.
+Readers validate the stored token but do not silently rewrite stored results.
+
+**Atomic writes (Derived design):** serialize to a unique temporary file in the
+target directory, flush and close it, then atomically rename it over the target.
+A failure removes the temporary file and never truncates or removes the existing
+target.
 
 ## 10. Comparison records
 

@@ -157,10 +157,22 @@ public:
   [[nodiscard]] const Object *as_object() const noexcept;
 
   /**
+   * @brief Mutably access the object member list.
+   * @return Pointer to the members, or `nullptr` when this is not an object.
+   */
+  [[nodiscard]] Object *as_object() noexcept;
+
+  /**
    * @brief Read the array elements.
    * @return Pointer to the elements, or `nullptr` when this is not an array.
    */
   [[nodiscard]] const Array *as_array() const noexcept;
+
+  /**
+   * @brief Mutably access the array elements.
+   * @return Pointer to the elements, or `nullptr` when this is not an array.
+   */
+  [[nodiscard]] Array *as_array() noexcept;
 
   /**
    * @brief Find an object member by key.
@@ -168,6 +180,13 @@ public:
    * @return Pointer to the member value, or `nullptr` when absent or not an object.
    */
   [[nodiscard]] const ConfigValue *find(std::string_view key) const noexcept;
+
+  /**
+   * @brief Mutably find an object member by key.
+   * @param key Member name to look up.
+   * @return Pointer to the member value, or `nullptr` when absent or not an object.
+   */
+  [[nodiscard]] ConfigValue *find(std::string_view key) noexcept;
 
   /**
    * @brief Insert or replace an object member.

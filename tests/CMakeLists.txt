@@ -34,6 +34,7 @@ endif()
 
 add_executable(ztick_tests
   integration/phase2_engine_test.cpp
+  unit/atomic_writer_test.cpp
   unit/catch2_integration_test.cpp
   unit/compatibility_test.cpp
   unit/config_document_test.cpp
@@ -48,6 +49,7 @@ add_executable(ztick_tests
   unit/linux_system_info_test.cpp
   unit/out_of_process_runner_test.cpp
   unit/profile_model_test.cpp
+  unit/result_document_test.cpp
   unit/runner_test.cpp
   unit/sdk_runtime_test.cpp
   unit/statistics_test.cpp

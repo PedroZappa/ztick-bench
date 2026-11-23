@@ -143,7 +143,9 @@ Labels used in requirement statements; see
 | --- | --- |
 | **Result document** | The canonical versioned JSON representation of a run, including metadata and per-metric statuses. |
 | **Config document** | The portable, versioned JSON description of a benchmark configuration. |
-| **Config-shaped data** | The in-memory object/array/scalar representation of a config document used by core models before JSON serialization; owned by the core `config_value` model, with the portable document shape specified in [RESULTS §6](RESULTS_FORMAT.md#6-config-document). |
+| **Config-shaped data** | The in-memory object/array/scalar representation used before JSON serialization; owned by the `ztick_results` `config_value` model, with the portable config shape specified in [RESULTS §6](RESULTS_FORMAT.md#6-config-document) and the result shape in [RESULTS §3](RESULTS_FORMAT.md#3-result-document-structure). |
+| **Run status** | Lifecycle state of one recorded run: `complete`, `incomplete` or `failed` ([RESULTS §5](RESULTS_FORMAT.md#5-per-run-records)). |
+| **Session status** | Lifecycle state of a result document: `complete` only when every run completed and no failures were recorded ([RESULTS §9.1](RESULTS_FORMAT.md#91-result-document-writer-behavior-derived-design)). |
 | **Build metadata** | Recorded git commit, compiler, version, optimization flags, build configuration and toolchain details. |
 | **Machine metadata** | Recorded CPU, memory, cache, SIMD, OS, kernel and environment information. |
 | **Validation level** | Basic (NaN/Inf, invalid output), Standard (+ reference comparisons), or Strict (+ adapter checks and broader tests); independently selectable. |

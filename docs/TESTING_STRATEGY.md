@@ -252,6 +252,14 @@ value. They also reject a missing or unsupported `config_version`, a future SDK
 minor version, mistyped top-level sections, malformed JSON and non-finite reals,
 and check the numeric SDK version compatibility helper directly.
 
+**P4.2 result coverage (Derived design).** Unit tests derive the expected session
+status independently for complete, incomplete and failed run sets, verify that a
+run with recorded failures is demoted to `incomplete`, and confirm that a failed
+finalization leaves the document unchanged. Writer tests assert exact bytes after
+create and replace, verify that a failed replacement preserves the target and
+leaves no temporary file, and check that invalid documents create no file. A
+write/read round trip confirms that the derived statuses survive serialization.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |
