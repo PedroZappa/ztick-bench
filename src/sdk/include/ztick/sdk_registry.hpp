@@ -36,9 +36,13 @@ std::size_t registered_adapter_count() noexcept;
  * @param identifier NUL-terminated identifier to find; may be NULL.
  * @return The registered descriptor, or NULL when @p identifier is NULL or unknown.
  * @note Thread-safe. The returned pointer is non-owning and remains valid only while
- *       the registering adapter keeps its descriptor alive.
+ *       the registering adapter keeps its descriptor alive. The trailing return type
+ *       is deliberate: older Cppcheck releases parse a leading pointer return type as
+ *       a multiplication and mistake the definition for a call, which makes the
+ *       `unusedFunction` suppression appear unmatched in CI. Keep this form when the
+ *       signature changes.
  */
-const ztick_adapter_descriptor *find_registered_adapter(const char *identifier) noexcept;
+auto find_registered_adapter(const char *identifier) noexcept -> const ztick_adapter_descriptor *;
 
 } // namespace ztick::sdk::detail
 

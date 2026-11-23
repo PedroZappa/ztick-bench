@@ -167,7 +167,9 @@ std::size_t registered_adapter_count() noexcept {
 
 // Consumed by in-tree tests and Phase 3 host code; cppcheck scans src/ but not tests/.
 // cppcheck-suppress unusedFunction
-const ztick_adapter_descriptor *find_registered_adapter(const char *identifier) noexcept {
+// Trailing return type keeps older Cppcheck releases from parsing the leading '*' as
+// multiplication and treating this definition as a call (see sdk_registry.hpp).
+auto find_registered_adapter(const char *identifier) noexcept -> const ztick_adapter_descriptor * {
   if (identifier == nullptr) {
     return nullptr;
   }
