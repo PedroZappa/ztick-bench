@@ -238,7 +238,7 @@ Derived design, satisfying BR §5.1 and BR §6.1:
 
 | Form | Contract |
 | --- | --- |
-| Static | Adapter exposes a registration entry point invoked during host initialization; it is compiled into the executable. |
+| Static | Adapter exposes a registration entry point invoked during host initialization; it is compiled into the executable. The call stores a read-only descriptor and executes no callback. |
 | Dynamic | Shared library exports a versioned entry point plus a read-only metadata descriptor that the host can inspect without executing plugin code. |
 
 Dynamic integrations must expose identity, version, SDK compatibility and declared

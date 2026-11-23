@@ -113,9 +113,11 @@ Planned targets (Derived design — names are not ledger requirements):
 | `ztick_runner` | SDK C ABI, IPC transport | **Yes** — needed for out-of-process execution |
 | `ztick_test_apps` | SDK C ABI | Yes for installation; required for acceptance testing |
 
-The Phase 3 scaffolding targets are `ztick_test_app_static`, which links the compiled
+The Phase 3 example targets are `ztick_test_app_static`, which links the compiled
 runtime, and `ztick_test_app_dynamic`, which stays header-only so the host owns the
-single adapter registry (SDK_SPECIFICATION §10).
+single adapter registry (SDK_SPECIFICATION §10). The static target exposes
+`ztick_test_app_static_register` for host initialization (P3.1); its lifecycle
+callbacks arrive in P3.7.
 
 ### 3.1 Source-tree layout (derived design)
 

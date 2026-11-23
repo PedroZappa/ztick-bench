@@ -62,10 +62,11 @@ test.
 runtime symbol from C11, C++20 and an external-style consumer, and unit tests cover
 the registry and status-message paths
 ([SDK_SPECIFICATION §2](SDK_SPECIFICATION.md#2-versioning-and-compatibility)).
-Scaffold tests read example descriptors without calling lifecycle callbacks, and a
-symbol-inspection check confirms the dynamic example embeds no SDK runtime copy.
-These prove ABI linkability and metadata visibility; they do not satisfy §3 app A/B
-end-to-end criteria.
+Example tests read descriptors without calling lifecycle callbacks, and a
+symbol-inspection check confirms the dynamic example embeds no SDK runtime copy. A
+static registration check proves the minimal adapter registers once and is discoverable
+through the private host registry observers. These prove ABI linkability and metadata visibility; they
+do not satisfy §3 app A/B end-to-end criteria.
 
 ## 3. Custom SDK test applications
 

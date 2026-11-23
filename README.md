@@ -4,8 +4,9 @@
 
 > **Repository status:** requirements baseline and v1.0 technical specification complete;
 > roadmap phases 1–2 (Foundation, Benchmark engine) implemented and verified. Phase 3
-> (Integrations) is in preparation: the SDK runtime is compiled and link-tested, while
-> adapters, trust and runners remain to be built — see [ROADMAP](docs/ROADMAP.md).
+> (Integrations) is in progress: the SDK runtime is compiled and link-tested and a
+> minimal static adapter registers and is discoverable through the private host registry,
+> while full adapters, trust and runners remain to be built — see [ROADMAP](docs/ROADMAP.md).
 > **v1.0 scope:** roadmap phases 1–6; phase 7 (macOS/Windows) is post-v1.0.
 
 ---

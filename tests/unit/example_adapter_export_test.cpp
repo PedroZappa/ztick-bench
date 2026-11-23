@@ -3,7 +3,7 @@
  * @file example_adapter_export_test.cpp
  * @brief Verify the Phase 3 example descriptors are inspectable without code execution.
  *
- * The static scaffold is linked directly; the dynamic scaffold is loaded as a
+ * The static example is linked directly; the dynamic example is loaded as a
  * module and its read-only data symbol is read through dlsym. No lifecycle
  * callback is called, so this does not claim either test app is complete.
  */
@@ -17,7 +17,7 @@
 
 #include <dlfcn.h>
 
-/** @brief Descriptor published by the static example scaffolding. */
+/** @brief Descriptor published by the static example adapter. */
 extern "C" const ztick_adapter_descriptor ztick_test_app_static_descriptor;
 
 namespace {
@@ -53,7 +53,7 @@ struct LibraryHandle {
  * @brief Check descriptor headers, identity and SDK version without calling ops.
  * @param descriptor Descriptor to inspect; may be NULL.
  * @param identifier Expected stable identifier.
- * @return True when the descriptor is a valid metadata-only scaffold.
+ * @return True when the descriptor is a valid metadata-only example.
  */
 bool has_scaffold_identity(const ztick_adapter_descriptor *descriptor, const char *identifier) {
   if (descriptor == nullptr || descriptor->size < sizeof(*descriptor) ||
@@ -78,7 +78,7 @@ bool has_scaffold_identity(const ztick_adapter_descriptor *descriptor, const cha
 }
 
 /**
- * @brief Check that a scaffold declares no executable lifecycle callbacks.
+ * @brief Check that an example declares no executable lifecycle callbacks.
  * @param ops Lifecycle table to inspect.
  * @return True when every callback pointer is NULL.
  */
@@ -94,7 +94,7 @@ bool has_no_callbacks(const ztick_adapter_ops &ops) {
  * @brief Verify both examples expose read-only metadata and no lifecycle callbacks.
  */
 TEST_CASE("example adapters expose metadata only", "[sdk][scaffold]") {
-  CHECK(has_scaffold_identity(&ztick_test_app_static_descriptor, "ztick.test.static.scaffold"));
+  CHECK(has_scaffold_identity(&ztick_test_app_static_descriptor, "ztick.test.static.minimal"));
   CHECK(has_no_callbacks(ztick_test_app_static_descriptor.ops));
 
   LibraryHandle library{dlopen(ZTICK_DYNAMIC_EXAMPLE_PATH, RTLD_NOW | RTLD_LOCAL)};

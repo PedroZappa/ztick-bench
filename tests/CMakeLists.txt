@@ -53,16 +53,18 @@ target_link_libraries(ztick_tests
     ztick_sysinfo_report
 )
 
-# Scaffold verification needs the optional example targets and the platform loader.
-# The scaffold test is added only when the examples exist, so builds with
+# P3.1 static adapter registration needs no platform loader.
+if(ZTICK_BUILD_EXAMPLES)
+  target_sources(ztick_tests PRIVATE unit/static_adapter_registry_test.cpp)
+  target_link_libraries(ztick_tests PRIVATE ztick_test_app_static)
+endif()
+
+# Scaffold export inspection needs the optional example targets and the platform
+# loader. Those sources are added only when the examples exist, so builds with
 # -DZTICK_BUILD_EXAMPLES=OFF do not reference those targets.
 if(ZTICK_BUILD_EXAMPLES AND UNIX AND NOT APPLE)
   target_sources(ztick_tests PRIVATE unit/example_adapter_export_test.cpp)
-  target_link_libraries(ztick_tests
-    PRIVATE
-      ztick_test_app_static
-      ${CMAKE_DL_LIBS}
-  )
+  target_link_libraries(ztick_tests PRIVATE ${CMAKE_DL_LIBS})
   target_compile_definitions(ztick_tests
     PRIVATE
       ZTICK_DYNAMIC_EXAMPLE_PATH="$<TARGET_FILE:ztick_test_app_dynamic>"

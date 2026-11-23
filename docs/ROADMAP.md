@@ -90,13 +90,15 @@ The public `ZTICK_STRUCT_LAYOUT_VERSION` macro tells third parties what to put i
 struct's `version` field. Catch2 unit tests, a standalone C11 link test, the
 external-style consumer check and a dynamic-module symbol check exercise the runtime;
 the plugin host and the static example link the compiled library. The dynamic example
-is header-only by contract so the host owns a single registry. Both examples expose
-metadata-only descriptors so the export contract can be checked without executing
-plugin code. P3.1–P3.10 remain open: no full adapter, trust enforcement, runner or
-end-to-end test application exists yet. P3.10 also bumps the development version to
-`0.3.0-dev` per BR §21.
+is header-only by contract so the host owns a single registry. P3.1–P3.10 remain open:
+no full adapter, trust enforcement, runner or end-to-end test application exists yet.
+P3.10 also bumps the development version to `0.3.0-dev` per BR §21.
 
-- [ ] **P3.1 — Static adapter registry and one minimal static adapter.** Done when: The adapter registers and is discoverable.
+**Progress (after P3.1).** The minimal static adapter now has an explicit registration
+entry point and is discoverable in-process through the private host registry observers;
+its lifecycle callbacks remain P3.7 work. P3.2–P3.10 remain open.
+
+- [x] **P3.1 — Static adapter registry and one minimal static adapter.** Done when: The adapter registers and is discoverable (verified through the private host registry observers).
 - [ ] **P3.2 — Dynamic loader with metadata-only inspection.** Done when: Metadata is readable without executing plugin code (BR §6.1).
 - [ ] **P3.3 — SDK version and capability negotiation before use.** Done when: Incompatible integrations are refused with a reason.
 - [ ] **P3.4 — Trust list and first-run confirmation flow.** Done when: An untrusted plugin requires explicit consent (BR §6.2).
