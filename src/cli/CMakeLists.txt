@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
-# CLI command-layer library. The ztick-bench executable lands in Phase 4.
-# P1.2 establishes the library target from a placeholder source.
+# CLI command layer and the ztick-bench executable. The dispatch module owns
+# argument routing and exit codes; the executable only writes the returned
+# streams. P4.5 implements --help, --version and `list`.
 
 add_library(ztick_cli STATIC
   cli.cpp
@@ -9,8 +10,13 @@ add_library(ztick_cli STATIC
 target_include_directories(ztick_cli
   PUBLIC
     "${PROJECT_SOURCE_DIR}/include"
-  PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+
+# Captured at configure time so --version agrees with the result build metadata.
+target_compile_definitions(ztick_cli
+  PUBLIC
+    ZTICK_CLI_VERSION="${ZTICK_VERSION_DISPLAY}"
 )
 
 target_link_libraries(ztick_cli
@@ -18,4 +24,13 @@ target_link_libraries(ztick_cli
     ztick_core
     ztick_results
     ztick_platform
+)
+
+add_executable(ztick-bench
+  main.cpp
+)
+
+target_link_libraries(ztick-bench
+  PRIVATE
+    ztick_cli
 )

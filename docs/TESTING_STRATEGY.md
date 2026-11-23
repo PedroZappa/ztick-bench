@@ -280,6 +280,13 @@ round trip through the atomic result writer. A platform-layer test converts an
 injected inventory with all four availability states and asserts each field keeps
 its state and reason.
 
+**P4.5 CLI coverage (Derived design).** Unit tests call `dispatch` directly for
+every exit-code token, global options, `list` subjects, malformed arguments and
+each recognized-but-unavailable command, asserting the exact stream carrying each
+message. An executable-level test runs the built binary through CMake to prove
+that the returned code reaches the shell and that help, version, list, usage-error
+and unavailable paths write the expected text (BR §12.2).
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |

@@ -111,7 +111,7 @@ else
 SANITIZE_ASAN_OPTIONS = detect_leaks=1:detect_stack_use_after_return=1:halt_on_error=1
 endif
 
-.PHONY: all build test test-verbose clean cppcheck memcheck sanitize run sysinfo verify \
+.PHONY: all build test test-verbose clean cppcheck memcheck sanitize run list sysinfo verify \
 	format-check format clang-format-18 sdk-consumer-check docs docs-open clean-docs help
 
 #==============================================================================#
@@ -146,12 +146,15 @@ run: build	## Run a config: make run CONFIG=path/to/config.json
 		exit 1; \
 	fi
 	@if [ ! -x "$(CLI_BINARY)" ]; then \
-		echo "$(RED)$(CLI_BINARY) is not built: the CLI arrives with Phase 4.$(D)"; \
+		echo "$(RED)$(CLI_BINARY) is not built$(D)"; \
 		exit 1; \
 	fi
 	@echo "$(YEL)Running $(CONFIG)...$(D)"
 	@$(CLI_BINARY) run $(CONFIG)
 	@echo "$(YEL)* $(_SUCCESS) Benchmark completed$(D)"
+
+list: build	## List built-in benchmark profiles
+	@$(CLI_BINARY) list
 
 sysinfo: build	## Print the system-info inventory with availability states
 	@echo "$(YEL)Collecting system information...$(D)"

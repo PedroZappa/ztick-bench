@@ -36,6 +36,7 @@ add_executable(ztick_tests
   integration/phase2_engine_test.cpp
   unit/atomic_writer_test.cpp
   unit/catch2_integration_test.cpp
+  unit/cli_test.cpp
   unit/compatibility_test.cpp
   unit/config_document_test.cpp
   unit/config_value_test.cpp
@@ -76,6 +77,7 @@ target_link_libraries(ztick_tests
   PRIVATE
     Catch2::Catch2WithMain
     ztick::sdk
+    ztick_cli
     ztick_core
     ztick_results
     ztick_plugin_host
@@ -192,6 +194,15 @@ add_test(
   COMMAND "${CMAKE_COMMAND}"
           "-DSYSINFO_BINARY=$<TARGET_FILE:ztick-sysinfo>"
           -P "${PROJECT_SOURCE_DIR}/tests/check_sysinfo_output.cmake"
+)
+
+# P4.5: verify the executable returns the documented CI exit codes and writes
+# the dispatch text to the expected stream.
+add_test(
+  NAME integration.cli_dispatch
+  COMMAND "${CMAKE_COMMAND}"
+          "-DCLI_BINARY=$<TARGET_FILE:ztick-bench>"
+          -P "${PROJECT_SOURCE_DIR}/tests/check_cli_dispatch.cmake"
 )
 
 # BR §17.8: verify an out-of-tree consumer with find_package(ztick-sdk).

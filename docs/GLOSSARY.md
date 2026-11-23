@@ -152,6 +152,8 @@ Labels used in requirement statements; see
 | **Machine metadata** | Recorded CPU, memory, cache, SIMD, OS, kernel and environment information. |
 | **Metadata field** | One availability-aware `status`/`value`/`reason` record in a result's build, machine or environment section ([RESULTS §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design)). |
 | **Comparability warning** | A record reporting that a build, machine or environment field differs between two result documents ([RESULTS §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design)). |
+| **Exit code** | Stable process status returned by CLI command dispatch: `0` success, `1` usage_error, `2` unavailable, `3` failure ([PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)). |
+| **Command dispatch** | Parsing CLI arguments into one documented command or global option and selecting the output and exit code ([PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)). |
 | **Validation level** | Basic (NaN/Inf, invalid output), Standard (+ reference comparisons), or Strict (+ adapter checks and broader tests); independently selectable. |
 | **Check outcome** | The recorded result of one validation check, including its status, tolerances, reference source and observed error; a single pass/fail flag is not sufficient. |
 | **Reference output** | Expected output supplied by an adapter, a workload reference file, deterministic generation, or a designated reference implementation. |

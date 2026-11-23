@@ -108,6 +108,23 @@ ztick-bench plugin inspect
 The CLI supports configuration files, command-line overrides, CI-friendly exit
 codes and machine-readable output. *Source: BR §12.2.*
 
+**Derived design (P4.5).** Argument routing lives in the `ztick_cli` module, which
+returns output text, error text and a stable exit code; the `ztick-bench`
+executable only writes those streams and returns the code. The CI contract is:
+
+| Code | Token | Meaning |
+| --- | --- | --- |
+| `0` | `success` | The command completed as requested. |
+| `1` | `usage_error` | Unknown command or option, extra arguments or malformed subcommand. |
+| `2` | `unavailable` | Recognized command whose implementation has not landed; help text lists the full command set. |
+| `3` | `failure` | The command ran but hit a runtime or infrastructure failure. |
+
+`--help` (`-h`) and `--version` are global options. `list` and `list profiles`
+list the built-in profiles from [BENCHMARK §5](BENCHMARK_SPECIFICATION.md#5-profiles).
+Other documented commands are recognized and return `unavailable` until their
+roadmap tasks land. Machine-readable output formats for data-bearing commands are
+owned by the later command tasks (BR §12.2).
+
 ## 4. Document ownership map
 
 | Topic | Owner | Ledger source |

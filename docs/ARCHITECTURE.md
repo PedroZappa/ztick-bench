@@ -106,7 +106,8 @@ Planned targets (Derived design — names are not ledger requirements):
 | `ztick_core` | SDK headers, workload, timing, statistics, validation, results | No |
 | `ztick_results` | JSON serialization, config value tree, portable config and result document schemas, atomic writer, CSV projection and metadata attachment/comparison | No (CSV may be optional) |
 | `ztick_platform` | platform abstraction + Linux implementation + inventory-to-metadata adapter; depends on `ztick_results` for the field type | Monitoring implementation is platform-selected |
-| `ztick_cli` | core, results | No for CLI users |
+| `ztick_cli` | core, results, platform; owns command dispatch, help/version and `list` | No for CLI users |
+| `ztick-bench` | `ztick_cli`; thin executable that writes dispatch output and returns its exit code | No for CLI users |
 | `ztick_tui` | core and results through the C ABI via Rust FFI; Cargo crate driven by CMake | **Yes** — Rust toolchain and ratatui are needed only for TUI builds |
 | `ztick_static_adapters` | SDK C ABI | **Yes** |
 | `ztick_plugin_host` | SDK C ABI, platform library loader | **Yes** |
@@ -147,7 +148,7 @@ src/platform/include/           platform abstraction headers
 src/platform/linux/             Linux implementation
 src/plugin/                     discovery, trust, loader, runner/IPC
 src/results/                    JSON, CSV, config, comparisons
-src/cli/                        CLI command layer
+src/cli/                        CLI command layer and ztick-bench executable
 src/tui/                        Rust/ratatui dashboard front end (Cargo crate)
 tools/ztick-sysinfo/            Phase 1 developer system-info executable
 tests/unit/                     unit tests (Catch2 v3)
