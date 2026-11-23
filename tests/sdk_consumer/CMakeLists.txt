@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
-# Scratch consumer used by scripts/check_sdk_consumer.sh to verify BR §17.8:
-# a third party can find_package(ztick-sdk) and include the installed headers
-# without modifying the ztick-bench repository.
+# Scratch consumers used by scripts/check_sdk_consumer.sh to verify BR §17.8:
+# a third party can find_package(ztick-sdk), include the installed headers and
+# link against every compiled runtime symbol without modifying the repository.
 cmake_minimum_required(VERSION 3.16)
 
 project(ztick_sdk_consumer LANGUAGES C CXX)

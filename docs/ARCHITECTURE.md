@@ -102,7 +102,7 @@ Planned targets (Derived design — names are not ledger requirements):
 
 | Target | Depends on | Optional? |
 | --- | --- | --- |
-| `ztick_sdk` | C ABI headers, version definitions | No |
+| `ztick_sdk` | C ABI headers, compiled runtime symbols, version definitions | No |
 | `ztick_core` | SDK headers, workload, timing, statistics, validation, results | No |
 | `ztick_results` | JSON serialization | No (CSV may be optional) |
 | `ztick_platform` | platform abstraction + Linux implementation | Monitoring implementation is platform-selected |
@@ -113,6 +113,10 @@ Planned targets (Derived design — names are not ledger requirements):
 | `ztick_runner` | SDK C ABI, IPC transport | **Yes** — needed for out-of-process execution |
 | `ztick_test_apps` | SDK C ABI | Yes for installation; required for acceptance testing |
 
+The Phase 3 scaffolding targets are `ztick_test_app_static`, which links the compiled
+runtime, and `ztick_test_app_dynamic`, which stays header-only so the host owns the
+single adapter registry (SDK_SPECIFICATION §10).
+
 ### 3.1 Source-tree layout (derived design)
 
 The confirmed repository layout (BR §22) is:
@@ -120,6 +124,7 @@ The confirmed repository layout (BR §22) is:
 ```text
 include/ztick/                  installed public C headers (sdk.h, types.h, version.h)
 include/ztick/cpp/              installed C++20 convenience wrappers
+src/sdk/                        compiled C ABI runtime and private registry observers
 src/core/                       engine, workload, timing, statistics, validation
 src/platform/include/           platform abstraction headers
 src/platform/linux/             Linux implementation

@@ -45,10 +45,10 @@ them after Phase 1 is a breaking change requiring explicit approval.
 | Macro prefix | `ZTICK_` for all public macros |
 | C subset | C11-compatible public headers; `<stdint.h>` and `<stddef.h>` only; fixed-width integers; no C++ types, exceptions, templates or C++ ABI |
 | Handles | Opaque incomplete structs, e.g. `typedef struct ztick_adapter ztick_adapter;`, created and destroyed by SDK functions |
-| Struct evolution | Public structs begin with `uint32_t size` and `uint32_t version`; zero-initialize before use |
+| Struct evolution | Public structs begin with `uint32_t size` and `uint32_t version`; zero-initialize, then set `size = sizeof(struct)` and `version = ZTICK_STRUCT_LAYOUT_VERSION` |
 | Visibility | `ZTICK_API` export/import macro (`visibility("default")` on GCC/Clang) |
 | Calling convention | Plain C; no platform-specific decorators in public headers |
-| Version macros | `ZTICK_SDK_VERSION_MAJOR/MINOR/PATCH` = `1`, `0`, `0` |
+| Version macros | `ZTICK_SDK_VERSION_MAJOR/MINOR/PATCH` = `1`, `0`, `0`; additive derived `ZTICK_STRUCT_LAYOUT_VERSION` = `1` |
 
 ### 1.2 Core type inventory
 
@@ -93,6 +93,21 @@ cannot run. *Source: BR §5.3, §5.4.*
 Compatibility failures are reported as `unavailable`/`unsupported` in results rather
 than silently skipped, per BR §17 and
 [PROJECT_SPEC §6](PROJECT_SPEC.md#6-cross-cutting-invariants).
+
+**Runtime implementation (Derived design).** For ABI 1.0.0, a public struct passed to
+a runtime check must declare `size >= sizeof(struct)` and
+`version == ZTICK_STRUCT_LAYOUT_VERSION` (published by `<ztick/version.h>`); a
+malformed header returns `ztick_status_invalid_argument`. `ztick_sdk_get_version`
+writes only the version components and leaves the caller's `size`/`version` fields
+intact. `ztick_sdk_is_compatible` applies the major/minor rules above, ignores patch
+differences and reports a malformed header as `invalid_argument`. The registry behind
+`ztick_register_adapter` holds non-owning descriptor pointers, requires distinct
+identifiers and is thread-safe; descriptors must outlive the host. Registration
+validates the `size`/`version` headers of the descriptor, its info/ops tables and both
+nested version structs, plus identity strings and SDK compatibility; it creates no
+instance, executes no callback and grants no trust (BR §6.2). Status strings are
+static, NUL-terminated and never NULL, including for unknown codes. No exception
+crosses the C boundary (§8).
 
 ## 3. Adapter contract: lifecycle
 
@@ -230,6 +245,15 @@ Dynamic integrations must expose identity, version, SDK compatibility and declar
 capabilities for the trust UI (BR §6.2). Loading, discovery paths, confirmation and
 isolation are host responsibilities specified in
 [ARCHITECTURE §5](ARCHITECTURE.md#5-plugin-subsystem-host-side).
+
+**Runtime ownership (Derived design).** `ztick_sdk` is a compiled static library whose
+implementation language is C++, so a C or Rust FFI host links a C++ runtime even though
+the boundary itself is pure C (§1.1). A dynamic adapter must not link `ztick_sdk` or
+call its runtime functions: it exposes read-only metadata and the host owns the single
+registry. An in-tree CTest check inspects the example module's dynamic symbols to hold
+that boundary; P3.8 adds lifecycle callbacks without changing runtime ownership.
+Static-library export decoration on Windows is deferred to Phase 7 (post-v1.0, BR §1,
+§16).
 
 ## 11. Illustrative C shape (non-normative)
 

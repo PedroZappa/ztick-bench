@@ -35,6 +35,7 @@ add_executable(ztick_tests
   unit/platform_interface_test.cpp
   unit/linux_system_info_test.cpp
   unit/profile_model_test.cpp
+  unit/sdk_runtime_test.cpp
   unit/statistics_test.cpp
   unit/sysinfo_report_test.cpp
   unit/validation_test.cpp
@@ -51,6 +52,35 @@ target_link_libraries(ztick_tests
     ztick_platform
     ztick_sysinfo_report
 )
+
+# Scaffold verification needs the optional example targets and the platform loader.
+# The scaffold test is added only when the examples exist, so builds with
+# -DZTICK_BUILD_EXAMPLES=OFF do not reference those targets.
+if(ZTICK_BUILD_EXAMPLES AND UNIX AND NOT APPLE)
+  target_sources(ztick_tests PRIVATE unit/example_adapter_export_test.cpp)
+  target_link_libraries(ztick_tests
+    PRIVATE
+      ztick_test_app_static
+      ${CMAKE_DL_LIBS}
+  )
+  target_compile_definitions(ztick_tests
+    PRIVATE
+      ZTICK_DYNAMIC_EXAMPLE_PATH="$<TARGET_FILE:ztick_test_app_dynamic>"
+  )
+
+  # The dynamic scaffold must stay header-only so the host owns the only registry.
+  find_program(ZTICK_NM_PROGRAM nm)
+  if(ZTICK_NM_PROGRAM)
+    add_test(
+      NAME unit.sdk.dynamic_no_runtime_symbols
+      COMMAND "${CMAKE_COMMAND}"
+              "-DMODULE_PATH=$<TARGET_FILE:ztick_test_app_dynamic>"
+              "-DNM_PROGRAM=${ZTICK_NM_PROGRAM}"
+              -P "${PROJECT_SOURCE_DIR}/tests/check_dynamic_adapter_symbols.cmake"
+    )
+  endif()
+endif()
+
 catch_discover_tests(ztick_tests)
 
 add_executable(ztick_version_c11_test unit/version_header_c11_test.c)
@@ -94,6 +124,11 @@ target_include_directories(ztick_sdk_cpp20_test
     "${PROJECT_SOURCE_DIR}/include"
 )
 add_test(NAME unit.sdk.cpp20 COMMAND ztick_sdk_cpp20_test)
+
+# Link-level C11 check for the compiled SDK runtime (Phase 3 preparation).
+add_executable(ztick_sdk_runtime_c11_test unit/sdk_runtime_c11_test.c)
+target_link_libraries(ztick_sdk_runtime_c11_test PRIVATE ztick::sdk)
+add_test(NAME unit.sdk.runtime.c11 COMMAND ztick_sdk_runtime_c11_test)
 
 add_executable(ztick_cpp_wrapper_cpp20_test unit/cpp_wrapper_cpp20_test.cpp)
 target_include_directories(ztick_cpp_wrapper_cpp20_test

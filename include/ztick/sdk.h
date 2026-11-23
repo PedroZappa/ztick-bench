@@ -13,8 +13,9 @@
  * export it under @ref ZTICK_ADAPTER_EXPORT_SYMBOL so a host can inspect
  * identity and capabilities without executing plugin code (BR §6.1). Static
  * adapters publish the same descriptor through @ref ztick_register_adapter.
- * Callers zero-initialize every public struct, set its `size` and `version`
- * fields, and use the `ztick_status` codes as the `int32_t` return values.
+ * Callers zero-initialize every public struct, set `size` to `sizeof(struct)` and
+ * `version` to @ref ZTICK_STRUCT_LAYOUT_VERSION, and use the `ztick_status` codes
+ * as the `int32_t` return values.
  */
 
 /** @brief Include guard for the public SDK C ABI header. */
@@ -219,17 +220,23 @@ typedef struct ztick_adapter_descriptor {
 
 /**
  * @brief Query the SDK ABI version at runtime.
- * @param out_version Receives major, minor and patch; must not be NULL.
- * @return A `ztick_status` code.
- * @note Reports the same values as the `ZTICK_SDK_VERSION_*` macros.
+ * @param out_version Receives major, minor and patch; its `size` and `version`
+ *        fields must be initialized by the caller and must not be NULL.
+ * @return A `ztick_status` code, including `ztick_status_invalid_argument` for a
+ *         malformed struct header.
+ * @note Reports the same values as the `ZTICK_SDK_VERSION_*` macros; the caller's
+ *       `size` and `version` fields are left unchanged.
  */
 ZTICK_API int32_t ztick_sdk_get_version(ztick_version *out_version);
 
 /**
  * @brief Check an adapter's SDK version against this host's compatibility rules.
  * @param adapter_sdk_version Version the adapter was built against; must not be NULL.
- * @return `ztick_status_success` when compatible, otherwise `ztick_status_incompatible`.
- * @note Major versions must match exactly; an older host refuses a newer minor.
+ * @return `ztick_status_success` when compatible, `ztick_status_incompatible` on a
+ *         major/minor mismatch, or `ztick_status_invalid_argument` when the struct
+ *         header is malformed.
+ * @note Set `version` to @ref ZTICK_STRUCT_LAYOUT_VERSION before the call. Major
+ *       versions must match exactly; an older host refuses a newer minor.
  */
 ZTICK_API int32_t ztick_sdk_is_compatible(const ztick_version *adapter_sdk_version);
 
@@ -237,7 +244,8 @@ ZTICK_API int32_t ztick_sdk_is_compatible(const ztick_version *adapter_sdk_versi
  * @brief Register a static adapter descriptor during host initialization.
  * @param descriptor Read-only descriptor; must not be NULL and must outlive the registry.
  * @return A `ztick_status` code, e.g. `ztick_status_incompatible` on version mismatch.
- * @note Registration alone never creates an instance or executes processing.
+ * @note Registration validates struct headers and identity only; it creates no
+ *       instance, executes no callback and grants no trust.
  */
 ZTICK_API int32_t ztick_register_adapter(const ztick_adapter_descriptor *descriptor);
 

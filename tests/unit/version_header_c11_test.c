@@ -18,6 +18,7 @@ _Static_assert(__STDC_VERSION__ >= 201112L, "version.h test requires C11");
 _Static_assert(ZTICK_SDK_VERSION_MAJOR == 1, "unexpected SDK ABI major version");
 _Static_assert(ZTICK_SDK_VERSION_MINOR == 0, "unexpected SDK ABI minor version");
 _Static_assert(ZTICK_SDK_VERSION_PATCH == 0, "unexpected SDK ABI patch version");
+_Static_assert(ZTICK_STRUCT_LAYOUT_VERSION == 1, "unexpected struct layout version");
 
 /**
  * @brief Entry point for the standalone C11 header check.

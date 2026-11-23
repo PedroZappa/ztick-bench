@@ -3,8 +3,9 @@
 **General-purpose, offline-first DSP and audio benchmarking application.**
 
 > **Repository status:** requirements baseline and v1.0 technical specification complete;
-> roadmap phases 1–2 (Foundation, Benchmark engine) implemented and verified. Later
-> phases are planned — see [ROADMAP](docs/ROADMAP.md) for sequencing.
+> roadmap phases 1–2 (Foundation, Benchmark engine) implemented and verified. Phase 3
+> (Integrations) is in preparation: the SDK runtime is compiled and link-tested, while
+> adapters, trust and runners remain to be built — see [ROADMAP](docs/ROADMAP.md).
 > **v1.0 scope:** roadmap phases 1–6; phase 7 (macOS/Windows) is post-v1.0.
 
 ---

@@ -65,23 +65,16 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# SDK target and installation (P1.7, BR §17.8). The C ABI headers and C++20
-# wrappers are header-only at this stage, so ztick_sdk is an INTERFACE target.
-# It is exported as ztick::sdk for third-party consumers using find_package.
+# Install and export rules for the SDK (P1.7, BR §17.8). The compiled target is
+# declared in src/sdk/CMakeLists.txt and exported as ztick::sdk for find_package.
 include(GNUInstallDirs)
-
-add_library(ztick_sdk INTERFACE)
-add_library(ztick::sdk ALIAS ztick_sdk)
-set_target_properties(ztick_sdk PROPERTIES EXPORT_NAME sdk)
-
-target_include_directories(ztick_sdk
-  INTERFACE
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-)
+add_subdirectory(src/sdk)
 
 install(TARGETS ztick_sdk
   EXPORT ztick-sdk-targets
+  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
 )
 
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/include/ztick/"
@@ -120,7 +113,8 @@ install(FILES
 include(CTest)
 
 # Source-tree targets (ARCHITECTURE §3.1). Per-directory CMakeLists.txt files
-# declare the targets; later phases populate their implementations.
+# declare the targets; later phases populate their implementations. The SDK target
+# was already added above because install/export rules need it.
 add_subdirectory(src/results)
 add_subdirectory(src/core)
 add_subdirectory(src/platform)
@@ -131,14 +125,15 @@ add_subdirectory(src/tui)
 # Phase 1 developer tool; prints the inventory with explicit availability states.
 add_subdirectory(tools/ztick-sysinfo)
 
-# Standalone public-header checks are built and registered only with testing on.
-if(BUILD_TESTING)
-  add_subdirectory(tests)
-endif()
-
-# Optional example SDK test applications (Phase 3 implementations, BR §17.2).
-option(ZTICK_BUILD_EXAMPLES "Build placeholder/example SDK test applications" ON)
+# Optional metadata-only SDK test-app scaffolding (Phase 3, BR §17.2). Added
+# before tests so CTest can exercise the example descriptors when they exist.
+option(ZTICK_BUILD_EXAMPLES "Build SDK test-app scaffolding" ON)
 if(ZTICK_BUILD_EXAMPLES)
   add_subdirectory(examples/static_adapter)
   add_subdirectory(examples/dynamic_adapter)
+endif()
+
+# Standalone public-header checks are built and registered only with testing on.
+if(BUILD_TESTING)
+  add_subdirectory(tests)
 endif()

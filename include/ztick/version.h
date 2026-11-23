@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /**
  * @file version.h
- * @brief Compile-time SDK ABI version for the public C integration boundary.
+ * @brief Compile-time SDK ABI version and struct layout version for the C boundary.
  *
  * This header is self-contained C11 and belongs to the installed public include
  * root. It defines only macros; the runtime version query is part of the C ABI
@@ -35,5 +35,14 @@
  * @note Patch differences are compatible (SDK_SPECIFICATION §2).
  */
 #define ZTICK_SDK_VERSION_PATCH 0
+
+/**
+ * @brief Layout version expected in the `version` field of every public struct.
+ * @note Set `size` to `sizeof(struct)` and `version` to this value before passing a
+ *       public struct to the SDK runtime; any other value is refused with
+ *       `ztick_status_invalid_argument` (SDK_SPECIFICATION §2). This struct layout
+ *       version is independent of the `ZTICK_SDK_VERSION_*` ABI components.
+ */
+#define ZTICK_STRUCT_LAYOUT_VERSION 1
 
 #endif // ZTICK_VERSION_H

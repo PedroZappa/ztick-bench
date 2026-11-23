@@ -18,6 +18,7 @@ static_assert(__cplusplus >= 202002L, "version.h test requires C++20");
 static_assert(ZTICK_SDK_VERSION_MAJOR == 1, "unexpected SDK ABI major version");
 static_assert(ZTICK_SDK_VERSION_MINOR == 0, "unexpected SDK ABI minor version");
 static_assert(ZTICK_SDK_VERSION_PATCH == 0, "unexpected SDK ABI patch version");
+static_assert(ZTICK_STRUCT_LAYOUT_VERSION == 1, "unexpected struct layout version");
 
 /**
  * @brief Entry point for the standalone C++20 header check.

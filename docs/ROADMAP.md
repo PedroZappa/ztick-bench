@@ -83,6 +83,19 @@ only state the increment and its completion condition.
 
 ### 2.3 Phase 3 — Integrations
 
+**Entry state (2026-11-23).** The blocking SDK runtime gap recorded in §4 is closed:
+`ztick_sdk` is now a compiled library defining `ztick_sdk_get_version`,
+`ztick_sdk_is_compatible`, `ztick_register_adapter` and `ztick_status_message`.
+The public `ZTICK_STRUCT_LAYOUT_VERSION` macro tells third parties what to put in a
+struct's `version` field. Catch2 unit tests, a standalone C11 link test, the
+external-style consumer check and a dynamic-module symbol check exercise the runtime;
+the plugin host and the static example link the compiled library. The dynamic example
+is header-only by contract so the host owns a single registry. Both examples expose
+metadata-only descriptors so the export contract can be checked without executing
+plugin code. P3.1–P3.10 remain open: no full adapter, trust enforcement, runner or
+end-to-end test application exists yet. P3.10 also bumps the development version to
+`0.3.0-dev` per BR §21.
+
 - [ ] **P3.1 — Static adapter registry and one minimal static adapter.** Done when: The adapter registers and is discoverable.
 - [ ] **P3.2 — Dynamic loader with metadata-only inspection.** Done when: Metadata is readable without executing plugin code (BR §6.1).
 - [ ] **P3.3 — SDK version and capability negotiation before use.** Done when: Incompatible integrations are refused with a reason.
@@ -163,9 +176,9 @@ Recorded separately from v1.0 requirements per BR §19.
 | Plugin marketplace / online package manager | BR §6.1 | Explicitly not required for v1.0 |
 | SQLite historical storage/querying | BR §12.3 | Later local storage layer |
 | macOS support | BR §1, §16 | Phase 7 |
-| Windows preparation | BR §1, §16 | Phase 7 and beyond |
+| Windows preparation | BR §1, §16 | Phase 7 and beyond; includes choosing static/shared SDK export decoration |
 | Benchmark suites (`suite run`) | BR §18 Q47, §21 | **Deferred 2026-11-20** — post-v1.0; config format kept suite-friendly |
-| SDK runtime symbols — `ztick_sdk_get_version`, `ztick_sdk_is_compatible`, `ztick_register_adapter`, `ztick_status_message` | SDK_SPECIFICATION §2, §7 | Declared in `include/ztick/sdk.h` but not yet defined by any target; Blocking item for Phase 3 (P3.1/P3.3/P3.9): add a compiled SDK implementation and consumer link tests that call each symbol |
+| SDK runtime symbols — `ztick_sdk_get_version`, `ztick_sdk_is_compatible`, `ztick_register_adapter`, `ztick_status_message` | SDK_SPECIFICATION §2, §7 | **Resolved 2026-11-23:** compiled into `ztick_sdk` with unit, C11 and external-consumer link tests, a public `ZTICK_STRUCT_LAYOUT_VERSION` macro and a host-owned-registry symbol guard (see the Phase 3 entry state above). Retained to record the former Phase 3 blocker |
 | Generator validation in workload configs; timing-level token validation in profiles | BENCHMARK §2, §5 | Phase 2 follow-up: `workload_from_config` copies raw generator data without calling `generator_from_config`; `profile_from_config` accepts unknown `timing_levels` tokens |
 | Per-level overhead percentage basis | METRICS §3 (MET-17) | Phase 2 follow-up: the single `OverheadEstimate` mixes bracketed intervals but uses only the whole-run DSP denominator; define per-level records or a matching interval set before results encoding (Phase 4) |
 

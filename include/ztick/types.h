@@ -5,8 +5,9 @@
  *
  * The inventory in SDK_SPECIFICATION §1.2 is frozen: each listed type is
  * declared once here and used everywhere else. Public structs begin with
- * `size` and `version` (SDK_SPECIFICATION §1.1); callers zero-initialize them
- * and set both fields before passing them across the C ABI. Only the permitted
+ * `size` and `version` (SDK_SPECIFICATION §1.1); callers zero-initialize them,
+ * set `size` to `sizeof(struct)` and `version` to `ZTICK_STRUCT_LAYOUT_VERSION`
+ * from <ztick/version.h> before passing them across the C ABI. Only the permitted
  * C headers are used, so this header is self-contained C11 and C++20.
  *
  * Enum constants use the `ztick_` prefix like all other exported C identifiers;

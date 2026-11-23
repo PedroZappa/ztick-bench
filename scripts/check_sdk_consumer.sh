@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
-# Verify BR §17.8: an external consumer can find_package(ztick-sdk) and compile
-# against the installed headers without modifying the ztick-bench repository.
+# Verify BR §17.8: an external consumer can find_package(ztick-sdk), compile
+# against the installed headers and link every runtime symbol without modifying
+# the ztick-bench repository.
 set -euo pipefail
 
 cmake_bin="${CMAKE:-cmake}"
@@ -16,6 +17,7 @@ mkdir -p "${work_dir}"
 
 "${cmake_bin}" -S "${repo_root}" -B "${sdk_build}" \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DZTICK_BUILD_EXAMPLES=OFF >/dev/null
+"${cmake_bin}" --build "${sdk_build}" --parallel >/dev/null
 "${cmake_bin}" --install "${sdk_build}" --prefix "${prefix}" >/dev/null
 "${cmake_bin}" -S "${repo_root}/tests/sdk_consumer" -B "${consumer_build}" \
   -DCMAKE_PREFIX_PATH="${prefix}" >/dev/null
