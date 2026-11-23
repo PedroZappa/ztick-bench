@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /**
  * @file static_adapter_registry_test.cpp
- * @brief Verify P3.1: the minimal static adapter registers and is discoverable.
+ * @brief Verify the static App A adapter registers and is discoverable.
  *
  * The registry is process-wide and has no reset API, so the assertions tolerate
  * the adapter having been registered by an earlier test while still checking that
@@ -26,7 +26,7 @@ extern "C" const ztick_adapter_descriptor ztick_test_app_static_descriptor;
 namespace {
 
 /** @brief Stable identifier published by the static test adapter. */
-constexpr const char kStaticAdapterId[] = "ztick.test.static.minimal";
+constexpr const char kStaticAdapterId[] = "ztick.test.static.app_a";
 
 } // namespace
 

@@ -161,8 +161,9 @@ needed capability bit to be known and declared. An incompatible SDK yields
 `incompatible`; an undeclared or unknown capability yields `unsupported`; both carry
 a stable reason and the rejected bitmask. The version check runs first so an
 incompatible integration is refused before its capabilities are interpreted.
-Detailed format/parameter checks through the lifecycle `describe` callback belong to
-P3.7/P3.8; this coarse negotiation never creates an instance or runs adapter code.
+Detailed format/parameter checks through the lifecycle `describe` callback are
+performed by the static App A harness (P3.7) and the dynamic App B harness (P3.8);
+this coarse negotiation never creates an instance or runs adapter code.
 
 Examples of adapter-specific parameters that the contract must be able to express:
 oversampling factor, filter mode, quality setting, internal processing mode, voice

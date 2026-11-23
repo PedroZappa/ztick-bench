@@ -64,14 +64,16 @@ the registry and status-message paths
 ([SDK_SPECIFICATION §2](SDK_SPECIFICATION.md#2-versioning-and-compatibility)).
 Example tests read descriptors without calling lifecycle callbacks, and a
 symbol-inspection check confirms the dynamic example embeds no SDK runtime copy. A
-static registration check proves the minimal adapter registers once and is discoverable
-through the private host registry observers. Dynamic-loader tests inject a fake library
+static registration check proves the adapter registers once and is discoverable
+through the private host registry observers. The App A host harness then drives the
+static adapter's full lifecycle; descriptor inspection remains separate from that
+execution. Dynamic-loader tests inject a fake library
 to cover every argument, load, symbol, header and compatibility failure path, assert that
 no adapter callback runs, and check the real platform loader against the in-tree example
 module. Compatibility tests assert that major/minor mismatches, undeclared capability
 bits and unknown bits are refused with a reason and the exact rejected mask, for both
 inspected and registered adapters. These prove ABI linkability and metadata visibility;
-they do not satisfy §3 app A/B end-to-end criteria.
+the App A lifecycle coverage in §3 is separate, while App B remains pending.
 
 ## 3. Custom SDK test applications
 
@@ -85,6 +87,20 @@ a complementary pair:
 
 **Confirmed:** these two applications remain generic placeholders; no specific
 application or DSP library is mandated (BR §21).
+
+**P3.7 App A (Derived design).** The static adapter is compiled into the
+`ztick_test_app_a` host executable. Its descriptor publishes all nine lifecycle
+callbacks, six typed parameters (boolean, integer, floating-point, enumeration and
+string), explicit audio formats and machine-readable unsupported declarations. The
+host negotiates SDK version and capabilities, registers the descriptor, creates one
+instance per workload, configures typed values, generates deterministic input,
+prepares host-generated reference data, runs a warm-up outside the primary interval,
+processes per-block timed data for both the processor and chain workloads, then runs
+Basic and Standard validation and reports measured, unavailable and not-applicable
+metrics. Unit tests cover malformed calls, instance independence, float64/planar
+buffers, sink failure and the executable's aggregate result. This satisfies App A's
+end-to-end criterion but not App B's; the dynamic example stays metadata-only until
+P3.8.
 
 Both apps must exercise the full adapter contract in
 [SDK_SPECIFICATION](SDK_SPECIFICATION.md) and must be buildable without modifying
@@ -198,7 +214,7 @@ runs in the same host process (BR §14, ARCHITECTURE §6).
 | BR §17 criterion | Verifying tests |
 | --- | --- |
 | 1. Linux fully supported | System tests on Linux; platform fields checked for `unsupported`/`unavailable` reporting |
-| 2. Two independent SDK test apps | §3 apps A and B built and run |
+| 2. Two independent SDK test apps | §3 App A built and run (P3.7); App B pending P3.8 |
 | 3. Static and dynamic integrations | §3 apps A/B; §8 discovery/load tests |
 | 4. Initial metrics and workload levels | §4, §5, §6 tests across processor/chain/engine |
 | 5. CLI, JSON, comparisons, regressions | §9 tests; §6 comparison tests |

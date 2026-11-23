@@ -42,6 +42,7 @@ Labels used in requirement statements; see
 | **Adapter** | The integration-side implementation of the SDK adapter contract: capabilities, configuration, execution, measurements, validation, reporting. |
 | **Plugin** | A dynamically loaded integration artifact, subject to discovery, trust and isolation rules. |
 | **Custom test application** | An independent application built against the SDK to validate the integration model; at least two are required for v1.0. |
+| **Host harness** | The host-side executable that drives an adapter through the full SDK lifecycle and records observable evidence of each step. |
 | **Benchmark suite (deferred)** | A user-defined collection of multiple processors and configurations runnable as one operation; post-v1.0 per Q47. |
 
 ## Modes and measurement levels

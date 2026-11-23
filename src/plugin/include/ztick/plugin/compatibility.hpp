@@ -11,7 +11,8 @@
  *
  * @note Declarations here are the coarse bitmask published in `info.capabilities`.
  *       Detailed format/parameter checks through the adapter's `describe` callback
- *       belong to the lifecycle work in P3.7/P3.8.
+ *       belong to the lifecycle harnesses: static App A in P3.7 and dynamic App B
+ *       in P3.8.
  */
 
 #ifndef ZTICK_PLUGIN_COMPATIBILITY_HPP

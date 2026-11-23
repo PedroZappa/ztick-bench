@@ -74,10 +74,14 @@ target_link_libraries(ztick_tests
     ztick_sysinfo_report
 )
 
-# P3.1 static adapter registration needs no platform loader.
+# Static adapter registration and the App A end-to-end harness need no loader.
 if(ZTICK_BUILD_EXAMPLES)
-  target_sources(ztick_tests PRIVATE unit/static_adapter_registry_test.cpp)
-  target_link_libraries(ztick_tests PRIVATE ztick_test_app_static)
+  target_sources(ztick_tests
+    PRIVATE
+      unit/static_adapter_registry_test.cpp
+      unit/static_adapter_app_a_test.cpp
+  )
+  target_link_libraries(ztick_tests PRIVATE ztick_test_app_static_harness)
 endif()
 
 # Scaffold export inspection needs the optional example targets and the platform

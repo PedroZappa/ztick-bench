@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 /**
  * @file static_adapter.hpp
- * @brief Registration entry point for the Phase 3 static SDK test adapter.
+ * @brief Registration entry point for the static App A SDK test adapter.
  *
  * A static integration is compiled into the host and publishes a registration
  * point that the host calls during initialization (SDK_SPECIFICATION §10). The
  * call validates and stores a read-only descriptor; it creates no instance and
- * runs no lifecycle callback (SDK_SPECIFICATION §2, §10).
+ * runs no lifecycle callback (SDK_SPECIFICATION §2, §10). The descriptor itself
+ * publishes the complete processor/chain lifecycle driven by the App A host
+ * harness.
  */
 
 /** @brief Include guard for the static test adapter registration header. */
@@ -26,7 +28,8 @@ extern "C" {
  *         registered (SDK_SPECIFICATION §2).
  * @note The descriptor has static storage duration and outlives the registry. The
  *       entry point validates metadata only: it never creates an instance or calls
- *       a lifecycle callback. Lifecycle callbacks arrive with P3.7.
+ *       a lifecycle callback. The host harness invokes those callbacks directly
+ *       through the descriptor's operation table.
  */
 int32_t ztick_test_app_static_register(void);
 

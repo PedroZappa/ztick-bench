@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 /**
  * @file example_adapter_export_test.cpp
- * @brief Verify the Phase 3 example descriptors are inspectable without code execution.
+ * @brief Verify Phase 3 example descriptors are inspectable without code execution.
  *
  * The static example is linked directly; the dynamic example is loaded as a
- * module and its read-only data symbol is read through dlsym. No lifecycle
- * callback is called, so this does not claim either test app is complete.
+ * module and its read-only data symbol is read through dlsym. This test reads
+ * metadata only. The static App A lifecycle is exercised separately by
+ * `static_adapter_app_a_test.cpp` and `integration.sdk.app_a_static`.
  */
 
 #include <catch2/catch_test_macros.hpp>
@@ -53,9 +54,9 @@ struct LibraryHandle {
  * @brief Check descriptor headers, identity and SDK version without calling ops.
  * @param descriptor Descriptor to inspect; may be NULL.
  * @param identifier Expected stable identifier.
- * @return True when the descriptor is a valid metadata-only example.
+ * @return True when the descriptor is a structurally valid example.
  */
-bool has_scaffold_identity(const ztick_adapter_descriptor *descriptor, const char *identifier) {
+bool has_valid_identity(const ztick_adapter_descriptor *descriptor, const char *identifier) {
   if (descriptor == nullptr || descriptor->size < sizeof(*descriptor) ||
       descriptor->version != ZTICK_STRUCT_LAYOUT_VERSION ||
       descriptor->info.size < sizeof(descriptor->info) ||
@@ -78,7 +79,18 @@ bool has_scaffold_identity(const ztick_adapter_descriptor *descriptor, const cha
 }
 
 /**
- * @brief Check that an example declares no executable lifecycle callbacks.
+ * @brief Check that a lifecycle table implements every required callback.
+ * @param ops Lifecycle table to inspect.
+ * @return True when all nine callback pointers are non-NULL.
+ */
+bool has_all_callbacks(const ztick_adapter_ops &ops) {
+  return ops.create != nullptr && ops.destroy != nullptr && ops.describe != nullptr &&
+         ops.configure != nullptr && ops.prepare != nullptr && ops.process != nullptr &&
+         ops.finish != nullptr && ops.validate != nullptr && ops.report != nullptr;
+}
+
+/**
+ * @brief Check that a lifecycle table implements no callbacks.
  * @param ops Lifecycle table to inspect.
  * @return True when every callback pointer is NULL.
  */
@@ -91,17 +103,23 @@ bool has_no_callbacks(const ztick_adapter_ops &ops) {
 } // namespace
 
 /**
- * @brief Verify both examples expose read-only metadata and no lifecycle callbacks.
+ * @brief Verify the static App A descriptor is identity-valid and complete.
  */
-TEST_CASE("example adapters expose metadata only", "[sdk][scaffold]") {
-  CHECK(has_scaffold_identity(&ztick_test_app_static_descriptor, "ztick.test.static.minimal"));
-  CHECK(has_no_callbacks(ztick_test_app_static_descriptor.ops));
+TEST_CASE("static app A descriptor exposes a complete lifecycle", "[sdk][static][app_a]") {
+  CHECK(has_valid_identity(&ztick_test_app_static_descriptor, "ztick.test.static.app_a"));
+  CHECK(has_all_callbacks(ztick_test_app_static_descriptor.ops));
+  CHECK(ztick_test_app_static_descriptor.info.capabilities != 0U);
+}
 
+/**
+ * @brief Verify the dynamic P3.8 scaffold remains metadata-only.
+ */
+TEST_CASE("dynamic example descriptor exposes metadata only", "[sdk][dynamic][scaffold]") {
   LibraryHandle library{dlopen(ZTICK_DYNAMIC_EXAMPLE_PATH, RTLD_NOW | RTLD_LOCAL)};
   REQUIRE(library.handle != nullptr);
   void *symbol = dlsym(library.handle, ZTICK_ADAPTER_EXPORT_SYMBOL);
   REQUIRE(symbol != nullptr);
   const auto *descriptor = static_cast<const ztick_adapter_descriptor *>(symbol);
-  CHECK(has_scaffold_identity(descriptor, "ztick.test.dynamic.scaffold"));
+  CHECK(has_valid_identity(descriptor, "ztick.test.dynamic.scaffold"));
   CHECK(has_no_callbacks(descriptor->ops));
 }
