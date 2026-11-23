@@ -29,8 +29,8 @@
 
 /**
  * @brief Host-side discovery, trust and execution support.
- * @note Trust policy is implemented in P3.4; runners remain later Phase 3 work
- *       (ARCHITECTURE §5).
+ * @note Trust policy is implemented in P3.4; the in-process runner is implemented in
+ *       P3.5, while out-of-process IPC remains later Phase 3 work (ARCHITECTURE §5).
  */
 namespace ztick::plugin {
 

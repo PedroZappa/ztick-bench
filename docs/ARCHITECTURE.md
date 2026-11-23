@@ -224,6 +224,13 @@ Derived design:
   out-of-process for untrusted ones or where stronger fault isolation is needed;
   the user may also request a mode explicitly. The chosen mode is written to the
   run record.
+  **P3.5 implementation (Derived design):** `ztick_plugin_host` parses the portable
+  `execution.isolation` tokens, selects a mode from prior trust authorization and
+  backend availability, and copies the public C ABI mode into a `RunExecutionRecord`.
+  `InProcessRunner` executes an injected workload on the caller's thread and records
+  the selected mode for every workload attempt; a refused selection leaves the mode
+  explicitly absent. Selection never loads a module or calls adapter code.
+  Out-of-process transport remains P3.6 work (BR §6.3).
 - **Runner/IPC layer** carries configuration, audio blocks and measurements
   across the process boundary. Its cost is outside the DSP interval where
   practical and is reported separately when it cannot be excluded.

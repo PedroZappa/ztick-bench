@@ -37,6 +37,7 @@ add_executable(ztick_tests
   unit/platform_interface_test.cpp
   unit/linux_system_info_test.cpp
   unit/profile_model_test.cpp
+  unit/runner_test.cpp
   unit/sdk_runtime_test.cpp
   unit/statistics_test.cpp
   unit/sysinfo_report_test.cpp

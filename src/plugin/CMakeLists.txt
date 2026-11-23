@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 # Plugin discovery, trust, loader and runner host support.
 # P3.2 adds the dynamic loader with metadata-only inspection; P3.4 adds the
-# trusted-plugin list and first-run consent. Runners remain later Phase 3 work.
+# trusted-plugin list and first-run consent; P3.5 adds metadata-only runner
+# selection and the in-process runner. Out-of-process IPC remains later work.
 # Platform loading and configuration paths stay behind private abstractions.
 
 if(UNIX)
@@ -17,6 +18,7 @@ add_library(ztick_plugin_host STATIC
   compatibility.cpp
   dynamic_loader.cpp
   trust.cpp
+  runner.cpp
   ${ZTICK_PLATFORM_LOADER_SOURCE}
   ${ZTICK_PLATFORM_TRUST_SOURCE}
 )

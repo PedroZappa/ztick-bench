@@ -25,8 +25,9 @@
 
 /**
  * @brief Host-side discovery, trust and execution support.
- * @note Only the metadata-inspection surface is implemented in P3.2; trust and
- *       runners belong to later Phase 3 work (ARCHITECTURE §5).
+ * @note Metadata inspection is implemented in P3.2; trust and the in-process runner
+ *       are implemented in P3.4/P3.5, while out-of-process IPC remains later Phase 3
+ *       work (ARCHITECTURE §5).
  */
 namespace ztick::plugin {
 

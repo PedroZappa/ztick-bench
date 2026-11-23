@@ -126,6 +126,11 @@ enabled; in aggregate mode the configured raw basis
 long enough to compute the aggregates and need not be serialized. Overhead estimates
 are always a separate field (BR §7.3).
 
+Derived token set: configuration may request `auto`, `in_process` or
+`out_of_process`; a run record stores the selected `in_process` or
+`out_of_process` mode when a workload was attempted, never `auto`. These tokens map to the public
+`ztick_execution_mode` defined by [SDK](SDK_SPECIFICATION.md#1-purpose-and-conformance) (BR §6.3).
+
 ## 6. Config document
 
 **REQ-RES-04 (Required).** Portable JSON configuration includes SDK and config

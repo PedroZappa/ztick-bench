@@ -167,6 +167,13 @@ the Phase 2 exit criterion is demonstrated across component boundaries.
   an explanation rather than executed
   ([SDK](SDK_SPECIFICATION.md#2-versioning-and-compatibility)).
 
+**P3.5 runner coverage (Derived design).** Unit tests parse every isolation token,
+check auto and explicit selection against trust authorization and backend availability,
+and assert that the run record carries the selected public execution mode. The
+in-process runner is tested with an injected workload for success, status failure and
+exception paths, plus refusal paths that prove no workload is invoked without a
+selectable in-process mode.
+
 ## 9. Portability, comparison and CI tests
 
 - Round-trip portable config documents and result documents, including metadata

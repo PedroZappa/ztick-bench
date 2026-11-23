@@ -117,6 +117,7 @@ Labels used in requirement statements; see
 | **Trusted-plugin list** | The persisted set of approved plugin identifiers; an identifier absent from it triggers first-run confirmation. |
 | **Trust authorization** | The host-side decision that permits execution only when a plugin is already trusted or the user explicitly approves first use; denial, absent consent and storage failures refuse with a reason. |
 | **First-run confirmation** | Explicit user consent required before an untrusted plugin is executed for the first time. |
+| **Runner selection** | The metadata-only decision that chooses in-process or out-of-process execution from the requested mode, prior trust authorization and backend availability; the chosen mode is recorded in the run record. |
 | **In-process execution** | Running an integration inside the benchmark process for simplicity and low overhead. |
 | **Out-of-process execution** | Running an integration in a separate process for fault isolation; not a complete security sandbox. |
 
