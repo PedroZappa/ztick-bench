@@ -126,6 +126,14 @@ dynamic example through its private POSIX loader abstraction (P3.2); on non-POSI
 platforms the fallback reports infrastructure failure until platform work resumes
 post-v1.0.
 
+P3.9 adds a separately built fixture in `tests/sdk_external_apps`: an independent
+static app and a dynamic module plus host that are configured as their own CMake
+project against an installed SDK prefix. They use only the public headers and
+`ztick::sdk`, not the in-tree examples or plugin-host internals. This makes the
+install/export boundary explicit: `ztick_sdk` is the only exported target, and the
+plugin loader, trust store, runner and IPC implementation stay private to
+ztick-bench (SDK_SPECIFICATION §13).
+
 ### 3.1 Source-tree layout (derived design)
 
 The confirmed repository layout (BR §22) is:
@@ -145,6 +153,8 @@ tools/ztick-sysinfo/            Phase 1 developer system-info executable
 tests/unit/                     unit tests (Catch2 v3)
 tests/integration/              integration tests
 tests/system/                   end-to-end system tests
+tests/sdk_consumer/             out-of-tree find_package consumer fixture
+tests/sdk_external_apps/        out-of-tree static and dynamic app fixture (P3.9)
 tests/fixtures/                 reference audio/config fixtures (BR §10.2)
 examples/static_adapter/        Phase 3 static SDK test app
 examples/dynamic_adapter/       Phase 3 dynamic SDK test app
@@ -153,8 +163,10 @@ cmake/                          helper modules + ztick-sdk-config.cmake.in
 ```
 
 The top-level `include/` directory is the installed include root so third parties
-can build adapters with `find_package(ztick-sdk)` without modifying the repository
-(BR §17.8). `tools/` keeps the Phase 1 developer executable distinct from the
+can build adapters with `find_package(ztick-sdk)` and the exported `ztick::sdk`
+target without modifying the repository (BR §17.8, SDK_SPECIFICATION §13). Only
+that target and those public headers are installed; private headers under
+`src/*/include/` and the plugin-host library are not. `tools/` keeps the Phase 1 developer executable distinct from the
 Phase 4 `ztick-bench system` command (BR §21). This layout is consistent with the
 header rules in `AGENTS.md`.
 

@@ -226,6 +226,11 @@ sdk-consumer-check:	## Verify an external consumer can find_package(ztick-sdk)
 	@CMAKE="$(CMAKE)" ./scripts/check_sdk_consumer.sh
 	@echo "$(YEL)* $(_SUCCESS) SDK consumer check passed$(D)"
 
+external-apps-check:	## Build and run both integrations out of tree (P3.9)
+	@echo "$(YEL)Checking external-style apps...$(D)"
+	@CMAKE="$(CMAKE)" CTEST="$(CTEST)" ./scripts/check_external_apps.sh
+	@echo "$(YEL)* $(_SUCCESS) External-style apps check passed$(D)"
+
 ##@ Documentation Rules 📚
 
 docs:	## Generate Doxygen documentation (requires Doxyfile)

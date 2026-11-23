@@ -191,3 +191,11 @@ add_test(
   COMMAND "${PROJECT_SOURCE_DIR}/scripts/check_sdk_consumer.sh"
           "${CMAKE_BINARY_DIR}/sdk-consumer-check"
 )
+
+# BR §17.8 and P3.9: build and run both independent integrations entirely
+# outside the source tree against the installed SDK package.
+add_test(
+  NAME integration.external_apps
+  COMMAND "${PROJECT_SOURCE_DIR}/scripts/check_external_apps.sh"
+          "${CMAKE_BINARY_DIR}/external-apps-check"
+)

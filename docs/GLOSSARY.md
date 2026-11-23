@@ -43,6 +43,7 @@ Labels used in requirement statements; see
 | **Plugin** | A dynamically loaded integration artifact, subject to discovery, trust and isolation rules. |
 | **Custom test application** | An independent application built against the SDK to validate the integration model; at least two are required for v1.0. |
 | **Host harness** | The host-side executable that drives an adapter through the full SDK lifecycle and records observable evidence of each step. |
+| **Out-of-tree build (external-style build)** | A build configured as an independent CMake project against the installed SDK package, using only installed headers and the exported `ztick::sdk` target, with no modification of or build dependency on the ztick-bench source tree (BR §17.8). |
 | **Benchmark suite (deferred)** | A user-defined collection of multiple processors and configurations runnable as one operation; post-v1.0 per Q47. |
 
 ## Modes and measurement levels

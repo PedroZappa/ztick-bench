@@ -329,3 +329,37 @@ An integration is conformant when it:
 
 Test coverage for these items is specified in
 [TESTING_STRATEGY](TESTING_STRATEGY.md).
+
+## 13. Building a third-party integration (Derived design)
+
+The installed package is sufficient to build both conformance forms without the
+ztick-bench source tree (BR §17.8). Install it and point a standalone CMake project
+at the prefix:
+
+```bash
+cmake --install build --prefix /path/to/prefix
+```
+
+```cmake
+find_package(ztick-sdk 1.0 REQUIRED)
+add_executable(my_static_adapter adapter.cpp)
+target_link_libraries(my_static_adapter PRIVATE ztick::sdk)
+```
+
+The package installs the four public headers from §1.1 under `include/ztick/`, the
+static SDK library under `lib/`, and `ztick-sdk-config.cmake`,
+`ztick-sdk-config-version.cmake` and `ztick-sdk-targets.cmake` under
+`lib/cmake/ztick-sdk/`. The single exported target is `ztick::sdk`; the
+informational `ztick-sdk_PROJECT_VERSION` reports the tool version and is not an
+ABI version. Host-side discovery, trust and runner facilities in `ztick_plugin_host`
+are internal to ztick-bench and are neither installed nor exported, so a third-party
+host owns its own loader and trust decisions.
+
+A dynamic adapter must export the read-only descriptor as
+`ztick_adapter_export` and must **not** link `ztick::sdk`; it can obtain the
+public include directory from the imported target's
+`INTERFACE_INCLUDE_DIRECTORIES` without linking it. The host resolves the data
+symbol, inspects identity first and then drives the lifecycle callbacks (§10).
+Working out-of-tree examples of both forms are in `tests/sdk_external_apps`,
+built by `scripts/check_external_apps.sh` and verified by `integration.external_apps`
+and `make external-apps-check`.

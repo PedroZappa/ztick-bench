@@ -6,8 +6,10 @@
 > roadmap phases 1–2 (Foundation, Benchmark engine) implemented and verified. Phase 3
 > (Integrations) is in progress: the SDK runtime is compiled and link-tested; metadata
 > inspection, version/capability negotiation, trust enforcement, in-process and
-> out-of-process runners, and the static App A processor/chain harness are implemented.
-> The dynamic App B harness and external-style build remain — see [ROADMAP](docs/ROADMAP.md).
+> out-of-process runners, and both custom SDK apps are implemented. Static and dynamic
+> integrations are also built and run out of tree against the installed SDK package,
+> verifying [BR §17.8](docs/DECISIONS.md#17-v10-acceptance-criteria). The final Phase 3 verification pass remains —
+> see [ROADMAP](docs/ROADMAP.md).
 > **v1.0 scope:** roadmap phases 1–6; phase 7 (macOS/Windows) is post-v1.0.
 
 ---
@@ -78,10 +80,13 @@ is enabled; core and CLI builds stay C++20-only. The source layout is in
 make build               # wraps: cmake -S . -B build && cmake --build build
 make test                # wraps: ctest --test-dir build --output-on-failure
 make sysinfo             # print the inventory with availability states
+make sdk-consumer-check  # build an out-of-tree find_package(ztick-sdk) consumer
+make external-apps-check # build and run both integrations out of tree (P3.9)
 ```
 
 Run the full CI gate locally — warnings-as-errors build, tests, formatting,
-static analysis, Doxygen, sanitizers and the SDK consumer check:
+static analysis, Doxygen, sanitizers, the SDK consumer check and the external-style
+app check:
 
 ```bash
 make verify              # CI_CMAKE_ARGS overrides the default -DZTICK_WERROR=ON
@@ -92,6 +97,24 @@ clang-format 18 (the Ubuntu 24.04 CI toolchain); C/C++ are built with
 `-DZTICK_WERROR=ON`, and tests run under ASan/UBSan with `TERM` unset. These are
 development-tool requirements only: no third-party runtime library is required
 by the core or CLI (BR §15).
+
+## Building an integration out of tree
+
+Install the SDK from a normal build and use the exported package in your own
+CMake project (SDK_SPECIFICATION §13):
+
+```bash
+cmake --install build --prefix /path/to/prefix
+```
+
+```cmake
+find_package(ztick-sdk 1.0 REQUIRED)
+target_link_libraries(my_adapter PRIVATE ztick::sdk)
+```
+
+A dynamic adapter exports `ztick_adapter_export` and must not link `ztick::sdk`.
+`tests/sdk_external_apps` contains working out-of-tree examples of both the static
+and dynamic forms.
 
 ## Contributing to the specification
 

@@ -74,7 +74,9 @@ module. Compatibility tests assert that major/minor mismatches, undeclared capab
 bits and unknown bits are refused with a reason and the exact rejected mask, for both
 inspected and registered adapters. These prove ABI linkability and metadata visibility. The App A and App B lifecycle
 coverage in §3 is separate from these inspection checks; App B additionally exercises
-the host's runtime loader, which keeps the module mapped without registering it.
+the host's runtime loader, which keeps the module mapped without registering it. An
+out-of-tree fixture installs the SDK into an isolated prefix and builds both independent
+applications from outside the repository using only the installed package (P3.9).
 
 ## 3. Custom SDK test applications
 
@@ -116,6 +118,17 @@ CTest runs the same harness in and out of process; in child mode the executable 
 and negotiates the module itself and returns only the final status because the fixed
 IPC protocol carries no detailed evidence. Unit tests cover runtime-loader failures,
 descriptor validity, malformed callbacks, child-mode status and the in-process result.
+
+**P3.9 external-style build (Derived design).** A standalone fixture in
+`tests/sdk_external_apps` is a separate CMake project that is never added to the
+ztick-bench build. `scripts/check_external_apps.sh` installs the SDK into a fresh
+prefix, configures that project with only `CMAKE_PREFIX_PATH`, builds and runs both
+applications, and is registered as `integration.external_apps` and
+`make external-apps-check`. The static app registers its own descriptor and drives the
+processor/chain lifecycle; the dynamic module exports the read-only descriptor without
+linking the SDK runtime, and its host loads the module with the platform loader and
+drives the engine lifecycle. Both use only the installed public C ABI and no private
+ztick-bench headers or targets, so BR §17.8 is verified without modifying ztick-bench.
 
 Both apps must exercise the full adapter contract in
 [SDK_SPECIFICATION](SDK_SPECIFICATION.md) and must be buildable without modifying
@@ -235,7 +248,7 @@ runs in the same host process (BR §14, ARCHITECTURE §6).
 | 5. CLI, JSON, comparisons, regressions | §9 tests; §6 comparison tests |
 | 6. TUI principal workflows | System tests through dashboard, config, execution monitoring and results screens ([TUI](TUI_SPECIFICATION.md)) |
 | 7. Automated correctness/overhead/repeatability/failure/isolation tests | §4–§8 |
-| 8. Third-party integration docs | [SDK_SPECIFICATION](SDK_SPECIFICATION.md) conformance checklist validated by an external-style build of app B |
+| 8. Third-party integration docs | [SDK_SPECIFICATION](SDK_SPECIFICATION.md) conformance checklist and build steps validated by the out-of-tree builds of both apps (P3.9) |
 
 ## 11. Derived versus required
 

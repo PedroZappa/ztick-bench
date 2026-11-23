@@ -30,6 +30,9 @@ echo "== CI build: ${build_type}, ${ci_cmake_args} =="
 echo "== SDK consumer =="
 make sdk-consumer-check
 
+echo "== External-style apps =="
+make external-apps-check
+
 echo "== Sanitizers (ASan + UBSan) =="
 make sanitize
 
