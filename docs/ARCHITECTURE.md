@@ -213,6 +213,13 @@ Derived design:
   (SDK_SPECIFICATION §4).
 - **Trust manager** compares discovered identity against the persisted trusted
   list and requests confirmation through the active front end before first use.
+  **P3.4 implementation (Derived design):** `ztick_plugin_host` persists a versioned
+  trusted-plugin list behind a `TrustStore` interface (in-memory for tests, atomic
+  file replacement for the default XDG location) and asks an injected
+  `ConsentPrompter` only for identifiers that are not already trusted. Denial, an
+  unavailable front end, malformed identity or a storage failure refuses execution
+  with a reason; no plugin module is loaded or called by the trust decision
+  (BR §6.2).
 - **Runner selection** prefers in-process for trusted integrations and
   out-of-process for untrusted ones or where stronger fault isolation is needed;
   the user may also request a mode explicitly. The chosen mode is written to the

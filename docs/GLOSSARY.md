@@ -114,6 +114,8 @@ Labels used in requirement statements; see
 | **Adapter registry** | The host-owned, thread-safe set of non-owning static adapter descriptor pointers populated by `ztick_register_adapter` (SDK_SPECIFICATION §2). |
 | **Metadata-only inspection** | Reading a dynamic adapter's exported read-only descriptor as a data symbol without calling any plugin code; yields an owning metadata copy and no registration or trust (SDK_SPECIFICATION §10). |
 | **Trusted plugin** | A plugin explicitly installed or supplied by the user and recorded in the trusted-plugin list. |
+| **Trusted-plugin list** | The persisted set of approved plugin identifiers; an identifier absent from it triggers first-run confirmation. |
+| **Trust authorization** | The host-side decision that permits execution only when a plugin is already trusted or the user explicitly approves first use; denial, absent consent and storage failures refuse with a reason. |
 | **First-run confirmation** | Explicit user consent required before an untrusted plugin is executed for the first time. |
 | **In-process execution** | Running an integration inside the benchmark process for simplicity and low overhead. |
 | **Out-of-process execution** | Running an integration in a separate process for fault isolation; not a complete security sandbox. |
