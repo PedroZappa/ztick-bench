@@ -27,6 +27,20 @@ static_assert(ztick_status_processing_failure == 4, "unexpected processing failu
 static_assert(ztick_status_validation_failure == 5, "unexpected validation failure status code");
 static_assert(ztick_status_internal_error == 6, "unexpected internal error status code");
 
+// Additive capability bitmacros (SDK_SPECIFICATION §4).
+static_assert(ZTICK_CAPABILITY_PROCESSOR == UINT64_C(1), "unexpected processor capability bit");
+static_assert(ZTICK_CAPABILITY_CHAIN == UINT64_C(2), "unexpected chain capability bit");
+static_assert(ZTICK_CAPABILITY_ENGINE == UINT64_C(4), "unexpected engine capability bit");
+static_assert(ZTICK_CAPABILITY_PER_BLOCK_TIMING == UINT64_C(8),
+              "unexpected per-block timing capability bit");
+static_assert(ZTICK_CAPABILITY_INTERNAL_THREADING == UINT64_C(16),
+              "unexpected internal threading capability bit");
+static_assert(ZTICK_CAPABILITY_REFERENCE_DATA == UINT64_C(32),
+              "unexpected reference data capability bit");
+static_assert(ZTICK_CAPABILITY_CUSTOM_VALIDATION == UINT64_C(64),
+              "unexpected custom validation capability bit");
+static_assert(ZTICK_CAPABILITY_KNOWN_MASK == UINT64_C(127), "unexpected known capability mask");
+
 // Explicit format, layout, status and mode codes.
 static_assert(ztick_sample_format_float32 == 0, "unexpected float32 code");
 static_assert(ztick_sample_format_float64 == 1, "unexpected float64 code");

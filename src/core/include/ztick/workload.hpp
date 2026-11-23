@@ -15,6 +15,8 @@
 
 #include "ztick/config_value.hpp"
 
+#include <ztick/types.h>
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -46,6 +48,15 @@ std::optional<WorkloadLevel> parse_workload_level(std::string_view token) noexce
  * @return Stable token used by the config document.
  */
 std::string_view workload_level_name(WorkloadLevel level) noexcept;
+
+/**
+ * @brief Map a workload level to the SDK capability bit it requires.
+ * @param level Workload level selected by the config document.
+ * @return Additive capability bitmask suitable for host-side negotiation.
+ * @note Unknown enum values map to zero so negotiation refuses them as unsupported
+ *       instead of silently assuming a capability (SDK_SPECIFICATION §2).
+ */
+std::uint64_t required_capability(WorkloadLevel level) noexcept;
 
 /**
  * @brief Config-shaped representation of one benchmark workload.

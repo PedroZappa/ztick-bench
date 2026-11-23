@@ -49,6 +49,7 @@ them after Phase 1 is a breaking change requiring explicit approval.
 | Visibility | `ZTICK_API` export/import macro (`visibility("default")` on GCC/Clang) |
 | Calling convention | Plain C; no platform-specific decorators in public headers |
 | Version macros | `ZTICK_SDK_VERSION_MAJOR/MINOR/PATCH` = `1`, `0`, `0`; additive derived `ZTICK_STRUCT_LAYOUT_VERSION` = `1` |
+| Capability macros | Additive derived `ZTICK_CAPABILITY_*` bit macros and `ZTICK_CAPABILITY_KNOWN_MASK` in `<ztick/types.h>` (§4) |
 
 ### 1.2 Core type inventory
 
@@ -145,6 +146,23 @@ Derived design of the declaration model:
 | Parameter type | boolean, integer, floating-point, enumeration, string |
 | Parameter metadata | name, type, units, lower/upper bounds or allowed values, default, human-readable description |
 | Unsupported entry | parameter value, format, layout, dimension or feature plus a machine-readable reason and human-readable explanation |
+
+The additive bitmask declared in `ztick_adapter_info::capabilities` uses these
+derived C macros (§1.1): `ZTICK_CAPABILITY_PROCESSOR` (bit 0),
+`ZTICK_CAPABILITY_CHAIN` (1), `ZTICK_CAPABILITY_ENGINE` (2),
+`ZTICK_CAPABILITY_PER_BLOCK_TIMING` (3), `ZTICK_CAPABILITY_INTERNAL_THREADING` (4),
+`ZTICK_CAPABILITY_REFERENCE_DATA` (5) and `ZTICK_CAPABILITY_CUSTOM_VALIDATION` (6).
+`ZTICK_CAPABILITY_KNOWN_MASK` covers all known bits. Any other bit is unknown and
+must be refused as unsupported, even if an adapter declares it (§2).
+
+**Host negotiation (Derived design).** Before configuration or execution the host
+checks the adapter's SDK version with `ztick_sdk_is_compatible` and requires every
+needed capability bit to be known and declared. An incompatible SDK yields
+`incompatible`; an undeclared or unknown capability yields `unsupported`; both carry
+a stable reason and the rejected bitmask. The version check runs first so an
+incompatible integration is refused before its capabilities are interpreted.
+Detailed format/parameter checks through the lifecycle `describe` callback belong to
+P3.7/P3.8; this coarse negotiation never creates an instance or runs adapter code.
 
 Examples of adapter-specific parameters that the contract must be able to express:
 oversampling factor, filter mode, quality setting, internal processing mode, voice

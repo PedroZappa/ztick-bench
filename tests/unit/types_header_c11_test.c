@@ -141,6 +141,19 @@ _Static_assert(_Generic(((ztick_adapter_info *)0)->sdk_version, ztick_version: 1
                "ztick_adapter_info::sdk_version missing or wrong type");
 _Static_assert(_Generic(((ztick_adapter_info *)0)->capabilities, uint64_t: 1, default: 0),
                "ztick_adapter_info::capabilities missing or wrong type");
+_Static_assert(ZTICK_CAPABILITY_PROCESSOR == UINT64_C(1), "unexpected processor capability bit");
+_Static_assert(ZTICK_CAPABILITY_CHAIN == UINT64_C(2), "unexpected chain capability bit");
+_Static_assert(ZTICK_CAPABILITY_ENGINE == UINT64_C(4), "unexpected engine capability bit");
+_Static_assert(ZTICK_CAPABILITY_PER_BLOCK_TIMING == UINT64_C(8),
+               "unexpected per-block timing capability bit");
+_Static_assert(ZTICK_CAPABILITY_INTERNAL_THREADING == UINT64_C(16),
+               "unexpected internal threading capability bit");
+_Static_assert(ZTICK_CAPABILITY_REFERENCE_DATA == UINT64_C(32),
+               "unexpected reference data capability bit");
+_Static_assert(ZTICK_CAPABILITY_CUSTOM_VALIDATION == UINT64_C(64),
+               "unexpected custom validation capability bit");
+_Static_assert(ZTICK_CAPABILITY_KNOWN_MASK == UINT64_C(127),
+               "unexpected known capability mask");
 _Static_assert(_Generic(((ztick_adapter_info *)0)->metadata, const char *: 1, default: 0),
                "ztick_adapter_info::metadata missing or wrong type");
 _Static_assert(_Generic(((ztick_buffer_view *)0)->planes, void *const *: 1, default: 0),

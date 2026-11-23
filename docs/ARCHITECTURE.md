@@ -205,6 +205,12 @@ Derived design:
   callback or entry point; directory enumeration and trust decisions remain separate
   host work. Modules without the symbol or with malformed/incompatible metadata are
   rejected with a reason rather than silently skipped (SDK_SPECIFICATION §10).
+- **Compatibility gate** runs before configuration or execution: it checks the SDK
+  version and required capability bits, refuses incompatible or undeclared
+  integrations with a reason, and records the outcome for the run record
+  (RESULTS_FORMAT §4.3). It is metadata-only and calls no adapter code; detailed
+  format/parameter checks arrive with the lifecycle harnesses in P3.7/P3.8
+  (SDK_SPECIFICATION §4).
 - **Trust manager** compares discovered identity against the persisted trusted
   list and requests confirmation through the active front end before first use.
 - **Runner selection** prefers in-process for trusted integrations and

@@ -94,15 +94,17 @@ is header-only by contract so the host owns a single registry. P3.1–P3.10 rema
 no full adapter, trust enforcement, runner or end-to-end test application exists yet.
 P3.10 also bumps the development version to `0.3.0-dev` per BR §21.
 
-**Progress (after P3.2).** The minimal static adapter registers and is discoverable in
+**Progress (after P3.3).** The minimal static adapter registers and is discoverable in
 process through the private host registry observers; its lifecycle callbacks remain P3.7
 work. The dynamic loader resolves the exported read-only descriptor as a data symbol,
-copies identity metadata into owning storage and calls no plugin code (BR §6.1).
-P3.3–P3.10 remain open.
+copies identity metadata into owning storage and calls no plugin code (BR §6.1). A
+metadata-only compatibility gate now refuses incompatible SDK versions and undeclared
+or unknown required capabilities with a reason before an integration is used.
+P3.4–P3.10 remain open.
 
 - [x] **P3.1 — Static adapter registry and one minimal static adapter.** Done when: The adapter registers and is discoverable (verified through the private host registry observers).
 - [x] **P3.2 — Dynamic loader with metadata-only inspection.** Done when: Metadata is readable without executing plugin code (BR §6.1).
-- [ ] **P3.3 — SDK version and capability negotiation before use.** Done when: Incompatible integrations are refused with a reason.
+- [x] **P3.3 — SDK version and capability negotiation before use.** Done when: Incompatible integrations are refused with a reason.
 - [ ] **P3.4 — Trust list and first-run confirmation flow.** Done when: An untrusted plugin requires explicit consent (BR §6.2).
 - [ ] **P3.5 — In-process runner.** Done when: Mode is selectable and recorded in the run record.
 - [ ] **P3.6 — Out-of-process runner and IPC.** Done when: A child crash is contained; transport cost is outside the DSP interval (BR §6.3).

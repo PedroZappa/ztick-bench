@@ -57,6 +57,21 @@ std::string_view workload_level_name(WorkloadLevel level) noexcept {
 // Public library API: exercised by the test target, which is outside the
 // cppcheck scan of include/, src/ and tools/.
 // cppcheck-suppress unusedFunction
+std::uint64_t required_capability(WorkloadLevel level) noexcept {
+  switch (level) {
+  case WorkloadLevel::processor:
+    return ZTICK_CAPABILITY_PROCESSOR;
+  case WorkloadLevel::chain:
+    return ZTICK_CAPABILITY_CHAIN;
+  case WorkloadLevel::engine:
+    return ZTICK_CAPABILITY_ENGINE;
+  }
+  return 0U;
+}
+
+// Public library API: exercised by the test target, which is outside the
+// cppcheck scan of include/, src/ and tools/.
+// cppcheck-suppress unusedFunction
 ConfigValue workload_to_config(const Workload &workload) {
   ConfigValue data = ConfigValue::object();
   data.set("level", ConfigValue::string(std::string{workload_level_name(workload.level)}));

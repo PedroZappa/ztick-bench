@@ -11,6 +11,7 @@ endif()
 
 add_library(ztick_plugin_host STATIC
   plugin.cpp
+  compatibility.cpp
   dynamic_loader.cpp
   ${ZTICK_PLATFORM_LOADER_SOURCE}
 )

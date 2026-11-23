@@ -109,6 +109,7 @@ Labels used in requirement statements; see
 | **Capability** | A declared support statement from an adapter, e.g. a sample format, channel layout or benchmark feature. |
 | **Typed parameter** | An adapter-declared configuration value with a type, valid range, default and description. |
 | **SDK version check** | Mandatory negotiation of SDK version and capabilities before an integration is used. |
+| **Capability negotiation** | Host-side check that required capability bits are known and declared by an adapter before use; unknown bits are refused as unsupported (SDK_SPECIFICATION §4). |
 | **Struct layout version** | The value required in a public struct's `version` header field, published as `ZTICK_STRUCT_LAYOUT_VERSION`; independent of the SDK ABI version (SDK_SPECIFICATION §1.1). |
 | **Adapter registry** | The host-owned, thread-safe set of non-owning static adapter descriptor pointers populated by `ztick_register_adapter` (SDK_SPECIFICATION §2). |
 | **Metadata-only inspection** | Reading a dynamic adapter's exported read-only descriptor as a data symbol without calling any plugin code; yields an owning metadata copy and no registration or trust (SDK_SPECIFICATION §10). |

@@ -65,6 +65,19 @@ TEST_CASE("workload level tokens round-trip", "[core][workload]") {
 }
 
 /**
+ * @brief Verify each workload level maps to exactly one SDK capability bit.
+ */
+TEST_CASE("workload levels map to required capabilities", "[core][workload]") {
+  using ztick::WorkloadLevel;
+
+  REQUIRE(ztick::required_capability(WorkloadLevel::processor) == ZTICK_CAPABILITY_PROCESSOR);
+  REQUIRE(ztick::required_capability(WorkloadLevel::chain) == ZTICK_CAPABILITY_CHAIN);
+  REQUIRE(ztick::required_capability(WorkloadLevel::engine) == ZTICK_CAPABILITY_ENGINE);
+  REQUIRE(ztick::required_capability(static_cast<WorkloadLevel>(99)) == 0U);
+  REQUIRE((ZTICK_CAPABILITY_KNOWN_MASK & ZTICK_CAPABILITY_CHAIN) == ZTICK_CAPABILITY_CHAIN);
+}
+
+/**
  * @brief Verify a workload renders into the documented config section shape.
  */
 TEST_CASE("workload_to_config emits documented fields", "[core][workload]") {

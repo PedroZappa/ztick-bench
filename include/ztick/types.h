@@ -198,6 +198,59 @@ typedef struct ztick_parameter_descriptor {
 } ztick_parameter_descriptor;
 
 /**
+ * @brief Processor workload capability bit.
+ * @note Set in @ref ztick_adapter_info::capabilities when the adapter supports a
+ *       single-processor benchmark (SDK_SPECIFICATION §4).
+ */
+#define ZTICK_CAPABILITY_PROCESSOR (UINT64_C(1) << 0)
+
+/**
+ * @brief Chain workload capability bit.
+ * @note Set when the adapter supports an ordered chain of processors.
+ */
+#define ZTICK_CAPABILITY_CHAIN (UINT64_C(1) << 1)
+
+/**
+ * @brief Engine workload capability bit.
+ * @note Set when the adapter supports an integrated engine workload.
+ */
+#define ZTICK_CAPABILITY_ENGINE (UINT64_C(1) << 2)
+
+/**
+ * @brief Per-block instrumentation capability bit.
+ * @note Set when the adapter can emit one timing sample per processed block.
+ */
+#define ZTICK_CAPABILITY_PER_BLOCK_TIMING (UINT64_C(1) << 3)
+
+/**
+ * @brief Internal multithreading capability bit.
+ * @note Set when the adapter uses its own worker threads during processing.
+ */
+#define ZTICK_CAPABILITY_INTERNAL_THREADING (UINT64_C(1) << 4)
+
+/**
+ * @brief Adapter-provided reference-data capability bit.
+ * @note Set when the adapter can supply reference data for validation checks.
+ */
+#define ZTICK_CAPABILITY_REFERENCE_DATA (UINT64_C(1) << 5)
+
+/**
+ * @brief Custom validation capability bit.
+ * @note Set when the adapter implements adapter-specific post-timing checks.
+ */
+#define ZTICK_CAPABILITY_CUSTOM_VALIDATION (UINT64_C(1) << 6)
+
+/**
+ * @brief Mask of every capability bit known to this SDK version.
+ * @note Any other bit is unknown and must be treated as unsupported, never
+ *       assumed to be supported (SDK_SPECIFICATION §2).
+ */
+#define ZTICK_CAPABILITY_KNOWN_MASK                                                                \
+  (ZTICK_CAPABILITY_PROCESSOR | ZTICK_CAPABILITY_CHAIN | ZTICK_CAPABILITY_ENGINE |                 \
+   ZTICK_CAPABILITY_PER_BLOCK_TIMING | ZTICK_CAPABILITY_INTERNAL_THREADING |                       \
+   ZTICK_CAPABILITY_REFERENCE_DATA | ZTICK_CAPABILITY_CUSTOM_VALIDATION)
+
+/**
  * @brief Read-only identity and declared capabilities of an adapter.
  * @note Capabilities are an additive bitmask: unknown bits are unsupported.
  *       Metadata can be inspected without executing processing (BR §6.1).
