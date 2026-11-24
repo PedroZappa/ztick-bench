@@ -378,8 +378,6 @@ StoreStatus FileTrustStore::save(const std::vector<PluginIdentity> &entries) con
 TrustManager::TrustManager(const TrustStore &store, const ConsentPrompter *prompter) noexcept
     : store_(store), prompter_(prompter) {}
 
-// Consumed by in-tree tests and future host front ends; cppcheck scans src/ but not tests/.
-// cppcheck-suppress unusedFunction
 TrustAuthorization TrustManager::authorize(const PluginIdentity &identity) noexcept {
   if (!is_valid_identity(identity)) {
     return authorization(TrustStatus::invalid_identity, "malformed plugin identity", false);

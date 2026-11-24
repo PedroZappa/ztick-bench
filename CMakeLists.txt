@@ -26,6 +26,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# The optional private front-end boundary is a shared library that links the
+# static core/CLI archives. Shared linking requires PIC in those archives; this
+# does not change any installed SDK header or the public C ABI (SDK §14).
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # Compiler baseline from BR §22. AppleClang is handled in post-v1.0 expansion.
 foreach(_ztick_lang C CXX)
   if(CMAKE_${_ztick_lang}_COMPILER_ID STREQUAL "GNU" AND
@@ -85,6 +90,17 @@ set(ZTICK_BUILD_PROJECT_VERSION "${ZTICK_VERSION_DISPLAY}")
 
 option(ZTICK_WERROR "Treat compiler warnings as errors (enable in CI)" OFF)
 option(ZTICK_ENABLE_SANITIZERS "Build with ASan and UBSan (use with Debug builds)" OFF)
+# The Rust TUI, its private C11 facade and Cargo are optional: core/CLI-only users
+# need no Rust toolchain and can configure with -DZTICK_BUILD_TUI=OFF (BR §21).
+option(ZTICK_BUILD_TUI "Build the optional Rust TUI and private front-end boundary" ON)
+
+if(ZTICK_BUILD_TUI)
+  find_program(ZTICK_CARGO_EXECUTABLE cargo)
+  if(NOT ZTICK_CARGO_EXECUTABLE)
+    message(FATAL_ERROR
+      "ZTICK_BUILD_TUI=ON requires cargo; configure with -DZTICK_BUILD_TUI=OFF for core/CLI-only builds")
+  endif()
+endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang|AppleClang)$")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -163,6 +179,9 @@ add_subdirectory(src/core)
 add_subdirectory(src/platform)
 add_subdirectory(src/plugin)
 add_subdirectory(src/cli)
+if(ZTICK_BUILD_TUI)
+  add_subdirectory(src/frontend)
+endif()
 add_subdirectory(src/tui)
 
 # Phase 1 developer tool; prints the inventory with explicit availability states.

@@ -187,6 +187,15 @@ add_executable(ztick_sdk_runtime_c11_test unit/sdk_runtime_c11_test.c)
 target_link_libraries(ztick_sdk_runtime_c11_test PRIVATE ztick::sdk)
 add_test(NAME unit.sdk.runtime.c11 COMMAND ztick_sdk_runtime_c11_test)
 
+# P5.0: standalone C11 caller for the private front-end boundary. Registered only
+# when the optional TUI boundary was built; core/CLI-only configurations need no
+# Rust toolchain and skip both this test and the Cargo smoke gate.
+if(ZTICK_BUILD_TUI)
+  add_executable(ztick_frontend_c11_test frontend_c11_test.c)
+  target_link_libraries(ztick_frontend_c11_test PRIVATE ztick_frontend)
+  add_test(NAME unit.frontend.c11 COMMAND ztick_frontend_c11_test)
+endif()
+
 add_executable(ztick_cpp_wrapper_cpp20_test unit/cpp_wrapper_cpp20_test.cpp)
 target_include_directories(ztick_cpp_wrapper_cpp20_test
   PRIVATE

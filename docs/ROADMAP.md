@@ -173,7 +173,7 @@ the screens and interaction rules it serves are owned by
 [TUI_SPECIFICATION](TUI_SPECIFICATION.md). This closes the P5.0 FFI smoke-test
 prerequisite before the Rust crate and screens are implemented.
 
-- [ ] **P5.0 — Private front-end C boundary and FFI gate (Derived design).**
+- [x] **P5.0 — Private front-end C boundary and FFI gate (Derived design).**
       Done when: [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design)
       defines the versioned C11 surface, opaque handle lifetimes, status mapping,
       progress-event delivery and the operation set for config, `list`, `system`,

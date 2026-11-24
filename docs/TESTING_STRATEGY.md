@@ -47,9 +47,10 @@ never linked into installed SDK, core, CLI or TUI targets.
 its unit and screen-state tests use `cargo test`, with rustdoc comments, rustfmt
 and clippy; the private C boundary from
 [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design)
-has a standalone C11 caller test and a Rust FFI smoke test. P5.1 registers named
-CTest entries for both language-boundary tests and for `cargo test`, rustfmt and
-clippy so they join `make verify`. P5.8 adds the six principal workflow system
+has a standalone C11 caller test and a Rust FFI smoke test. P5.0 registers named
+CTest entries for the C11 caller, the Rust FFI smoke test, rustfmt and clippy so
+they join `make verify`; P5.1 adds the crate's own `cargo test` suites. P5.8 adds
+the six principal workflow system
 tests from [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows). Every
 verification also configures `ZTICK_BUILD_TUI=OFF` and runs tests without Rust,
 proving that core/CLI-only users need no Rust toolchain.

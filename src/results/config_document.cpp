@@ -152,9 +152,6 @@ ConfigParseResult parse_config_document(std::string_view text) {
   return result;
 }
 
-// Public library API: exercised by the test target, which is outside the
-// cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 ConfigWriteResult write_config_document(const ConfigValue &document) {
   ConfigWriteResult result;
   if (!validate_config_document(document, &result.error)) {

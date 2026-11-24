@@ -13,7 +13,10 @@ cmake_bin="${CMAKE:-cmake}"
 ctest_bin="${CTEST:-ctest}"
 build_type="${CMAKE_BUILD_TYPE:-Release}"
 ci_build_dir="${CI_BUILD_DIR:-build/ci}"
+no_tui_build_dir="${NO_TUI_BUILD_DIR:-build/ci-no-tui}"
+sanitize_build_dir="${SANITIZE_DIR:-build/sanitize}"
 ci_cmake_args="${CI_CMAKE_ARGS:--DZTICK_WERROR=ON}"
+rust_gate_tests=(tui.rust.format tui.rust.clippy tui.ffi.smoke unit.frontend.c11)
 
 # Colors follow the Makefile convention: tput is silenced when TERM is unset
 # (for example in CI), leaving empty sequences rather than control characters.
@@ -36,6 +39,42 @@ ctest_detail() {
   line="$(grep -Eo '[0-9]+% tests passed(, [0-9]+ tests failed)? out of [0-9]+' \
     "${log}" | tail -n 1 || true)"
   printf '%s' "${line}"
+}
+
+# @brief Assert that every named CTest entry is registered in one build tree.
+# @param build_dir Build tree to inspect with ctest -N.
+# @param ... Exact test names that must appear in the inventory.
+require_ctest_tests() {
+  local build_dir="$1"
+  shift
+  local inventory
+  inventory="$("${ctest_bin}" --test-dir "${build_dir}" -N)"
+  local name
+  for name in "$@"; do
+    if ! printf '%s\n' "${inventory}" |
+      grep -Eq "Test[[:space:]]+#[0-9]+: ${name//./\\.}$"; then
+      echo "missing CTest entry: ${name}" >&2
+      return 1
+    fi
+  done
+}
+
+# @brief Assert that no named CTest entry is registered in one build tree.
+# @param build_dir Build tree to inspect with ctest -N.
+# @param ... Exact test names that must not appear in the inventory.
+reject_ctest_tests() {
+  local build_dir="$1"
+  shift
+  local inventory
+  inventory="$("${ctest_bin}" --test-dir "${build_dir}" -N)"
+  local name
+  for name in "$@"; do
+    if printf '%s\n' "${inventory}" |
+      grep -Eq "Test[[:space:]]+#[0-9]+: ${name//./\\.}$"; then
+      echo "unexpected CTest entry: ${name}" >&2
+      return 1
+    fi
+  done
 }
 
 # @brief Store one suite result for the final summary.
@@ -116,7 +155,20 @@ run_step "Documentation" "-" make docs
 run_step "CI configure" "-" "${cmake_bin}" -S . -B "${ci_build_dir}" \
   -DCMAKE_BUILD_TYPE="${build_type}" ${ci_cmake_args}
 run_step "CI build" "-" "${cmake_bin}" --build "${ci_build_dir}" --parallel
+run_step "Rust boundary gate inventory" "-" require_ctest_tests "${ci_build_dir}" \
+  "${rust_gate_tests[@]}"
 run_step "CI tests" "ctest" "${ctest_bin}" --test-dir "${ci_build_dir}" --output-on-failure
+run_step "TUI-disabled configure" "-" "${cmake_bin}" -S . -B "${no_tui_build_dir}" \
+  -DCMAKE_BUILD_TYPE="${build_type}" ${ci_cmake_args} -DZTICK_BUILD_TUI=OFF
+run_step "TUI-disabled build" "-" "${cmake_bin}" --build "${no_tui_build_dir}" --parallel
+run_step "TUI-disabled gate inventory" "-" reject_ctest_tests "${no_tui_build_dir}" \
+  "${rust_gate_tests[@]}"
+run_step "TUI-disabled tests" "ctest" "${ctest_bin}" --test-dir "${no_tui_build_dir}" \
+  --output-on-failure
 run_step "SDK consumer" "-" make sdk-consumer-check
 run_step "External-style apps" "ctest" make external-apps-check
-run_step "Sanitizers (ASan + UBSan)" "ctest" make sanitize
+run_step "Sanitizers (ASan + UBSan)" "ctest" make "SANITIZE_DIR=${sanitize_build_dir}" sanitize
+run_step "Sanitizer gate inventory" "-" require_ctest_tests "${sanitize_build_dir}" \
+  unit.frontend.c11
+run_step "Sanitizer Rust gate exclusion" "-" reject_ctest_tests "${sanitize_build_dir}" \
+  tui.rust.format tui.rust.clippy tui.ffi.smoke

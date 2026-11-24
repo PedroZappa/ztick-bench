@@ -1,0 +1,13 @@
+[package]
+name = "ztick-tui"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.88"
+description = "Rust front end and private C ABI bindings for ztick-bench"
+build = "build.rs"
+publish = false
+
+[lib]
+name = "ztick_tui"
+path = "src/lib.rs"
