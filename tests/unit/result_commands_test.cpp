@@ -327,6 +327,7 @@ TEST_CASE("compare parses threshold policy options", "[cli][results][p49]") {
   REQUIRE(invocation->policy.threshold_percent == 2.5);
   REQUIRE(invocation->policy.alpha == 0.01);
   REQUIRE(invocation->policy.sidedness == ztick::SignificanceSidedness::one_sided);
+  REQUIRE_FALSE(invocation->fail_on_regression);
 }
 
 /**
@@ -346,6 +347,9 @@ TEST_CASE("compare rejects malformed policy options", "[cli][results][p49]") {
   check_invalid({"--alpha=1", "a.json", "b.json"}, "greater than 0 and less than 1");
   check_invalid({"--sided=both", "a.json", "b.json"}, "accepts 'one' or 'two'");
   check_invalid({"--alpha", "a.json", "b.json"}, "finite number");
+  check_invalid({"--fail-on-regression=yes", "a.json", "b.json"}, "takes no value");
+  check_invalid({"--fail-on-regression", "--fail-on-regression", "a.json", "b.json"},
+                "more than once");
 }
 
 /**
@@ -450,6 +454,42 @@ TEST_CASE("compare applies command-line policy options", "[cli][results][p49]") 
   require_contains(result.output, "alpha=0.01");
   require_contains(result.output, "sided=two");
   require_contains(result.output, "classification=regression");
+
+  std::filesystem::remove(baseline_path);
+  std::filesystem::remove(candidate_path);
+}
+
+/**
+ * @brief Verify the explicit regression flag changes only the CI exit behavior.
+ */
+TEST_CASE("compare fail-on-regression returns the CI regression code", "[cli][results][p410]") {
+  const std::filesystem::path baseline_path = temporary_result_path("base_exit");
+  const std::filesystem::path candidate_path = temporary_result_path("cand_exit");
+  REQUIRE(write_result_document(baseline_path,
+                                make_multi_run_document("session-a", "Alpha CPU", "MET-01",
+                                                        {0.100, 0.101, 0.099, 0.100, 0.100}))
+              .ok);
+  REQUIRE(write_result_document(candidate_path,
+                                make_multi_run_document("session-b", "Alpha CPU", "MET-01",
+                                                        {0.150, 0.151, 0.149, 0.150, 0.150}))
+              .ok);
+
+  ConfigValue default_data = ConfigValue::null();
+  const auto default_result =
+      ztick::cli::execute_compare({baseline_path.string(), candidate_path.string()},
+                                  ztick::cli::default_result_reader(), &default_data);
+  REQUIRE(default_result.code == ExitCode::success);
+  REQUIRE(default_data.find("regression_detected")->as_boolean() == true);
+  REQUIRE(default_data.find("comparison")->find("classification")->as_string() == "regression");
+
+  ConfigValue flagged_data = ConfigValue::null();
+  const auto flagged_result = ztick::cli::execute_compare(
+      {baseline_path.string(), "--fail-on-regression", candidate_path.string()},
+      ztick::cli::default_result_reader(), &flagged_data);
+  REQUIRE(flagged_result.code == ExitCode::regression);
+  REQUIRE(flagged_result.error.empty());
+  REQUIRE(flagged_data.find("regression_detected")->as_boolean() == true);
+  require_contains(flagged_result.output, "classification: regression\n");
 
   std::filesystem::remove(baseline_path);
   std::filesystem::remove(candidate_path);

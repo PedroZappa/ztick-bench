@@ -191,7 +191,9 @@ the Phase 2 exit criterion is demonstrated across component boundaries.
   two-sided interval decisions, and rejection of invalid policy values. CLI tests
   cover policy-option parsing, classified rendering and option forwarding through
   `execute_compare`; executable checks confirm the defaults render an applied
-  threshold and explicit unavailable significance. P4.10 output modes are excluded.
+  threshold and explicit unavailable significance. P4.10 adds a deterministic
+  regression fixture that asserts exit code `4` only under
+  `--fail-on-regression`, with the same comparison exiting `0` without the flag.
 - Verify build-to-build and machine-to-machine comparison paths, including
   comparability warnings when metadata differs (BR §11.2–§11.3).
 - Verify warning-not-reject behavior under simulated thermal/frequency/load
@@ -241,6 +243,18 @@ IPC and launcher exceptions, without creating processes. On POSIX systems a test
 helper is launched for real: its final status crosses the fixed IPC message, a
 signal-terminated child is converted to a workload failure, and a later child still
 runs in the same host process (BR §14, ARCHITECTURE §6).
+
+**P4.10 discovery coverage (Derived design).** Unit tests inject both a directory
+enumerator and a shared-library loader, and a fake descriptor whose lifecycle
+callback counts calls. They assert that explicit, user and project candidates are
+enumerated in that order, duplicates keep the first source, a missing directory is
+reported with a reason, a malformed module is retained with its failure reason, and
+the lifecycle callback is never called. Trust-list tests distinguish a readable
+list from an explicit store failure, which must never become an empty trusted list.
+CLI-level tests cover `plugin list` option parsing (`--path` separated and inline,
+duplicates and unknown options), metadata rendering and inspect failure paths; an
+executable-level check confirms both commands reach the shell without loading a
+plugin (BR §6.1, §6.2).
 
 ## 9. Portability, comparison and CI tests
 
@@ -309,6 +323,17 @@ CLI tests inject a result reader to cover report evidence and stale-status
 mismatch, raw comparison rendering, argument errors and read failures, plus
 production reads of atomically written files. Executable-level scripts run both
 commands on stored results and verify their usage-error codes.
+
+**P4.10 CI coverage (Derived design).** Unit tests parse `--format text|json` in
+both argument forms, reject missing, duplicate and unknown values, and assert that
+the JSON envelope has stable header fields and wraps success, failure and usage
+outcomes with empty stderr. Format-option errors are also enveloped when a complete
+`--format json` was requested. Executable-level dispatch checks verify the header
+fields for each outcome and the plugin commands; the end-to-end script generates
+two results with a large iteration gap and asserts exit code `4` under
+`--fail-on-regression` and exit code `0` without it. The envelope schema is owned by
+[RESULTS_FORMAT §12](RESULTS_FORMAT.md#12-machine-readable-output-envelope)
+(BR §12.2).
 
 ## 10. Acceptance criteria traceability
 

@@ -7,6 +7,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <ztick/cli.hpp>
+#include <ztick/json.hpp>
 
 #include <cstddef>
 #include <initializer_list>
@@ -37,6 +38,32 @@ std::vector<std::string_view> arguments(std::initializer_list<std::string_view> 
   return std::vector<std::string_view>(args.begin(), args.end());
 }
 
+/**
+ * @brief Parse one JSON output envelope emitted by dispatch.
+ * @param result Dispatch result whose stdout should hold the envelope.
+ * @return Parsed JSON value.
+ */
+ztick::ConfigValue parse_envelope(const CommandResult &result) {
+  const ztick::JsonReadResult read = ztick::json_read(result.output);
+  REQUIRE(read.ok);
+  REQUIRE(read.error.empty());
+  return read.value;
+}
+
+/**
+ * @brief Read one string member of a JSON value.
+ * @param value Object to inspect.
+ * @param key Member name.
+ * @return Member text, or an empty string when absent or not a string.
+ */
+std::string string_field(const ztick::ConfigValue &value, std::string_view key) {
+  const ztick::ConfigValue *field = value.find(key);
+  if (field == nullptr || field->type() != ztick::ConfigValueType::string) {
+    return {};
+  }
+  return field->as_string().value();
+}
+
 } // namespace
 
 /**
@@ -47,12 +74,14 @@ TEST_CASE("CLI exit codes have stable tokens", "[cli][results]") {
   REQUIRE(ztick::cli::exit_code_token(ExitCode::usage_error) == "usage_error");
   REQUIRE(ztick::cli::exit_code_token(ExitCode::unavailable) == "unavailable");
   REQUIRE(ztick::cli::exit_code_token(ExitCode::failure) == "failure");
+  REQUIRE(ztick::cli::exit_code_token(ExitCode::regression) == "regression");
   REQUIRE(ztick::cli::exit_code_token(static_cast<ExitCode>(99)) == "unknown");
 
   REQUIRE(static_cast<int>(ExitCode::success) == 0);
   REQUIRE(static_cast<int>(ExitCode::usage_error) == 1);
   REQUIRE(static_cast<int>(ExitCode::unavailable) == 2);
   REQUIRE(static_cast<int>(ExitCode::failure) == 3);
+  REQUIRE(static_cast<int>(ExitCode::regression) == 4);
 }
 
 /**
@@ -66,11 +95,16 @@ TEST_CASE("CLI help and list text document the command set", "[cli][results]") {
   require_contains(usage, "run <config.json>");
   require_contains(usage, "--output <path>");
   require_contains(usage, "--set key=value");
+  require_contains(usage, "--format text|json");
   require_contains(usage, "compare <a.json> <b.json>");
+  require_contains(usage, "--fail-on-regression");
   require_contains(usage, "report <run.json>");
+  require_contains(usage, "plugin list");
+  require_contains(usage, "--path <path>");
   require_contains(usage, "plugin inspect");
   require_contains(usage, "0  success");
   require_contains(usage, "3  failure");
+  require_contains(usage, "4  regression");
 
   const std::string_view profiles = ztick::cli::profile_list_text();
   require_contains(profiles, "Built-in profiles:");
@@ -164,20 +198,101 @@ TEST_CASE("CLI routes report and compare to stored-result commands", "[cli][resu
 }
 
 /**
- * @brief Verify later roadmap commands are recognized but reported unavailable.
+ * @brief Verify plugin commands are routed to metadata-only implementations.
  */
-TEST_CASE("CLI recognizes commands whose implementation lands later", "[cli][results]") {
-  for (const std::string_view command : {"plugin list", "plugin inspect"}) {
-    const std::size_t split = command.find(' ');
-    const CommandResult result =
-        split == std::string_view::npos
-            ? ztick::cli::dispatch(arguments({command}))
-            : ztick::cli::dispatch(
-                  arguments({command.substr(0U, split), command.substr(split + 1U)}));
-    REQUIRE(result.code == ExitCode::unavailable);
-    REQUIRE(result.output.empty());
-    require_contains(result.error, "not available in this build");
-  }
+TEST_CASE("CLI routes plugin commands to metadata-only commands", "[cli][results][p410]") {
+  const CommandResult list = ztick::cli::dispatch(arguments({"plugin", "list"}));
+  REQUIRE(list.code == ExitCode::success);
+  REQUIRE(list.error.empty());
+  require_contains(list.output, "discovered plugins");
+
+  const CommandResult inspect = ztick::cli::dispatch(arguments({"plugin", "inspect"}));
+  REQUIRE(inspect.code == ExitCode::usage_error);
+  require_contains(inspect.error, "requires exactly one path");
+
+  const CommandResult missing =
+      ztick::cli::dispatch(arguments({"plugin", "inspect", "missing-module.so"}));
+  REQUIRE(missing.code == ExitCode::failure);
+  require_contains(missing.output, "plugin inspection");
+  require_contains(missing.error, "plugin inspection failed");
+}
+
+/**
+ * @brief Verify global format tokens and option removal are deterministic.
+ */
+TEST_CASE("CLI selects global output format", "[cli][results][p410]") {
+  using ztick::cli::OutputFormat;
+
+  REQUIRE(ztick::cli::output_format_token(OutputFormat::text) == "text");
+  REQUIRE(ztick::cli::output_format_token(OutputFormat::json) == "json");
+  REQUIRE(ztick::cli::output_format_token(static_cast<OutputFormat>(99)) == "text");
+
+  std::string error;
+  const auto separate =
+      ztick::cli::select_output_format(arguments({"list", "--format", "json", "profiles"}), &error);
+  REQUIRE(separate.has_value());
+  REQUIRE(error.empty());
+  REQUIRE(separate->format == OutputFormat::json);
+  REQUIRE(separate->args == arguments({"list", "profiles"}));
+
+  const auto inline_value =
+      ztick::cli::select_output_format(arguments({"--format=text", "system"}), &error);
+  REQUIRE(inline_value.has_value());
+  REQUIRE(inline_value->format == OutputFormat::text);
+  REQUIRE(inline_value->args == arguments({"system"}));
+
+  REQUIRE_FALSE(
+      ztick::cli::select_output_format(arguments({"list", "--format=yaml"}), &error).has_value());
+  require_contains(error, "'text' or 'json'");
+  REQUIRE_FALSE(ztick::cli::select_output_format(arguments({"--format"}), &error).has_value());
+  require_contains(error, "requires a value");
+  REQUIRE_FALSE(
+      ztick::cli::select_output_format(arguments({"--format=json", "--format=json"}), &error)
+          .has_value());
+  require_contains(error, "more than once");
+}
+
+/**
+ * @brief Verify JSON output wraps success, failure and usage outcomes in one envelope.
+ */
+TEST_CASE("CLI JSON output uses a stable envelope", "[cli][results][p410]") {
+  const CommandResult list =
+      ztick::cli::dispatch(arguments({"--format", "json", "list", "profiles"}));
+  REQUIRE(list.code == ExitCode::success);
+  REQUIRE(list.error.empty());
+  const ztick::ConfigValue envelope = parse_envelope(list);
+  REQUIRE(envelope.type() == ztick::ConfigValueType::object);
+  REQUIRE(envelope.find("schema_version")->as_integer() == 1);
+  REQUIRE(string_field(envelope, "command") == "list");
+  REQUIRE(string_field(envelope, "status") == "success");
+  REQUIRE(envelope.find("exit_code")->as_integer() == 0);
+  REQUIRE(envelope.find("data")->find("profiles")->as_array()->size() == 4U);
+  REQUIRE(string_field(envelope, "error").empty());
+
+  const CommandResult failure =
+      ztick::cli::dispatch(arguments({"--format=json", "report", "missing.json"}));
+  REQUIRE(failure.code == ExitCode::failure);
+  REQUIRE(failure.error.empty());
+  const ztick::ConfigValue failure_envelope = parse_envelope(failure);
+  REQUIRE(string_field(failure_envelope, "command") == "report");
+  REQUIRE(string_field(failure_envelope, "status") == "failure");
+  REQUIRE(failure_envelope.find("exit_code")->as_integer() == 3);
+  require_contains(string_field(failure_envelope, "error"), "cannot read report result");
+
+  const CommandResult usage =
+      ztick::cli::dispatch(arguments({"--format=json", "compare", "only-one.json"}));
+  REQUIRE(usage.code == ExitCode::usage_error);
+  REQUIRE(usage.error.empty());
+  const ztick::ConfigValue usage_envelope = parse_envelope(usage);
+  REQUIRE(string_field(usage_envelope, "status") == "usage_error");
+  REQUIRE(usage_envelope.find("exit_code")->as_integer() == 1);
+  require_contains(string_field(usage_envelope, "error"), "baseline and a candidate path");
+
+  const CommandResult option_error =
+      ztick::cli::dispatch(arguments({"list", "--format=json", "--format=text"}));
+  REQUIRE(option_error.code == ExitCode::usage_error);
+  REQUIRE(option_error.error.empty());
+  REQUIRE(string_field(parse_envelope(option_error), "status") == "usage_error");
 }
 
 /**

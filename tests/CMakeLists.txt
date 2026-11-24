@@ -51,6 +51,7 @@ add_executable(ztick_tests
   unit/platform_interface_test.cpp
   unit/linux_system_info_test.cpp
   unit/metadata_test.cpp
+  unit/plugin_discovery_test.cpp
   unit/out_of_process_runner_test.cpp
   unit/profile_model_test.cpp
   unit/result_document_test.cpp

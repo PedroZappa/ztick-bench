@@ -86,7 +86,7 @@ std::string render_system_metadata(const std::vector<MetadataField> &fields) {
 }
 
 CommandResult execute_system(const std::vector<std::string_view> &args,
-                             const SystemInfoCollector &collector) {
+                             const SystemInfoCollector &collector, ConfigValue *data) {
   if (!args.empty()) {
     return CommandResult{ExitCode::usage_error, {}, "ztick-bench: 'system' accepts no arguments\n"};
   }
@@ -104,6 +104,11 @@ CommandResult execute_system(const std::vector<std::string_view> &args,
   }
 
   const std::string output = render_system_metadata(fields);
+  if (data != nullptr) {
+    ConfigValue fields_object = ConfigValue::object();
+    fields_object.set("fields", make_metadata_object(fields));
+    *data = std::move(fields_object);
+  }
   if (collected.has_value()) {
     return CommandResult{ExitCode::success, output, {}};
   }
@@ -113,6 +118,11 @@ CommandResult execute_system(const std::vector<std::string_view> &args,
                        "ztick-bench: system inventory " +
                            std::string(metadata_status_token(failure.status)) + ": " +
                            failure.reason + "\n"};
+}
+
+CommandResult execute_system(const std::vector<std::string_view> &args,
+                             const SystemInfoCollector &collector) {
+  return execute_system(args, collector, nullptr);
 }
 
 CommandResult execute_system(const std::vector<std::string_view> &args) {

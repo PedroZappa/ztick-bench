@@ -76,8 +76,6 @@ struct InspectionResult {
    * @brief Report whether this result carries usable metadata.
    * @return True only when @ref status is `ztick_status_success`.
    */
-  // Consumed by in-tree tests; cppcheck scans src/ but not tests/.
-  // cppcheck-suppress unusedFunction
   [[nodiscard]] bool has_metadata() const noexcept { return status == ztick_status_success; }
 };
 

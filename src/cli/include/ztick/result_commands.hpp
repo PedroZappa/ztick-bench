@@ -70,6 +70,8 @@ struct CompareInvocation {
   std::filesystem::path candidate;
   /** @brief Threshold and significance policy passed to the core. */
   ztick::ComparisonPolicy policy;
+  /** @brief Return the regression exit code when the comparison is a regression. */
+  bool fail_on_regression{false};
 };
 
 /**
@@ -77,9 +79,10 @@ struct CompareInvocation {
  * @param args Arguments after the command name.
  * @param error Optional receiver for a human-readable usage error.
  * @return Parsed invocation, or `std::nullopt` when arguments are malformed.
- * @note Accepted forms are `--threshold <percent>`, `--alpha <level>` and
- *       `--sided one|two`, with or without `=`. Exactly two positional paths are
- *       required; options may appear in any order.
+ * @note Accepted forms are `--threshold <percent>`, `--alpha <level>`,
+ *       `--sided one|two`, with or without `=`, and the flag
+ *       `--fail-on-regression`. Exactly two positional paths are required;
+ *       options may appear in any order and duplicates are usage errors.
  */
 [[nodiscard]] std::optional<CompareInvocation>
 parse_compare_arguments(const std::vector<std::string_view> &args, std::string *error = nullptr);
@@ -92,6 +95,17 @@ parse_compare_arguments(const std::vector<std::string_view> &args, std::string *
  *         runtime failure when the document cannot be read or validated.
  */
 CommandResult execute_report(const std::vector<std::string_view> &args, const ResultReader &reader);
+
+/**
+ * @brief Execute `report` and expose its structured evidence.
+ * @param args Arguments after the command name; exactly one result path.
+ * @param reader Reader that parses and validates result files.
+ * @param data Optional receiver for the stored document, the derived status and
+ *        the stored status token.
+ * @return Outcome of the report command.
+ */
+CommandResult execute_report(const std::vector<std::string_view> &args, const ResultReader &reader,
+                             ConfigValue *data);
 
 /**
  * @brief Execute `report` with the production result reader.
@@ -109,6 +123,17 @@ CommandResult execute_report(const std::vector<std::string_view> &args);
  */
 CommandResult execute_compare(const std::vector<std::string_view> &args,
                               const ResultReader &reader);
+
+/**
+ * @brief Execute `compare` and expose its structured comparison record.
+ * @param args Baseline and candidate paths plus optional policy options.
+ * @param reader Reader that parses and validates result files.
+ * @param data Optional receiver for the comparison record and the regression flag.
+ * @return Outcome of the comparison command, including the regression exit code
+ *         when requested.
+ */
+CommandResult execute_compare(const std::vector<std::string_view> &args, const ResultReader &reader,
+                              ConfigValue *data);
 
 /**
  * @brief Execute `compare` with the production result reader.

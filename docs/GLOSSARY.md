@@ -122,6 +122,7 @@ Labels used in requirement statements; see
 | **Struct layout version** | The value required in a public struct's `version` header field, published as `ZTICK_STRUCT_LAYOUT_VERSION`; independent of the SDK ABI version (SDK_SPECIFICATION §1.1). |
 | **Adapter registry** | The host-owned, thread-safe set of non-owning static adapter descriptor pointers populated by `ztick_register_adapter` (SDK_SPECIFICATION §2). |
 | **Metadata-only inspection** | Reading a dynamic adapter's exported read-only descriptor as a data symbol without calling any plugin code; yields an owning metadata copy and no registration or trust (SDK_SPECIFICATION §10). |
+| **Plugin source** | Origin recorded for a discovered candidate: `explicit_path`, `user_directory` or `project_directory`; duplicates keep the first source in that order. |
 | **Trusted plugin** | A plugin explicitly installed or supplied by the user and recorded in the trusted-plugin list. |
 | **Trusted-plugin list** | The persisted set of approved plugin identifiers; an identifier absent from it triggers first-run confirmation. |
 | **Trust authorization** | The host-side decision that permits execution only when a plugin is already trusted or the user explicitly approves first use; denial, absent consent and storage failures refuse with a reason. |
@@ -159,8 +160,11 @@ Labels used in requirement statements; see
 | **Machine metadata** | Recorded CPU, memory, cache, SIMD, OS, kernel and environment information. |
 | **Metadata field** | One availability-aware `status`/`value`/`reason` record in a result's build, machine or environment section ([RESULTS §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design)). |
 | **Comparability warning** | A record reporting that a build, machine or environment field differs between two result documents ([RESULTS §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design)). |
-| **Exit code** | Stable process status returned by CLI command dispatch: `0` success, `1` usage_error, `2` unavailable, `3` failure ([PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)). |
+| **Exit code** | Stable process status returned by CLI command dispatch: `0` success, `1` usage_error, `2` unavailable, `3` failure, `4` regression (the last only under `--fail-on-regression`) ([PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)). |
 | **Command dispatch** | Parsing CLI arguments into one documented command or global option and selecting the output and exit code ([PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)). |
+| **Output envelope** | The fixed six-field JSON object emitted by `--format json` for any CLI outcome: `schema_version`, `command`, `status`, `exit_code`, `data` and `error` ([RESULTS_FORMAT §12](RESULTS_FORMAT.md#12-machine-readable-output-envelope)). |
+| **Plugin discovery** | Metadata-only enumeration of explicit paths, a user plugin directory and a project-local directory; candidates are inspected as descriptor data but never executed ([ARCHITECTURE §5](ARCHITECTURE.md#5-plugin-subsystem-host-side)). |
+| **Plugin directory enumerator** | Injectable host abstraction that lists candidate module files in a plugin directory and reports an explicit reason when it is unavailable; it never loads a module. |
 | **Validation level** | Basic (NaN/Inf, invalid output), Standard (+ reference comparisons), or Strict (+ adapter checks and broader tests); independently selectable. |
 | **Check outcome** | The recorded result of one validation check, including its status, tolerances, reference source and observed error; a single pass/fail flag is not sufficient. |
 | **Reference output** | Expected output supplied by an adapter, a workload reference file, deterministic generation, or a designated reference implementation. |

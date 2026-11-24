@@ -118,12 +118,13 @@ executable only writes those streams and returns the code. The CI contract is:
 | `1` | `usage_error` | Unknown command or option, extra arguments or malformed subcommand. |
 | `2` | `unavailable` | Recognized command whose implementation has not landed; help text lists the full command set. |
 | `3` | `failure` | The command ran but hit a runtime or infrastructure failure. |
+| `4` | `regression` | A comparison classified at least one regression and `--fail-on-regression` was set (P4.10). |
 
 `--help` (`-h`) and `--version` are global options. `list` and `list profiles`
 list the built-in profiles from [BENCHMARK §5](BENCHMARK_SPECIFICATION.md#5-profiles).
-Other documented commands are recognized and return `unavailable` until their
-roadmap tasks land. Machine-readable output formats for data-bearing commands are
-owned by the later command tasks (BR §12.2).
+All documented commands are implemented by P4.10; `unavailable` remains reserved
+for platforms on which a recognized command has no implementation. Code `4` is
+appended rather than renumbering the baseline codes (BR §12.2).
 
 **Derived design (P4.6).** `run` takes one positional config path followed by
 `--output <path>` or `--output=<path>` and repeated `--set path=value` or
@@ -176,8 +177,27 @@ the retained evidence is specified in
 [RESULTS §10](RESULTS_FORMAT.md#10-comparison-records). With one run per metric
 the significance check is explicitly `not_applicable`; the command still exits
 `0` because an unavailable statistical test is not a command failure.
-Machine-readable output, CI exit codes and plugin commands remain owned by P4.10
-(BR §12.2).
+
+**Derived design (P4.10).** A global `--format text|json` option is accepted before
+or after the command name in `--format <value>` or `--format=<value>` form. JSON
+mode writes exactly one compact envelope to stdout and leaves stderr empty, even
+for usage errors and failures; [RESULTS §12](RESULTS_FORMAT.md#12-machine-readable-output-envelope)
+owns its schema. `compare --fail-on-regression` is a flag that adds exit code `4`
+when the stored classification is `regression`; without the flag the same
+comparison exits `0`, so the statistical result never changes silently. The flag
+is accepted once, with no `=` value; unknown, duplicate and malformed options are
+`usage_error`.
+
+`plugin list` enumerates explicit `--path <path>` candidates (repeatable, with
+`--path=<path>` supported) plus the user and project-local plugin directories. It
+inspects each candidate's descriptor data symbol only: no lifecycle callback or
+entry point runs. Unavailable directories, malformed modules and unreadable trust
+lists are reported as explicit states rather than omitted (BR §6.1, §6.2, §17).
+`plugin inspect <path>` performs the same metadata-only inspection for one module,
+adds host SDK/capability negotiation and reports the trust state; an unusable
+module is a `failure`, while argument mistakes are `usage_error`. Discovery and
+inspection placement is owned by
+[ARCHITECTURE §5](ARCHITECTURE.md#5-plugin-subsystem-host-side).
 
 ## 4. Document ownership map
 

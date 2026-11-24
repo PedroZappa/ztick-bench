@@ -241,6 +241,15 @@ Derived design:
   callback or entry point; directory enumeration and trust decisions remain separate
   host work. Modules without the symbol or with malformed/incompatible metadata are
   rejected with a reason rather than silently skipped (SDK_SPECIFICATION §10).
+  **P4.10 implementation (Derived design):** `ztick_plugin_host` adds a
+  `discover_plugins` pass that takes three sources (explicit paths, a user directory
+  and a project-local directory), enumerates candidates through an injected
+  `PluginDirectoryEnumerator` and reuses `inspect_dynamic_adapter` for each path. A
+  `PluginSource` token records which source produced a candidate; duplicates keep
+  the first source in explicit/user/project order. Missing directories and
+  unreadable trust lists are returned as explicit statuses, never omitted. Platform
+  path resolution is isolated in `posix/plugin_paths.cpp` (or its unsupported
+  stub), so the enumeration policy remains portable and testable.
 - **Compatibility gate** runs before configuration or execution: it checks the SDK
   version and required capability bits, refuses incompatible or undeclared
   integrations with a reason, and records the outcome for the run record
@@ -278,6 +287,14 @@ Derived design:
   across the process boundary. Its cost is outside the DSP interval where
   practical and is reported separately when it cannot be excluded.
 - A plugin marketplace/package manager is out of scope (BR §6.1).
+- **P4.10 CLI presentation (Derived design).** `ztick_cli` owns `plugin list` and
+  `plugin inspect`. They consume discovery and trust through injected services,
+  render explicit directory, inspection, compatibility and trust states, and build
+  the structured payloads for the JSON envelope. Neither command creates an
+  adapter, grants trust or prompts: inspection stops at the descriptor data symbol
+  (BR §6.1, §6.2). Output-format selection and exit-code ownership are specified in
+  [PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set) and the envelope schema in
+  [RESULTS_FORMAT §12](RESULTS_FORMAT.md#12-machine-readable-output-envelope).
 
 The integration-side obligations for metadata, versions and capabilities are owned
 by [SDK_SPECIFICATION](SDK_SPECIFICATION.md).
@@ -334,8 +351,10 @@ samples by metric identifier and applies the thresholded bootstrap classificatio
 owned by [METRICS §6](METRICS_REFERENCE.md#6-comparison-and-regression-statistics).
 The CLI owns file reads, argument and policy-option validation, and text
 rendering, with an injectable reader so both success and failure paths are
-testable. The core never writes a comparison file; P4.10 owns machine-readable
-output and CI exit codes.
+testable. The core never writes a comparison file. `--fail-on-regression` is a CLI
+flag that maps a stored regression classification to exit code `4` without
+recomputing statistics; the JSON envelope is assembled only in `ztick_cli`
+(P4.10, [RESULTS_FORMAT §12](RESULTS_FORMAT.md#12-machine-readable-output-envelope)).
 
 ## 9. Decision dependencies
 

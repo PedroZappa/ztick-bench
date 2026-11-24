@@ -373,3 +373,46 @@ dominating. Command behavior is owned by
 - CSV may be exported alongside JSON but never replaces it.
 - SQLite storage is deferred (REQ-RES-02) and must not appear as a v1.0 dependency
   in build configuration.
+
+## 12. Machine-readable output envelope
+
+**Derived design (P4.10).** The global `--format text|json` option selects one
+compact JSON document on stdout for any CLI outcome; stderr stays empty in JSON
+mode (BR §12.2, [PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)). The envelope
+is unrelated to stored result documents: it wraps a command's in-memory outcome
+and is never written as a result file. Fields are fixed and always present so a
+consumer never has to distinguish omission from absence:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `schema_version` | integer | Envelope version, currently `1`. |
+| `command` | string | Stable command label such as `list`, `report` or `plugin list`; empty for option-only usage errors. |
+| `status` | string | `success`, `usage_error`, `unavailable`, `failure` or `regression`, matching [PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set). |
+| `exit_code` | integer | Numeric value of `status`. |
+| `data` | object or null | Command-specific structured result, or null when the command produced no data. |
+| `error` | string | Human-readable error text without its trailing newline; empty on success. |
+
+JSON uses the versioned encoding rules in [RESULTS §2](RESULTS_FORMAT.md#2-versioning),
+so object member order is deterministic and no non-finite number can appear. A
+serialization failure is reported as a `failure` envelope with null `data`.
+
+Per-command `data` payloads are derived from the same in-memory values used for
+text rendering; text and JSON must not disagree:
+
+| Command | `data` shape |
+| --- | --- |
+| `--help`, `--version` | `{ "text": <string> }` |
+| `list` | `{ "profiles": [ { "name", "description" } ] }` |
+| `system` | `{ "fields": <availability-aware metadata object> }` with explicit `status`, `value` and `reason` per field |
+| `run` | `{ "output_path", "document" }` with the atomically written result document verbatim |
+| `report` | `{ "document", "derived_status", "stored_status", "status_reason" }` with a document matching [RESULTS §3](RESULTS_FORMAT.md#3-result-document-structure) |
+| `compare` | `{ "comparison", "regression_detected" }` with the core record from [RESULTS §10](RESULTS_FORMAT.md#10-comparison-records) |
+| `plugin list` | `{ "directories": [ { "path", "status", "reason" } ], "trust": <trust object>, "plugins": [ <candidate> ] }` |
+| `plugin inspect` | `{ "path", "status", "reason", "metadata", "compatibility", "trust" }` |
+
+A plugin `<candidate>` carries `path`, `source` (`explicit_path`, `user_directory`
+or `project_directory`), `status`, `reason` and, when inspection succeeded,
+`identifier`, `name`, `version`, `sdk_version`, `capabilities` and `trust`. The
+trust object carries `status`, `reason` and `entries`; an unreadable trust list is
+still encoded with `status: "unavailable"` and its reason, never as an empty
+trusted list (BR §6.2).

@@ -571,6 +571,7 @@ std::optional<CompareInvocation> parse_compare_arguments(const std::vector<std::
   bool threshold_seen = false;
   bool alpha_seen = false;
   bool sided_seen = false;
+  bool fail_on_regression_seen = false;
 
   for (std::size_t index = 0U; index < args.size(); ++index) {
     const std::string_view argument = args[index];
@@ -581,6 +582,24 @@ std::optional<CompareInvocation> parse_compare_arguments(const std::vector<std::
       name = argument.substr(0U, separator);
       inline_value = argument.substr(separator + 1U);
       has_inline_value = true;
+    }
+
+    if (name == "--fail-on-regression") {
+      if (has_inline_value) {
+        if (error != nullptr) {
+          *error = "option --fail-on-regression takes no value";
+        }
+        return std::nullopt;
+      }
+      if (fail_on_regression_seen) {
+        if (error != nullptr) {
+          *error = "option --fail-on-regression was specified more than once";
+        }
+        return std::nullopt;
+      }
+      invocation.fail_on_regression = true;
+      fail_on_regression_seen = true;
+      continue;
     }
 
     if (name != "--threshold" && name != "--alpha" && name != "--sided") {
@@ -774,8 +793,8 @@ std::string render_result_comparison(const ConfigValue &comparison) {
   return out;
 }
 
-CommandResult execute_report(const std::vector<std::string_view> &args,
-                             const ResultReader &reader) {
+CommandResult execute_report(const std::vector<std::string_view> &args, const ResultReader &reader,
+                             ConfigValue *data) {
   if (args.size() != 1U) {
     return CommandResult{
         ExitCode::usage_error, {}, "ztick-bench: report requires exactly one result path\n"};
@@ -789,15 +808,32 @@ CommandResult execute_report(const std::vector<std::string_view> &args,
   if (!load_result(reader, std::filesystem::path(args.front()), "report", document, error)) {
     return CommandResult{ExitCode::failure, {}, "ztick-bench: " + error + "\n"};
   }
+  if (data != nullptr) {
+    ConfigValue normalized = document;
+    std::string finalize_error;
+    const bool finalized = finalize_result_document(normalized, &finalize_error);
+    ConfigValue report = ConfigValue::object();
+    report.set("document", document);
+    report.set("derived_status",
+               ConfigValue::string(finalized ? field_text(&normalized, "status") : "unavailable"));
+    report.set("stored_status", ConfigValue::string(field_text(&document, "status")));
+    report.set("status_reason", ConfigValue::string(finalized ? "" : finalize_error));
+    *data = std::move(report);
+  }
   return CommandResult{ExitCode::success, render_result_report(document), {}};
 }
 
-CommandResult execute_report(const std::vector<std::string_view> &args) {
-  return execute_report(args, default_result_reader());
+CommandResult execute_report(const std::vector<std::string_view> &args,
+                             const ResultReader &reader) {
+  return execute_report(args, reader, nullptr);
 }
 
-CommandResult execute_compare(const std::vector<std::string_view> &args,
-                              const ResultReader &reader) {
+CommandResult execute_report(const std::vector<std::string_view> &args) {
+  return execute_report(args, default_result_reader(), nullptr);
+}
+
+CommandResult execute_compare(const std::vector<std::string_view> &args, const ResultReader &reader,
+                              ConfigValue *data) {
   std::string usage_error;
   const std::optional<CompareInvocation> invocation = parse_compare_arguments(args, &usage_error);
   if (!invocation.has_value()) {
@@ -829,11 +865,26 @@ CommandResult execute_compare(const std::vector<std::string_view> &args,
                              (error.empty() ? std::string("unknown comparison failure") : error) +
                              "\n"};
   }
-  return CommandResult{ExitCode::success, render_result_comparison(*comparison), {}};
+
+  const bool regression = field_text(&*comparison, "classification") == "regression";
+  if (data != nullptr) {
+    ConfigValue payload = ConfigValue::object();
+    payload.set("comparison", *comparison);
+    payload.set("regression_detected", ConfigValue::boolean(regression));
+    *data = std::move(payload);
+  }
+  const ExitCode code =
+      invocation->fail_on_regression && regression ? ExitCode::regression : ExitCode::success;
+  return CommandResult{code, render_result_comparison(*comparison), {}};
+}
+
+CommandResult execute_compare(const std::vector<std::string_view> &args,
+                              const ResultReader &reader) {
+  return execute_compare(args, reader, nullptr);
 }
 
 CommandResult execute_compare(const std::vector<std::string_view> &args) {
-  return execute_compare(args, default_result_reader());
+  return execute_compare(args, default_result_reader(), nullptr);
 }
 
 } // namespace ztick::cli

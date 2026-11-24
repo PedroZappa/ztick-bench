@@ -161,3 +161,54 @@ execute_process(
 if(NOT missing_status EQUAL 3)
   message(FATAL_ERROR "missing result should exit 3, got ${missing_status}: ${missing_output}${missing_errors}")
 endif()
+
+# P4.10: an explicit regression flag returns the CI-specific exit code. The large
+# iteration-count gap makes the classification deterministic on any host.
+set(BASELINE "${WORK_DIR}/ci_baseline.json")
+set(CANDIDATE "${WORK_DIR}/ci_candidate.json")
+file(REMOVE "${BASELINE}" "${CANDIDATE}")
+foreach(spec "10|${BASELINE}" "100|${CANDIDATE}")
+  string(REGEX REPLACE "^([0-9]+)\\|(.*)$" "\\1" iterations "${spec}")
+  string(REGEX REPLACE "^([0-9]+)\\|(.*)$" "\\2" destination "${spec}")
+  execute_process(
+    COMMAND "${CLI_BINARY}" run "${CONFIG}"
+            --set execution.repetitions=5
+            --set execution.iterations=${iterations}
+            --output "${destination}"
+    RESULT_VARIABLE run_status
+    OUTPUT_VARIABLE run_output
+    ERROR_VARIABLE run_errors
+  )
+  if(NOT run_status EQUAL 0 OR NOT EXISTS "${destination}")
+    message(FATAL_ERROR
+      "CI regression setup run failed with ${run_status}: ${run_output}${run_errors}")
+  endif()
+endforeach()
+
+execute_process(
+  COMMAND "${CLI_BINARY}" compare "${BASELINE}" "${CANDIDATE}"
+          --threshold=1 --fail-on-regression
+  RESULT_VARIABLE regression_status
+  OUTPUT_VARIABLE regression_output
+  ERROR_VARIABLE regression_errors
+)
+if(NOT regression_status EQUAL 4)
+  message(FATAL_ERROR
+    "explicit regression should exit 4, got ${regression_status}: ${regression_output}${regression_errors}")
+endif()
+if(NOT regression_output MATCHES "classification: regression")
+  message(FATAL_ERROR
+    "regression comparison omitted classification: ${regression_output}${regression_errors}")
+endif()
+
+# Without the explicit flag the same comparison stays a successful command.
+execute_process(
+  COMMAND "${CLI_BINARY}" compare "${BASELINE}" "${CANDIDATE}" --threshold=1
+  RESULT_VARIABLE no_flag_status
+  OUTPUT_VARIABLE no_flag_output
+  ERROR_VARIABLE no_flag_errors
+)
+if(NOT no_flag_status EQUAL 0)
+  message(FATAL_ERROR
+    "compare without --fail-on-regression should exit 0, got ${no_flag_status}: ${no_flag_output}${no_flag_errors}")
+endif()

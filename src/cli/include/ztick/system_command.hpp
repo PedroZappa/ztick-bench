@@ -64,6 +64,18 @@ CommandResult execute_system(const std::vector<std::string_view> &args,
                              const SystemInfoCollector &collector);
 
 /**
+ * @brief Execute one `system` invocation and expose its structured inventory.
+ * @param args Arguments excluding `system`; must be empty.
+ * @param collector Inventory collector to call.
+ * @param data Optional receiver for `{fields: <availability-aware object>}`.
+ * @return Success with the rendered inventory or the appropriate error result.
+ * @note The structured form uses @ref ztick::make_metadata_object, so every
+ *       field carries its status, value and reason (RESULTS_FORMAT §12).
+ */
+CommandResult execute_system(const std::vector<std::string_view> &args,
+                             const SystemInfoCollector &collector, ConfigValue *data);
+
+/**
  * @brief Execute one `system` invocation with production platform services.
  * @param args Arguments excluding `system`; must be empty.
  * @return Success with the rendered inventory or the appropriate error result.
