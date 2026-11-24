@@ -434,13 +434,15 @@ std::vector<double> run_level_samples(const ConfigValue &document, std::string_v
   if (runs == nullptr || runs->as_array() == nullptr) {
     return values;
   }
-  std::for_each(runs->as_array()->begin(), runs->as_array()->end(),
+  const ConfigValue::Array *run_array = runs->as_array();
+  std::for_each(run_array->begin(), run_array->end(),
                 [&values, &metric_id](const ConfigValue &run) {
                   const ConfigValue *metrics = run.find("metrics");
                   if (metrics == nullptr || metrics->as_array() == nullptr) {
                     return;
                   }
-                  std::for_each(metrics->as_array()->begin(), metrics->as_array()->end(),
+                  const ConfigValue::Array *metric_array = metrics->as_array();
+                  std::for_each(metric_array->begin(), metric_array->end(),
                                 [&values, &metric_id](const ConfigValue &metric) {
                                   if (field_text(&metric, "id") == metric_id) {
                                     if (const std::optional<double> value = metric_number(&metric);
