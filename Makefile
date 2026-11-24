@@ -64,6 +64,21 @@ CMAKE_ARGS        ?=
 CI_CMAKE_ARGS     ?= -DZTICK_WERROR=ON
 HOST_OS           := $(shell uname -s)
 
+# TUI paths and launch settings. The Rust binary is produced by CMake in the
+# normal build tree; the demo rules use isolated XDG directories so plugin
+# discovery and trust state never touch the developer's real configuration.
+TUI_MANIFEST       = src/tui/Cargo.toml
+TUI_BINARY         = $(BUILD_DIR)/cargo/tui/debug/ztick-tui
+TUI_CARGO          ?= cargo
+TUI_CMAKE_ARGS     = -DZTICK_BUILD_TUI=ON
+TUI_DEMO_CMAKE_ARGS = $(TUI_CMAKE_ARGS) -DZTICK_BUILD_EXAMPLES=ON
+TUI_PLUGIN_EXT     = $(if $(filter Darwin,$(HOST_OS)),dylib,so)
+TUI_DEMO_ROOT      = $(BUILD_DIR)/tui-demo
+TUI_DEMO_DATA      = $(abspath $(TUI_DEMO_ROOT)/data)
+TUI_DEMO_CONFIG    = $(abspath $(TUI_DEMO_ROOT)/config)
+TUI_DEMO_PLUGINS   = $(TUI_DEMO_DATA)/ztick-bench/plugins
+TUI_DEMO_MODULE    = $(TUI_DEMO_PLUGINS)/ztick_test_app_dynamic.$(TUI_PLUGIN_EXT)
+
 # Colors. tput is silenced when TERM is unset (for example in CI), leaving the
 # escape sequences empty without polluting every make invocation with errors.
 B   = $(shell tput bold 2>/dev/null)
@@ -112,8 +127,9 @@ else
 SANITIZE_ASAN_OPTIONS = detect_leaks=1:detect_stack_use_after_return=1:halt_on_error=1
 endif
 
-.PHONY: all build test test-verbose clean cppcheck memcheck sanitize run list sysinfo verify \
-	format-check format clang-format-18 sdk-consumer-check docs docs-open clean-docs help
+.PHONY: all build test test-verbose clean cppcheck memcheck sanitize run list sysinfo \
+	tui tui-build tui-demo tui-check tui-doc tui-demo-reset \
+	verify format-check format clang-format-18 sdk-consumer-check docs docs-open clean-docs help
 
 #==============================================================================#
 #                                  RULES                                       #
@@ -161,6 +177,50 @@ sysinfo: build	## Print the system-info inventory with availability states
 	@echo "$(YEL)Collecting system information...$(D)"
 	@$(SYSINFO_BINARY)
 	@echo "$(YEL)* $(_SUCCESS) System information printed$(D)"
+
+tui-build:	## Configure with the TUI enabled and build its binary
+	@echo "$(YEL)Configuring TUI build...$(D)"
+	@$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(CMAKE_ARGS) $(TUI_CMAKE_ARGS)
+	@$(CMAKE) --build $(BUILD_DIR) --target ztick_tui_binary --parallel
+	@echo "$(YEL)* $(_SUCCESS) TUI binary ready at $(TUI_BINARY)$(D)"
+
+tui: tui-build	## Open the TUI (1/2/3 screens, Tab cycles, Up/Down selects, r refreshes, q quits)
+	@if [ ! -x "$(TUI_BINARY)" ]; then \
+		echo "$(RED)$(TUI_BINARY) is not built$(D)"; \
+		exit 1; \
+	fi
+	@echo "$(YEL)Opening TUI... press q to quit$(D)"
+	@TERM="$${TERM:-xterm-256color}" "$(TUI_BINARY)"
+
+tui-demo:	## Open the TUI with a seeded plugin and isolated XDG state
+	@echo "$(YEL)Configuring isolated TUI demo build...$(D)"
+	@$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(CMAKE_ARGS) $(TUI_DEMO_CMAKE_ARGS)
+	@$(CMAKE) --build $(BUILD_DIR) --target ztick_tui_binary ztick_test_app_dynamic --parallel
+	@mkdir -p "$(TUI_DEMO_PLUGINS)"
+	@cp -f "$(BUILD_DIR)/lib/ztick_test_app_dynamic.$(TUI_PLUGIN_EXT)" "$(TUI_DEMO_MODULE)"
+	@echo "$(YEL)Opening TUI demo... press 3 for Integrations, q to quit$(D)"
+	@XDG_DATA_HOME="$(TUI_DEMO_DATA)" XDG_CONFIG_HOME="$(TUI_DEMO_CONFIG)" \
+		TERM="$${TERM:-xterm-256color}" "$(TUI_BINARY)"
+
+tui-check: tui-build	## Run registered TUI Rust gates through CTest
+	@echo "$(YEL)Running TUI Rust gates...$(D)"
+	@$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure -R '^tui\.'
+	@echo "$(YEL)* $(_SUCCESS) TUI Rust gates passed$(D)"
+
+tui-doc: tui-build	## Build Rust TUI documentation with warnings denied
+	@echo "$(YEL)Building Rust TUI documentation...$(D)"
+	@CARGO_TARGET_DIR="$(abspath $(BUILD_DIR)/cargo/tui)" \
+		ZTICK_FRONTEND_LIB_DIR="$(abspath $(BUILD_DIR)/lib)" \
+		LD_LIBRARY_PATH="$(abspath $(BUILD_DIR)/lib)$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" \
+		RUSTDOCFLAGS="-D warnings" $(TUI_CARGO) doc --manifest-path $(TUI_MANIFEST) --no-deps
+	@echo "$(YEL)* $(_SUCCESS) Rust TUI documentation generated$(D)"
+
+tui-demo-reset:	## Remove isolated TUI demo plugin and trust state
+	@echo "$(YEL)Removing TUI demo state...$(D)"
+	@rm -rf "$(TUI_DEMO_ROOT)"
+	@echo "$(YEL)* $(_SUCCESS) TUI demo state removed$(D)"
 
 clean:	## Remove build trees
 	@echo "$(YEL)Removing build trees...$(D)"
