@@ -20,9 +20,14 @@ BUILD_DIR         = build
 CI_BUILD_DIR      = build/ci
 SANITIZE_DIR      = build/sanitize
 DOCS_DIR          = docs
-DOXYGEN_BUILD_DIR = build/doxygen
-RUSTDOC_BUILD_DIR = $(BUILD_DIR)/cargo/tui/doc
+DOCS_BUILD_DIR    = build/docs
+DOXYGEN_BUILD_DIR = $(DOCS_BUILD_DIR)/cpp
+RUSTDOC_BUILD_DIR = $(DOCS_BUILD_DIR)/rust
+RUSTDOC_SOURCE_DIR = $(BUILD_DIR)/cargo/tui/doc
 RUSTDOC_INDEX     = $(RUSTDOC_BUILD_DIR)/ztick_tui/index.html
+DOCS_INDEX        = $(DOCS_BUILD_DIR)/index.html
+DOCS_LANDING      = docs/landing.html
+LEGACY_DOCS_DIRS  = $(BUILD_DIR)/doxygen $(BUILD_DIR)/cargo/tui/doc
 FORMAT_DIRS       = include src tests tools examples
 CPPCHECK_DIRS     = include src tools
 TEST_BINARY       = $(BUILD_DIR)/bin/ztick_tests
@@ -132,7 +137,7 @@ endif
 .PHONY: all build test test-verbose clean cppcheck memcheck sanitize run list sysinfo \
 	tui tui-build tui-demo tui-check tui-demo-reset \
 	verify format-check format clang-format-18 sdk-consumer-check \
-	docs docs-doxygen docs-rust docs-open clean-docs help
+	docs docs-doxygen docs-rust docs-landing docs-open clean-docs help
 
 #==============================================================================#
 #                                  RULES                                       #
@@ -298,7 +303,7 @@ docs-doxygen:
 		echo "$(RED)Error: $(DOXYFILE) not found.$(D)"; \
 		exit 1; \
 	fi
-	@mkdir -p $(DOXYGEN_BUILD_DIR)
+	@mkdir -p $(DOCS_BUILD_DIR)
 	@doxygen $(DOXYFILE)
 	@echo "$(YEL)* $(_SUCCESS) Doxygen documentation generated in $(DOXYGEN_BUILD_DIR)$(D)"
 
@@ -311,28 +316,34 @@ docs-rust:
 		ZTICK_FRONTEND_LIB_DIR="$(abspath $(BUILD_DIR)/lib)" \
 		LD_LIBRARY_PATH="$(abspath $(BUILD_DIR)/lib)$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" \
 		RUSTDOCFLAGS="-D warnings" $(TUI_CARGO) doc --manifest-path $(TUI_MANIFEST) --no-deps
+	@mkdir -p $(DOCS_BUILD_DIR)
+	@rm -rf "$(RUSTDOC_BUILD_DIR)"
+	@cp -R "$(RUSTDOC_SOURCE_DIR)" "$(RUSTDOC_BUILD_DIR)"
 	@echo "$(YEL)* $(_SUCCESS) Rust documentation generated in $(RUSTDOC_BUILD_DIR)$(D)"
 
-docs: docs-doxygen docs-rust	## Generate all documentation (Doxygen and Rust rustdoc)
-	@echo "$(YEL)* $(_SUCCESS) All documentation generated$(D)"
+docs-landing:
+	@mkdir -p $(DOCS_BUILD_DIR)
+	@cp -f "$(DOCS_LANDING)" "$(DOCS_INDEX)"
 
-docs-open:	## Open the generated documentation
-	@if [ ! -f $(DOXYGEN_BUILD_DIR)/html/index.html ] || [ ! -f $(RUSTDOC_INDEX) ]; then \
+docs: docs-doxygen docs-rust docs-landing	## Generate all docs in one shared tree (Doxygen + Rust rustdoc)
+	@echo "$(YEL)* $(_SUCCESS) Combined documentation generated in $(DOCS_BUILD_DIR)$(D)"
+
+docs-open:	## Open the combined documentation landing page
+	@if [ ! -f "$(DOCS_INDEX)" ] || [ ! -f "$(DOXYGEN_BUILD_DIR)/index.html" ] || \
+		[ ! -f "$(RUSTDOC_INDEX)" ]; then \
 		echo "$(RED)Documentation not found. Run 'make docs' first.$(D)"; \
 		exit 1; \
 	fi
 	@case "$$(uname)" in \
-		Darwin) open $(DOXYGEN_BUILD_DIR)/html/index.html; open $(RUSTDOC_INDEX) ;; \
-		Linux) xdg-open $(DOXYGEN_BUILD_DIR)/html/index.html || \
-			open $(DOXYGEN_BUILD_DIR)/html/index.html; \
-			xdg-open $(RUSTDOC_INDEX) || open $(RUSTDOC_INDEX) ;; \
-		*) echo "$(RED)Unsupported OS. Open the files manually.$(D)" ;; \
+		Darwin) open "$(DOCS_INDEX)" ;; \
+		Linux) xdg-open "$(DOCS_INDEX)" || open "$(DOCS_INDEX)" ;; \
+		*) echo "$(RED)Unsupported OS. Open $(DOCS_INDEX) manually.$(D)" ;; \
 	esac
-	@echo "$(YEL)* $(_SUCCESS) Browsers launched$(D)"
+	@echo "$(YEL)* $(_SUCCESS) Browser launched$(D)"
 
 clean-docs:	## Remove generated documentation artifacts
 	@echo "$(YEL)Removing generated documentation...$(D)"
-	@rm -rf $(DOXYGEN_BUILD_DIR) $(RUSTDOC_BUILD_DIR)
+	@rm -rf "$(DOCS_BUILD_DIR)" $(LEGACY_DOCS_DIRS)
 	@echo "$(YEL)* $(_SUCCESS) Documentation cleaned$(D)"
 
 ##@ Help 󰛵

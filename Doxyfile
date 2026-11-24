@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: MIT
 # Doxygen configuration for ztick-bench.
-# Generated documentation lives in build/doxygen (gitignored via build/).
+# Generated documentation lives in build/docs (gitignored via build/).
 
 PROJECT_NAME           = "ztick-bench"
 PROJECT_NUMBER         = 0.3.0-dev
 PROJECT_BRIEF          = "Portable DSP benchmarking framework"
 
-OUTPUT_DIRECTORY       = build/doxygen
-HTML_OUTPUT            = html
+OUTPUT_DIRECTORY       = build/docs
+HTML_OUTPUT            = cpp
 GENERATE_HTML          = YES
 GENERATE_LATEX         = NO
 GENERATE_XML           = NO

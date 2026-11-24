@@ -126,10 +126,11 @@ If a topic belongs to another file, add a link instead of re-documenting it.
   state units, preconditions, ownership/lifetime, status/error behavior and
   thread-safety where relevant. Comments are updated with the code they describe.
 - **Keep generated documentation buildable and uncommitted.** `make docs` is the
-  single entry point and generates both Doxygen output (`build/doxygen`) and Rust
-  rustdoc output (`build/cargo/tui/doc`); `make docs-open` views both and
-  `make clean-docs` removes both. Resolve Doxygen and rustdoc warnings for changed
-  code before finishing a change, and never commit generated output.
+  single entry point and generates a shared `build/docs` tree: Doxygen under
+  `cpp/`, Rust rustdoc under `rust/ztick_tui/`, and an `index.html` landing page;
+  `make docs-open` opens that landing page and `make clean-docs` removes the tree.
+  Resolve Doxygen and rustdoc warnings for changed code before finishing a change,
+  and never commit generated output.
 
 ## Git operations (agent behavior)
 
