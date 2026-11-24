@@ -104,6 +104,43 @@ comparability warnings.
 - **Execution:** isolation mode (in-process/out-of-process), SDK version checks and
   capability negotiation outcome (BR §6.3, §5.1).
 
+### 4.4 Metadata attachment behavior (Derived design)
+
+The `ztick_results` module builds and attaches the §4 sections through an
+availability-aware field model. Each field is a record `{ "status", "value",
+"reason" }`; all three members are always present. `status` is one of `value`,
+`unavailable`, `unsupported` or `not_applicable`, matching the platform states in
+[PLATFORM §6](PLATFORM_MONITORING.md#6-availability-states). A non-value status
+has an empty `value` and a non-empty `reason`, so an undetectable item is
+reported rather than omitted (REQ-RES-01, BR §17).
+
+Build metadata is captured when the binary is configured: git commit when Git and
+a commit are available, C++ compiler and version, optimization/warning flags,
+build configuration and project version. Any undiscoverable item is recorded as
+`unavailable` with a reason rather than dropped (BR §11.1). Machine fields come
+from the platform inventory through the adapter in `ztick_platform`, one field
+per [PLATFORM §2](PLATFORM_MONITORING.md#2-system-information-inventory) item,
+preserving each availability state.
+
+Workload and environment sections are projected from the config snapshot:
+integration identity, workload level, processors, generator and dimensions for
+workload; isolation, duration mode, repetitions, workers, affinity and
+measurement detail for environment. Fields absent from the snapshot become
+`unavailable` records. Attaching metadata writes only the `build`, `machine` and
+`environment` sections of a §3 document; it never changes the config snapshot or
+per-run records.
+
+**Comparability checks.** Comparing two result documents walks matching
+qualified field names in `build`, `machine` and `environment`. Equal value fields
+agree. A differing value, a differing status, or a value on one side against a
+non-value status on the other produces a comparability warning record with
+`category`, `field`, `left_status`, `left_value`, `right_status`, `right_value`
+and `message`. Identical non-value statuses do not warn, and fields absent from
+both sections are ignored. The warning array is suitable for the
+`comparability_warnings` field of a §10 comparison record and is also the basis
+for the environment comparability findings in §7. A non-object document is
+reported as incomparable rather than silently treated as equal (BR §11.2, §11.3).
+
 ## 5. Per-run records
 
 Each run contains (Derived design):
@@ -174,6 +211,18 @@ with a future suite layer. No suite fields or commands are added to v1.0, but a
 future suite can reference multiple config documents without redesigning this
 schema.
 
+### 6.1 Config reader behavior (Derived design)
+
+A v1.0 reader requires every top-level member shown above. `config_version` must
+equal the schema version `1.0.0`; `sdk_version` must be a numeric
+`major.minor.patch` token accepted by
+[SDK_SPECIFICATION §2](SDK_SPECIFICATION.md#2-versioning-and-compatibility).
+Missing, mistyped or unsupported version tokens are rejected, and a rejected
+document is never applied partially. `integration.id` and `integration.version`
+must be non-empty strings. Semantic validation of the remaining sections belongs
+to the component that consumes each section; this reader owns only document
+shape, version tokens and integration identity.
+
 ## 7. Portability checks
 
 When a config is loaded on another machine, the host compares required
@@ -200,6 +249,31 @@ CSV is a convenience projection, not the canonical format (BR §12.3).
 - Raw per-block series and complex metadata remain in JSON; CSV export states
   which fields were omitted.
 
+### 8.1 CSV projection behavior (Derived design)
+
+An export validates the result document with §9.1 before projecting it. The v1.0
+header is fixed and appears on every export:
+
+```text
+session_id,run_id,test_point,metric_id,metric_name,value,unit,status,source,method,reason,warning_count,failure_count,run_status,omitted_fields
+```
+
+`per_test_point` emits one row per metric record using its aggregate value;
+`per_metric_sample` emits one row per `samples` entry, falling back to the
+aggregate when a record has no samples. A scalar sample supplies the value, and
+an object sample may override `value`, `status`, `source` or `method`. A run with
+no metrics still produces a row so its test point is not lost. `test_point`
+flattens dimension values as `key=value` pairs separated by semicolons in JSON
+member order.
+
+Cells follow RFC 4180 quoting. Numbers and booleans retain their JSON text, so
+identifier, value, unit, status and source cells agree directly with the
+canonical document. `status`, `source` and `run_status` are always present, with
+an empty value cell for `unavailable` and `not_applicable` metrics and their
+`reason` carried in the `reason` column. The `omitted_fields` column names raw
+per-block series and complex metadata; those fields remain in JSON only. CSV
+files are written through the atomic mechanism in §9.1 and never replace JSON.
+
 ## 9. Failure and warning encoding
 
 **REQ-RES-05 (Required).** Workload failure, infrastructure failure and
@@ -217,8 +291,24 @@ component fails. *Source: BR §14.*
 A session with any failed or interrupted run has `status: "incomplete"`; it must
 never be rendered as a successful complete benchmark.
 
-**Atomic writes (Derived design):** serialize to a temporary file, flush, then
-atomically rename into place. Failures never truncate an existing result file.
+### 9.1 Result document writer behavior (Derived design)
+
+A v1.0 result document requires the top-level fields in §3 with the types shown
+there. `schema_version` must equal `1.0.0`; `sdk_version` must satisfy
+[SDK_SPECIFICATION §2](SDK_SPECIFICATION.md#2-versioning-and-compatibility).
+`session.id` must be a non-empty string, `config_snapshot` must be a valid §6
+document, and `status` must be `complete` or `incomplete`.
+
+Before encoding, the writer derives the session status from the run records: a
+run that records failures while claiming `complete` is marked `incomplete`; any
+incomplete or failed run, or any session-level failure, makes the session
+`incomplete`. A stored `complete` token is never trusted over that evidence.
+Readers validate the stored token but do not silently rewrite stored results.
+
+**Atomic writes (Derived design):** serialize to a unique temporary file in the
+target directory, flush and close it, then atomically rename it over the target.
+A failure removes the temporary file and never truncates or removes the existing
+target.
 
 ## 10. Comparison records
 
@@ -229,11 +319,52 @@ Comparison records preserve the underlying measurements and context (BR §11.3):
 | `baseline`, `candidate` | References to result documents and selected metrics |
 | `level` | `run_to_run`, `build_to_build`, `machine_to_machine` (BR §11.2) |
 | `threshold_percent` | Configured percentage threshold, applied to the absolute relative change |
-| `statistics` | Metric polarity, significance level `alpha`, one/two-sided choice, test method and metrics tested |
+| `threshold_status` | `applied` or `not_applicable`, with an explicit reason |
+| `statistics` | Significance level `alpha`, one/two-sided choice, test method, iteration/seed details, multiplicity disclosure and metrics tested |
 | `significance` | Test/method used and outcome from [METRICS §6](METRICS_REFERENCE.md#6-comparison-and-regression-statistics) |
 | `classification` | `raw_difference`, `within_variability`, `regression`, `improvement` |
-| `comparability_warnings` | Build/machine/environment mismatches |
+| `comparability_warnings` | Build/machine/environment mismatches from [§4.4](#44-metadata-attachment-behavior-derived-design) |
 | `context` | Copies of relevant metadata so the comparison is self-contained |
+
+**Derived design (P4.8).** The core's raw comparison entry point produces
+`classification: raw_difference`, a null `threshold_percent`, and
+`threshold_status`, `statistics` and `significance` objects whose status is
+`not_applicable`. Metric entries retain both raw values and statuses; `delta` is
+`candidate - baseline` and `relative_change_percent` is
+`(candidate - baseline) / baseline * 100`, with a null relative field and an
+explicit reason when the baseline is zero. A metric present on only one side is
+an `unmatched` entry carrying `side` instead of being dropped.
+
+**Derived design (P4.9).** The classified comparison entry point preserves every
+P4.8 field and adds the following evidence. The test, alpha, sidedness, seed and
+iteration count are recorded in `statistics`; `statistics.multiplicity` is
+`unadjusted`, and `statistics.outliers_removed` is zero. Counts are per distinct
+metric identifier, not per run pair. The top-level `significance` object carries
+the aggregate regression, improvement, raw-difference and within-variability
+counts; its status is `not_applicable` when no metric could be tested.
+
+| Metric field | Contents |
+| --- | --- |
+| `baseline_samples`, `candidate_samples` | All finite run-level values collected for that metric; never per-block samples |
+| `baseline_sample_count`, `candidate_sample_count` | Number of retained values on each side |
+| `baseline_mean`, `candidate_mean` | Arithmetic means of the retained run-level values |
+| `aggregate_delta` | `candidate_mean - baseline_mean` |
+| `aggregate_relative_change_percent` | `aggregate_delta / baseline_mean * 100`, or null when the baseline mean is zero |
+| `polarity` | `lower_is_better`, `higher_is_better` or `unspecified` |
+| `threshold_status`, `threshold_exceeded` | Threshold decision and its explicit reason |
+| `significance` | `method`, `alpha`, `sided`, `significant`, `interval_low`, `interval_high` and an explicit status/reason |
+| `classification` | Per-metric `regression`, `improvement`, `raw_difference` or `within_variability` |
+
+A metric is a `regression` only when its absolute aggregate relative change meets
+the threshold and its significance interval supports the observed adverse
+direction under the recorded polarity. A favourable change meeting both criteria
+is an `improvement`. A significant change below the threshold, or one whose
+threshold is not applicable, is a `raw_difference`; threshold-only and untestable
+changes are `within_variability`. Unmatched and unavailable entries carry
+`not_applicable` significance and are never reported as regressions. The
+overall `classification` follows the METRICS §6 precedence with any regression
+dominating. Command behavior is owned by
+[PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set).
 
 ## 11. Session export/import and storage
 
@@ -242,3 +373,46 @@ Comparison records preserve the underlying measurements and context (BR §11.3):
 - CSV may be exported alongside JSON but never replaces it.
 - SQLite storage is deferred (REQ-RES-02) and must not appear as a v1.0 dependency
   in build configuration.
+
+## 12. Machine-readable output envelope
+
+**Derived design (P4.10).** The global `--format text|json` option selects one
+compact JSON document on stdout for any CLI outcome; stderr stays empty in JSON
+mode (BR §12.2, [PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)). The envelope
+is unrelated to stored result documents: it wraps a command's in-memory outcome
+and is never written as a result file. Fields are fixed and always present so a
+consumer never has to distinguish omission from absence:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `schema_version` | integer | Envelope version, currently `1`. |
+| `command` | string | Stable command label such as `list`, `report` or `plugin list`; empty for option-only usage errors. |
+| `status` | string | `success`, `usage_error`, `unavailable`, `failure` or `regression`, matching [PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set). |
+| `exit_code` | integer | Numeric value of `status`. |
+| `data` | object or null | Command-specific structured result, or null when the command produced no data. |
+| `error` | string | Human-readable error text without its trailing newline; empty on success. |
+
+JSON uses the versioned encoding rules in [RESULTS §2](RESULTS_FORMAT.md#2-versioning),
+so object member order is deterministic and no non-finite number can appear. A
+serialization failure is reported as a `failure` envelope with null `data`.
+
+Per-command `data` payloads are derived from the same in-memory values used for
+text rendering; text and JSON must not disagree:
+
+| Command | `data` shape |
+| --- | --- |
+| `--help`, `--version` | `{ "text": <string> }` |
+| `list` | `{ "profiles": [ { "name", "description" } ] }` |
+| `system` | `{ "fields": <availability-aware metadata object> }` with explicit `status`, `value` and `reason` per field |
+| `run` | `{ "output_path", "document" }` with the atomically written result document verbatim |
+| `report` | `{ "document", "derived_status", "stored_status", "status_reason" }` with a document matching [RESULTS §3](RESULTS_FORMAT.md#3-result-document-structure) |
+| `compare` | `{ "comparison", "regression_detected" }` with the core record from [RESULTS §10](RESULTS_FORMAT.md#10-comparison-records) |
+| `plugin list` | `{ "directories": [ { "path", "status", "reason" } ], "trust": <trust object>, "plugins": [ <candidate> ] }` |
+| `plugin inspect` | `{ "path", "status", "reason", "metadata", "compatibility", "trust" }` |
+
+A plugin `<candidate>` carries `path`, `source` (`explicit_path`, `user_directory`
+or `project_directory`), `status`, `reason` and, when inspection succeeded,
+`identifier`, `name`, `version`, `sdk_version`, `capabilities` and `trust`. The
+trust object carries `status`, `reason` and `entries`; an unreadable trust list is
+still encoded with `status: "unavailable"` and its reason, never as an empty
+trusted list (BR §6.2).

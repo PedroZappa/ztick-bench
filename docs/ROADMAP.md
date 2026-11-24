@@ -134,17 +134,32 @@ and P3.10 are complete.
 
 ### 2.4 Phase 4 — CLI and results
 
-- [ ] **P4.1 — Config document schema and parser.** Done when: Round-trip test passes; version field is present ([RESULTS §6](RESULTS_FORMAT.md#6-config-document)).
-- [ ] **P4.2 — Result document schema and atomic writer.** Done when: Incomplete runs are marked; writes use temporary file plus rename.
-- [ ] **P4.3 — CSV projection.** Done when: Shared fields agree between JSON and CSV.
-- [ ] **P4.4 — Build, machine and workload metadata attachment.** Done when: Metadata is present; comparability warnings fire on mismatch.
-- [ ] **P4.5 — CLI skeleton and `list`.** Done when: Command dispatch and documented exit codes work.
-- [ ] **P4.6 — `run` command with config files and overrides.** Done when: Runs execute with overrides applied.
-- [ ] **P4.7 — `system` command using the platform abstraction.** Done when: It prints availability states (BR §22).
-- [ ] **P4.8 — `report` and `compare` commands.** Done when: Stored results render through both commands.
-- [ ] **P4.9 — Regression thresholds and significance checks.** Done when: Sub-threshold or normal-variability differences are not flagged.
-- [ ] **P4.10 — `plugin list` / `plugin inspect`, CI exit codes, machine-readable output.** Done when: CI-oriented tests pass.
-- [ ] **P4.11 — Phase 4 verification pass.** Done when: CLI workflows, config portability, comparisons and CI support are verified.
+**Progress (after P4.10).** The Phase 4 verification pass drives the documented
+commands together against real config and result files: `list`, `system`, `run`
+with dotted overrides, `report`, `compare`, both metadata-only `plugin` commands
+and the global `--format` option. Portable configs round-trip through the
+canonical writer, reject incompatible schema and SDK versions, and surface host
+differences as explicit comparability warnings rather than silently changing the
+benchmark (BR §13). Comparisons recompute aggregate values independently from the
+fixture samples, retain those samples, classify a significant regression, keep a
+sub-threshold change raw and flag cross-host metadata. The six-field CI envelope
+and stable exit codes hold for success, usage, failure and regression outcomes.
+Verification found and fixed a dispatch defect that discarded structured
+`system`, `report` and `compare` data before JSON encoding. P4.11 completes
+Phase 4 with a clean `make verify` gate
+([TESTING_STRATEGY §9](TESTING_STRATEGY.md#9-portability-comparison-and-ci-tests)).
+
+- [x] **P4.1 — Config document schema and parser.** Done when: Round-trip test passes; version field is present ([RESULTS §6](RESULTS_FORMAT.md#6-config-document)).
+- [x] **P4.2 — Result document schema and atomic writer.** Done when: Incomplete runs are marked; writes use temporary file plus rename.
+- [x] **P4.3 — CSV projection.** Done when: Shared fields agree between JSON and CSV.
+- [x] **P4.4 — Build, machine and workload metadata attachment.** Done when: Metadata is present; comparability warnings fire on mismatch.
+- [x] **P4.5 — CLI skeleton and `list`.** Done when: Command dispatch and documented exit codes work.
+- [x] **P4.6 — `run` command with config files and overrides.** Done when: Runs execute with overrides applied.
+- [x] **P4.7 — `system` command using the platform abstraction.** Done when: It prints availability states (BR §22).
+- [x] **P4.8 — `report` and `compare` commands.** Done when: Stored results render through both commands.
+- [x] **P4.9 — Regression thresholds and significance checks.** Done when: Sub-threshold or normal-variability differences are not flagged.
+- [x] **P4.10 — `plugin list` / `plugin inspect`, CI exit codes, machine-readable output.** Done when: CI-oriented tests pass.
+- [x] **P4.11 — Phase 4 verification pass.** Done when: CLI workflows, config portability, comparisons and CI support are verified.
 
 ### 2.5 Phase 5 — TUI
 

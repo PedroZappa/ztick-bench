@@ -9,16 +9,19 @@
 if(UNIX)
   set(ZTICK_PLATFORM_LOADER_SOURCE posix/dynamic_library.cpp)
   set(ZTICK_PLATFORM_TRUST_SOURCE posix/trust_path.cpp)
+  set(ZTICK_PLATFORM_PLUGIN_PATHS_SOURCE posix/plugin_paths.cpp)
   set(ZTICK_PLATFORM_CHILD_PROCESS_SOURCE posix/child_process.cpp)
 else()
   set(ZTICK_PLATFORM_LOADER_SOURCE unsupported/dynamic_library.cpp)
   set(ZTICK_PLATFORM_TRUST_SOURCE unsupported/trust_path.cpp)
+  set(ZTICK_PLATFORM_PLUGIN_PATHS_SOURCE unsupported/plugin_paths.cpp)
   set(ZTICK_PLATFORM_CHILD_PROCESS_SOURCE unsupported/child_process.cpp)
 endif()
 
 add_library(ztick_plugin_host STATIC
   plugin.cpp
   compatibility.cpp
+  discovery.cpp
   dynamic_loader.cpp
   dynamic_runtime.cpp
   trust.cpp
@@ -27,6 +30,7 @@ add_library(ztick_plugin_host STATIC
   runner.cpp
   ${ZTICK_PLATFORM_LOADER_SOURCE}
   ${ZTICK_PLATFORM_TRUST_SOURCE}
+  ${ZTICK_PLATFORM_PLUGIN_PATHS_SOURCE}
   ${ZTICK_PLATFORM_CHILD_PROCESS_SOURCE}
 )
 

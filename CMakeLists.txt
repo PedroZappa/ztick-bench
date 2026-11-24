@@ -40,6 +40,49 @@ foreach(_ztick_lang C CXX)
   endif()
 endforeach()
 
+# Build metadata for attached result documents (BR §11.1, RESULTS_FORMAT §4.1).
+# Values are discovered at configure time and compiled into ztick_results. Every
+# missing fact is stored as "unavailable" rather than omitted.
+find_package(Git QUIET)
+set(ZTICK_BUILD_GIT_COMMIT "unavailable")
+if(GIT_FOUND)
+  execute_process(
+    COMMAND "${GIT_EXECUTABLE}" rev-parse --verify HEAD
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    OUTPUT_VARIABLE _ztick_git_commit
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+    RESULT_VARIABLE _ztick_git_result
+  )
+  if(_ztick_git_result EQUAL 0 AND _ztick_git_commit)
+    set(ZTICK_BUILD_GIT_COMMIT "${_ztick_git_commit}")
+  endif()
+endif()
+
+set(ZTICK_BUILD_COMPILER "${CMAKE_CXX_COMPILER_ID}")
+if(NOT ZTICK_BUILD_COMPILER)
+  set(ZTICK_BUILD_COMPILER "unavailable")
+endif()
+set(ZTICK_BUILD_COMPILER_VERSION "${CMAKE_CXX_COMPILER_VERSION}")
+if(NOT ZTICK_BUILD_COMPILER_VERSION)
+  set(ZTICK_BUILD_COMPILER_VERSION "unavailable")
+endif()
+
+set(ZTICK_BUILD_CONFIGURATION "${CMAKE_BUILD_TYPE}")
+if(NOT ZTICK_BUILD_CONFIGURATION)
+  set(ZTICK_BUILD_CONFIGURATION "unavailable")
+endif()
+string(TOUPPER "${CMAKE_BUILD_TYPE}" _ztick_build_type_upper)
+set(ZTICK_BUILD_FLAGS "${CMAKE_CXX_FLAGS}")
+if(_ztick_build_type_upper)
+  set(ZTICK_BUILD_FLAGS "${ZTICK_BUILD_FLAGS} ${CMAKE_CXX_FLAGS_${_ztick_build_type_upper}}")
+endif()
+string(STRIP "${ZTICK_BUILD_FLAGS}" ZTICK_BUILD_FLAGS)
+if(NOT ZTICK_BUILD_FLAGS)
+  set(ZTICK_BUILD_FLAGS "unavailable")
+endif()
+set(ZTICK_BUILD_PROJECT_VERSION "${ZTICK_VERSION_DISPLAY}")
+
 option(ZTICK_WERROR "Treat compiler warnings as errors (enable in CI)" OFF)
 option(ZTICK_ENABLE_SANITIZERS "Build with ASan and UBSan (use with Debug builds)" OFF)
 

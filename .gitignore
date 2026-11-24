@@ -64,3 +64,4 @@ CTestTestfile.cmake
 Testing/
 compile_commands.json
 install/
+.cache

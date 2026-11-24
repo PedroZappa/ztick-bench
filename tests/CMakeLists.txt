@@ -34,22 +34,37 @@ endif()
 
 add_executable(ztick_tests
   integration/phase2_engine_test.cpp
+  integration/phase4_cli_results_test.cpp
+  unit/atomic_writer_test.cpp
   unit/catch2_integration_test.cpp
+  unit/cli_test.cpp
+  unit/comparison_test.cpp
   unit/compatibility_test.cpp
+  unit/config_document_test.cpp
   unit/config_value_test.cpp
   unit/core_types_test.cpp
+  unit/csv_projection_test.cpp
   unit/dynamic_loader_test.cpp
   unit/dynamic_runtime_test.cpp
   unit/execution_test.cpp
   unit/generator_test.cpp
+  unit/json_test.cpp
   unit/platform_interface_test.cpp
   unit/linux_system_info_test.cpp
+  unit/metadata_test.cpp
+  unit/plugin_discovery_test.cpp
   unit/out_of_process_runner_test.cpp
   unit/profile_model_test.cpp
+  unit/result_document_test.cpp
+  unit/run_command_test.cpp
+  unit/run_session_test.cpp
+  unit/result_commands_test.cpp
   unit/runner_test.cpp
   unit/sdk_runtime_test.cpp
   unit/statistics_test.cpp
   unit/sysinfo_report_test.cpp
+  unit/system_command_test.cpp
+  unit/system_info_metadata_test.cpp
   unit/trust_test.cpp
   unit/validation_test.cpp
   unit/workload_model_test.cpp
@@ -69,7 +84,9 @@ target_link_libraries(ztick_tests
   PRIVATE
     Catch2::Catch2WithMain
     ztick::sdk
+    ztick_cli
     ztick_core
+    ztick_results
     ztick_plugin_host
     ztick_platform
     ztick_sysinfo_report
@@ -184,6 +201,24 @@ add_test(
   COMMAND "${CMAKE_COMMAND}"
           "-DSYSINFO_BINARY=$<TARGET_FILE:ztick-sysinfo>"
           -P "${PROJECT_SOURCE_DIR}/tests/check_sysinfo_output.cmake"
+)
+
+# P4.5: verify the executable returns the documented CI exit codes and writes
+# the dispatch text to the expected stream.
+add_test(
+  NAME integration.cli_dispatch
+  COMMAND "${CMAKE_COMMAND}"
+          "-DCLI_BINARY=$<TARGET_FILE:ztick-bench>"
+          -P "${PROJECT_SOURCE_DIR}/tests/check_cli_dispatch.cmake"
+)
+
+# P4.6: verify the executable executes a config, applies overrides and writes a
+# portable result atomically.
+add_test(
+  NAME integration.cli_run
+  COMMAND "${CMAKE_COMMAND}"
+          "-DCLI_BINARY=$<TARGET_FILE:ztick-bench>"
+          -P "${PROJECT_SOURCE_DIR}/tests/check_cli_run.cmake"
 )
 
 # BR §17.8: verify an out-of-tree consumer with find_package(ztick-sdk).

@@ -15,9 +15,6 @@
 
 namespace ztick {
 
-// Public library API: exercised by the test target, which is outside the
-// cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 std::string_view config_value_type_name(ConfigValueType type) noexcept {
   switch (type) {
   case ConfigValueType::null:
@@ -40,7 +37,6 @@ std::string_view config_value_type_name(ConfigValueType type) noexcept {
 
 ConfigValue::ConfigValue(Storage storage) noexcept : storage_(std::move(storage)) {}
 
-// cppcheck-suppress unusedFunction
 ConfigValue ConfigValue::null() noexcept { return ConfigValue(Storage{}); }
 
 ConfigValue ConfigValue::boolean(bool value) noexcept { return ConfigValue(Storage{value}); }
@@ -92,12 +88,26 @@ const ConfigValue::Object *ConfigValue::as_object() const noexcept {
   return std::get_if<Object>(&storage_);
 }
 
+ConfigValue::Object *ConfigValue::as_object() noexcept { return std::get_if<Object>(&storage_); }
+
 const ConfigValue::Array *ConfigValue::as_array() const noexcept {
   return std::get_if<Array>(&storage_);
 }
 
+ConfigValue::Array *ConfigValue::as_array() noexcept { return std::get_if<Array>(&storage_); }
+
 const ConfigValue *ConfigValue::find(std::string_view key) const noexcept {
   const auto *members = as_object();
+  if (members == nullptr) {
+    return nullptr;
+  }
+  const auto it = std::find_if(members->begin(), members->end(),
+                               [key](const Member &member) { return member.first == key; });
+  return it == members->end() ? nullptr : &it->second;
+}
+
+ConfigValue *ConfigValue::find(std::string_view key) noexcept {
+  auto *members = as_object();
   if (members == nullptr) {
     return nullptr;
   }

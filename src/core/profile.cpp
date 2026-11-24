@@ -306,7 +306,6 @@ ConfigValue profile_to_config(const Profile &profile) {
   return document;
 }
 
-// cppcheck-suppress unusedFunction
 std::optional<Profile> profile_from_config(const ConfigValue &data, std::string *error) {
   if (data.type() != ConfigValueType::object) {
     record_error(error, "config document must be an object");

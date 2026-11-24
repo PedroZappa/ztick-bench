@@ -71,8 +71,6 @@ NegotiationResult negotiate_capabilities(std::uint64_t declared, std::uint64_t r
   return failure(ztick_status_unsupported, "required capability not declared", rejected);
 }
 
-// Consumed by in-tree tests and future host runners; cppcheck scans src/ but not tests/.
-// cppcheck-suppress unusedFunction
 NegotiationResult negotiate_adapter(const AdapterMetadata &metadata,
                                     std::uint64_t required) noexcept {
   const NegotiationResult version = negotiate_sdk_version(version_from_metadata(metadata));

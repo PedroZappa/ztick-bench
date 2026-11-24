@@ -86,6 +86,13 @@ Labels used in requirement statements; see
 | **Scaling efficiency** | How processing capacity grows with added instances or worker threads relative to ideal linear scaling. |
 | **Deadline miss** | Failure to complete processing within a configured deadline; meaningful for simulated real-time or live modes, otherwise not applicable. |
 | **Regression** | A performance difference that is both beyond the configured threshold and statistically significant, after comparability checks. |
+| **Raw difference** | A measured difference that is significant but below the threshold, or whose threshold cannot be computed; not a regression. |
+| **Within variability** | A matched difference that does not meet both threshold and significance criteria, or that cannot be tested. |
+| **Metric polarity** | The preferred direction of a metric: `lower_is_better` for registered duration, timing, RTF, resource and overhead metrics, `higher_is_better` for throughput and scaling efficiency, or `unspecified` when not registered. |
+| **Aggregate relative change** | `100 × (candidate run mean - baseline run mean) / baseline run mean`; the value compared with the percentage threshold. |
+| **Significance level (alpha)** | The configured probability threshold used to choose bootstrap interval tails; a number strictly between 0 and 1. |
+| **One-sided / two-sided significance** | Tail selection for an interval check: one-sided uses the observed direction, two-sided tests either direction. |
+| **Bootstrap percentile interval** | A deterministic interval derived from resampled run-level values with replacement; the interval endpoints decide statistical significance. |
 
 ## Audio data
 
@@ -115,6 +122,7 @@ Labels used in requirement statements; see
 | **Struct layout version** | The value required in a public struct's `version` header field, published as `ZTICK_STRUCT_LAYOUT_VERSION`; independent of the SDK ABI version (SDK_SPECIFICATION §1.1). |
 | **Adapter registry** | The host-owned, thread-safe set of non-owning static adapter descriptor pointers populated by `ztick_register_adapter` (SDK_SPECIFICATION §2). |
 | **Metadata-only inspection** | Reading a dynamic adapter's exported read-only descriptor as a data symbol without calling any plugin code; yields an owning metadata copy and no registration or trust (SDK_SPECIFICATION §10). |
+| **Plugin source** | Origin recorded for a discovered candidate: `explicit_path`, `user_directory` or `project_directory`; duplicates keep the first source in that order. |
 | **Trusted plugin** | A plugin explicitly installed or supplied by the user and recorded in the trusted-plugin list. |
 | **Trusted-plugin list** | The persisted set of approved plugin identifiers; an identifier absent from it triggers first-run confirmation. |
 | **Trust authorization** | The host-side decision that permits execution only when a plugin is already trusted or the user explicitly approves first use; denial, absent consent and storage failures refuse with a reason. |
@@ -143,9 +151,20 @@ Labels used in requirement statements; see
 | --- | --- |
 | **Result document** | The canonical versioned JSON representation of a run, including metadata and per-metric statuses. |
 | **Config document** | The portable, versioned JSON description of a benchmark configuration. |
-| **Config-shaped data** | The in-memory object/array/scalar representation of a config document used by core models before JSON serialization; owned by the core `config_value` model, with the portable document shape specified in [RESULTS §6](RESULTS_FORMAT.md#6-config-document). |
+| **Config-shaped data** | The in-memory object/array/scalar representation used before JSON serialization; owned by the `ztick_results` `config_value` model, with the portable config shape specified in [RESULTS §6](RESULTS_FORMAT.md#6-config-document) and the result shape in [RESULTS §3](RESULTS_FORMAT.md#3-result-document-structure). |
+| **Run status** | Lifecycle state of one recorded run: `complete`, `incomplete` or `failed` ([RESULTS §5](RESULTS_FORMAT.md#5-per-run-records)). |
+| **Session status** | Lifecycle state of a result document: `complete` only when every run completed and no failures were recorded ([RESULTS §9.1](RESULTS_FORMAT.md#91-result-document-writer-behavior-derived-design)). |
+| **CSV projection** | A non-canonical CSV view of a validated result document with a fixed header and an explicit `omitted_fields` marker ([RESULTS §8](RESULTS_FORMAT.md#8-csv-representation)). |
+| **Row mode** | The selected CSV granularity: `per_test_point` or `per_metric_sample` ([RESULTS §8.1](RESULTS_FORMAT.md#81-csv-projection-behavior-derived-design)). |
 | **Build metadata** | Recorded git commit, compiler, version, optimization flags, build configuration and toolchain details. |
 | **Machine metadata** | Recorded CPU, memory, cache, SIMD, OS, kernel and environment information. |
+| **Metadata field** | One availability-aware `status`/`value`/`reason` record in a result's build, machine or environment section ([RESULTS §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design)). |
+| **Comparability warning** | A record reporting that a build, machine or environment field differs between two result documents ([RESULTS §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design)). |
+| **Exit code** | Stable process status returned by CLI command dispatch: `0` success, `1` usage_error, `2` unavailable, `3` failure, `4` regression (the last only under `--fail-on-regression`) ([PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)). |
+| **Command dispatch** | Parsing CLI arguments into one documented command or global option and selecting the output and exit code ([PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)). |
+| **Output envelope** | The fixed six-field JSON object emitted by `--format json` for any CLI outcome: `schema_version`, `command`, `status`, `exit_code`, `data` and `error` ([RESULTS_FORMAT §12](RESULTS_FORMAT.md#12-machine-readable-output-envelope)). |
+| **Plugin discovery** | Metadata-only enumeration of explicit paths, a user plugin directory and a project-local directory; candidates are inspected as descriptor data but never executed ([ARCHITECTURE §5](ARCHITECTURE.md#5-plugin-subsystem-host-side)). |
+| **Plugin directory enumerator** | Injectable host abstraction that lists candidate module files in a plugin directory and reports an explicit reason when it is unavailable; it never loads a module. |
 | **Validation level** | Basic (NaN/Inf, invalid output), Standard (+ reference comparisons), or Strict (+ adapter checks and broader tests); independently selectable. |
 | **Check outcome** | The recorded result of one validation check, including its status, tolerances, reference source and observed error; a single pass/fail flag is not sufficient. |
 | **Reference output** | Expected output supplied by an adapter, a workload reference file, deterministic generation, or a designated reference implementation. |

@@ -96,7 +96,6 @@ bool has_reference(const ValidationCase &input) noexcept {
 
 } // namespace
 
-// cppcheck-suppress unusedFunction
 std::string_view reference_source_name(ReferenceSource source) noexcept {
   switch (source) {
   case ReferenceSource::none:
@@ -113,7 +112,6 @@ std::string_view reference_source_name(ReferenceSource source) noexcept {
   return "unknown";
 }
 
-// cppcheck-suppress unusedFunction
 std::string_view check_status_name(CheckStatus status) noexcept {
   switch (status) {
   case CheckStatus::passed:
@@ -247,7 +245,6 @@ CheckOutcome check_custom(const ValidationCase &input, const CustomCheck &custom
   return outcome;
 }
 
-// cppcheck-suppress unusedFunction
 bool ValidationReport::all_passed() const noexcept {
   return std::none_of(outcomes.begin(), outcomes.end(), [](const CheckOutcome &outcome) {
     return outcome.status == CheckStatus::failed || outcome.status == CheckStatus::unavailable;
@@ -262,7 +259,6 @@ std::size_t ValidationReport::failed_count() const noexcept {
       }));
 }
 
-// cppcheck-suppress unusedFunction
 std::optional<ValidationReport> run_validation(const std::vector<ValidationCase> &inputs,
                                                const ValidationOptions &options,
                                                std::string *error) {

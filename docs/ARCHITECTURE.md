@@ -79,7 +79,7 @@ and the SDK ABI version is `1.0.0`. *Source: BR §21–§22.*
 
 | Component | Responsibility | Ledger |
 | --- | --- | --- |
-| Core engine | Validate configuration against capabilities, sequence warm-up/run/validation, aggregate results | BR §3, §10, §13 |
+| Core engine | Validate configuration against capabilities, sequence warm-up/run/validation, build result documents, aggregate results | BR §3, §10, §13 |
 | Workload & generators | Build processor/chain/engine workloads; generate sine, multi-tone, impulse outside the timed interval | BR §4 |
 | Timing & statistics | Per-block, whole-run and optional end-to-end timing; aggregate by default; retain raw values and overhead estimates | BR §7 |
 | Validation engine | Basic/Standard/Strict checks separate from timing | BR §10 |
@@ -104,9 +104,10 @@ Planned targets (Derived design — names are not ledger requirements):
 | --- | --- | --- |
 | `ztick_sdk` | C ABI headers, compiled runtime symbols, version definitions | No |
 | `ztick_core` | SDK headers, workload, timing, statistics, validation, results | No |
-| `ztick_results` | JSON serialization | No (CSV may be optional) |
-| `ztick_platform` | platform abstraction + Linux implementation | Monitoring implementation is platform-selected |
-| `ztick_cli` | core, results | No for CLI users |
+| `ztick_results` | JSON serialization, config value tree, portable config and result document schemas, atomic writer, CSV projection and metadata attachment/comparison | No (CSV may be optional) |
+| `ztick_platform` | platform abstraction + Linux implementation + inventory-to-metadata adapter; depends on `ztick_results` for the field type | Monitoring implementation is platform-selected |
+| `ztick_cli` | core, results, platform; owns command dispatch, help/version, `list`, `run` argument parsing/overrides/file I/O, `system` inventory rendering and stored-result rendering | No for CLI users |
+| `ztick-bench` | `ztick_cli`; thin executable that writes dispatch output and returns its exit code | No for CLI users |
 | `ztick_tui` | core and results through the C ABI via Rust FFI; Cargo crate driven by CMake | **Yes** — Rust toolchain and ratatui are needed only for TUI builds |
 | `ztick_static_adapters` | SDK C ABI | **Yes** |
 | `ztick_plugin_host` | SDK C ABI, platform library loader | **Yes** |
@@ -147,7 +148,7 @@ src/platform/include/           platform abstraction headers
 src/platform/linux/             Linux implementation
 src/plugin/                     discovery, trust, loader, runner/IPC
 src/results/                    JSON, CSV, config, comparisons
-src/cli/                        CLI command layer
+src/cli/                        CLI command layer and ztick-bench executable
 src/tui/                        Rust/ratatui dashboard front end (Cargo crate)
 tools/ztick-sysinfo/            Phase 1 developer system-info executable
 tests/unit/                     unit tests (Catch2 v3)
@@ -189,6 +190,24 @@ Derived design of the run pipeline:
 6. Stop timing. Run correctness validation as a separate phase.
 7. Attach system/build/machine/workload metadata and write results atomically.
 
+**P4.6 implementation (Derived design).** The CLI owns steps 1's file and
+override handling and step 7's atomic write. `ztick_core` owns
+`run_configured_session`, which consumes the already-parsed config, plans the
+semantic execution settings, injects input/setup/warmup/validation actions into
+`run_sequence`, computes canonical metrics and returns the result document.
+Host services (monotonic clock, machine inventory, session identity and
+timestamps) are injected so the core stays independent of the CLI, TUI and OS.
+P4.6 executes a deterministic built-in reference workload and records a warning
+that no integration plugin was loaded; plugin discovery, trust and mode selection
+are separate host subsystems owned by later tasks.
+
+**P4.7 implementation (Derived design).** The CLI collects the static inventory
+through `ztick_platform::SystemInfoProvider`, converts it with the existing
+inventory-to-metadata adapter and renders each field's availability state and
+detail. The CLI does not duplicate the availability mapping in
+[PLATFORM §6](PLATFORM_MONITORING.md#6-availability-states), and the Phase 1
+`ztick-sysinfo` developer executable remains a separate tool.
+
 Parallel workloads add wall-clock and worker-thread CPU time where available
 (BR §7.2). IPC, process management and data movement for out-of-process execution
 are kept outside the measured interval wherever practical (BR §6.3).
@@ -222,6 +241,15 @@ Derived design:
   callback or entry point; directory enumeration and trust decisions remain separate
   host work. Modules without the symbol or with malformed/incompatible metadata are
   rejected with a reason rather than silently skipped (SDK_SPECIFICATION §10).
+  **P4.10 implementation (Derived design):** `ztick_plugin_host` adds a
+  `discover_plugins` pass that takes three sources (explicit paths, a user directory
+  and a project-local directory), enumerates candidates through an injected
+  `PluginDirectoryEnumerator` and reuses `inspect_dynamic_adapter` for each path. A
+  `PluginSource` token records which source produced a candidate; duplicates keep
+  the first source in explicit/user/project order. Missing directories and
+  unreadable trust lists are returned as explicit statuses, never omitted. Platform
+  path resolution is isolated in `posix/plugin_paths.cpp` (or its unsupported
+  stub), so the enumeration policy remains portable and testable.
 - **Compatibility gate** runs before configuration or execution: it checks the SDK
   version and required capability bits, refuses incompatible or undeclared
   integrations with a reason, and records the outcome for the run record
@@ -259,6 +287,14 @@ Derived design:
   across the process boundary. Its cost is outside the DSP interval where
   practical and is reported separately when it cannot be excluded.
 - A plugin marketplace/package manager is out of scope (BR §6.1).
+- **P4.10 CLI presentation (Derived design).** `ztick_cli` owns `plugin list` and
+  `plugin inspect`. They consume discovery and trust through injected services,
+  render explicit directory, inspection, compatibility and trust states, and build
+  the structured payloads for the JSON envelope. Neither command creates an
+  adapter, grants trust or prompts: inspection stops at the descriptor data symbol
+  (BR §6.1, §6.2). Output-format selection and exit-code ownership are specified in
+  [PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set) and the envelope schema in
+  [RESULTS_FORMAT §12](RESULTS_FORMAT.md#12-machine-readable-output-envelope).
 
 The integration-side obligations for metadata, versions and capabilities are owned
 by [SDK_SPECIFICATION](SDK_SPECIFICATION.md).
@@ -290,6 +326,12 @@ platform-dependent capabilities must not be silently omitted (BR §17). The mapp
 to metric value statuses is owned by
 [PLATFORM_MONITORING §6](PLATFORM_MONITORING.md#6-availability-states).
 
+**Metadata bridge (Derived design).** The platform layer converts each inventory
+item into the availability-aware metadata field type owned by `ztick_results`, so
+OS-specific collection stays in `ztick_platform` and result encoding stays in
+`ztick_results`. The field shape, attachment rules and comparability warnings are
+owned by [RESULTS_FORMAT §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design).
+
 ## 8. Comparison and reporting placement
 
 Run-to-run, build-to-build and machine-to-machine comparisons are orchestrated by
@@ -299,6 +341,20 @@ and the persisted representation by [RESULTS_FORMAT](RESULTS_FORMAT.md). The
 `compare` and `report` CLI commands are specified in
 [PROJECT_SPEC §3](PROJECT_SPEC.md#31-in-scope-for-v10) and
 [TESTING_STRATEGY](TESTING_STRATEGY.md).
+
+**P4.8–P4.9 implementation (Derived design).** The core function
+`compare_result_documents` validates two stored results, reuses the metadata
+comparison owned by `ztick_results` and returns the persisted raw comparison
+shape without writing a file. The P4.9 entry point
+`compare_result_documents_with_policy` reuses that record, collects run-level
+samples by metric identifier and applies the thresholded bootstrap classification
+owned by [METRICS §6](METRICS_REFERENCE.md#6-comparison-and-regression-statistics).
+The CLI owns file reads, argument and policy-option validation, and text
+rendering, with an injectable reader so both success and failure paths are
+testable. The core never writes a comparison file. `--fail-on-regression` is a CLI
+flag that maps a stored regression classification to exit code `4` without
+recomputing statistics; the JSON envelope is assembled only in `ztick_cli`
+(P4.10, [RESULTS_FORMAT §12](RESULTS_FORMAT.md#12-machine-readable-output-envelope)).
 
 ## 9. Decision dependencies
 

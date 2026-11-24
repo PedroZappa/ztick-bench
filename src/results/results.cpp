@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 /**
  * @file results.cpp
- * @brief Placeholder translation unit for the results and config target.
+ * @brief Translation unit for the results and config target.
  *
- * JSON/CSV serialization, config parsing and comparison sources replace this
- * file in later phases. This placeholder intentionally declares no functions.
+ * The P4.1 JSON reader/config document, P4.2 result document/atomic writer and
+ * P4.3 CSV projection live in dedicated sources; comparison records are added
+ * by later Phase 4 tasks. This file intentionally declares no functions.
  */

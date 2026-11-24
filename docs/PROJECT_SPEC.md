@@ -108,6 +108,97 @@ ztick-bench plugin inspect
 The CLI supports configuration files, command-line overrides, CI-friendly exit
 codes and machine-readable output. *Source: BR §12.2.*
 
+**Derived design (P4.5).** Argument routing lives in the `ztick_cli` module, which
+returns output text, error text and a stable exit code; the `ztick-bench`
+executable only writes those streams and returns the code. The CI contract is:
+
+| Code | Token | Meaning |
+| --- | --- | --- |
+| `0` | `success` | The command completed as requested. |
+| `1` | `usage_error` | Unknown command or option, extra arguments or malformed subcommand. |
+| `2` | `unavailable` | Recognized command whose implementation has not landed; help text lists the full command set. |
+| `3` | `failure` | The command ran but hit a runtime or infrastructure failure. |
+| `4` | `regression` | A comparison classified at least one regression and `--fail-on-regression` was set (P4.10). |
+
+`--help` (`-h`) and `--version` are global options. `list` and `list profiles`
+list the built-in profiles from [BENCHMARK §5](BENCHMARK_SPECIFICATION.md#5-profiles).
+All documented commands are implemented by P4.10; `unavailable` remains reserved
+for platforms on which a recognized command has no implementation. Code `4` is
+appended rather than renumbering the baseline codes (BR §12.2).
+
+**Derived design (P4.6).** `run` takes one positional config path followed by
+`--output <path>` or `--output=<path>` and repeated `--set path=value` or
+`--set=path=value` assignments. Dotted paths traverse existing config objects and
+may create only the final member; an invalid assignment leaves the config
+unchanged. A value starting with `"`, `{` or `[` is JSON; otherwise the existing
+member type selects integer, real, boolean or string interpretation. The default
+result path replaces the config extension with `.result.json`. Core-owned
+orchestration validates the overridden snapshot, executes the configured
+repetitions and builds the result document; the CLI writes it atomically
+([ARCHITECTURE §4](ARCHITECTURE.md#4-execution-and-data-flow),
+[RESULTS §6](RESULTS_FORMAT.md#6-config-document)). P4.6 uses the deterministic
+built-in reference workload and records a warning that no integration plugin was
+loaded; plugin execution is owned by later roadmap tasks. Invalid overrides are
+`usage_error`; unreadable configs, semantic failures and write failures are
+`failure`.
+
+**Derived design (P4.7).** `system` takes no arguments. It collects the static
+inventory through the platform abstraction
+([ARCHITECTURE §7](ARCHITECTURE.md#7-platform-abstraction-boundary)), reuses the
+platform-to-metadata adapter and prints one `name: status (detail)` line per
+field. The four status tokens are owned by
+[PLATFORM §6](PLATFORM_MONITORING.md#6-availability-states): a `value` field shows
+its value, while `unavailable`, `unsupported` and `not_applicable` fields show
+their reasons. Per-field non-value states are successful reports, not command
+failures (BR §17). Extra arguments are `usage_error`; a whole-inventory collector
+failure is `failure` and is still rendered as an explicit `system_inventory`
+field.
+
+**Derived design (P4.8).** `report` takes exactly one stored result path;
+`compare` takes a baseline path followed by a candidate path. Both read and
+validate documents through [RESULTS §3](RESULTS_FORMAT.md#3-result-document-structure) without
+rewriting them. `report` derives the displayed session status from run evidence
+on a copy and prints the stored token separately, so a stale `complete` token is
+visible rather than presented as success. `compare` asks the core for a
+comparison record ([ARCHITECTURE §8](ARCHITECTURE.md#8-comparison-and-reporting-placement))
+and renders it; comparability warnings and metrics present on only one side are
+explicit. Extra or missing paths are `usage_error`; unreadable documents, invalid
+documents and comparison failures are `failure`.
+
+**Derived design (P4.9).** `compare` additionally accepts `--threshold <percent>`,
+`--alpha <level>` and `--sided one|two`, each also accepted with `=` in the same
+argument. Defaults are `1`, `0.05` and `two` respectively. Options may appear
+before, between or after the two positional paths; an unknown, duplicate or
+malformed option is `usage_error`. The CLI passes the parsed policy to the core
+classifier and renders the returned record without recomputing statistics.
+Thresholding and significance use the method in
+[METRICS §6](METRICS_REFERENCE.md#6-comparison-and-regression-statistics), and
+the retained evidence is specified in
+[RESULTS §10](RESULTS_FORMAT.md#10-comparison-records). With one run per metric
+the significance check is explicitly `not_applicable`; the command still exits
+`0` because an unavailable statistical test is not a command failure.
+
+**Derived design (P4.10).** A global `--format text|json` option is accepted before
+or after the command name in `--format <value>` or `--format=<value>` form. JSON
+mode writes exactly one compact envelope to stdout and leaves stderr empty, even
+for usage errors and failures; [RESULTS §12](RESULTS_FORMAT.md#12-machine-readable-output-envelope)
+owns its schema. `compare --fail-on-regression` is a flag that adds exit code `4`
+when the stored classification is `regression`; without the flag the same
+comparison exits `0`, so the statistical result never changes silently. The flag
+is accepted once, with no `=` value; unknown, duplicate and malformed options are
+`usage_error`.
+
+`plugin list` enumerates explicit `--path <path>` candidates (repeatable, with
+`--path=<path>` supported) plus the user and project-local plugin directories. It
+inspects each candidate's descriptor data symbol only: no lifecycle callback or
+entry point runs. Unavailable directories, malformed modules and unreadable trust
+lists are reported as explicit states rather than omitted (BR §6.1, §6.2, §17).
+`plugin inspect <path>` performs the same metadata-only inspection for one module,
+adds host SDK/capability negotiation and reports the trust state; an unusable
+module is a `failure`, while argument mistakes are `usage_error`. Discovery and
+inspection placement is owned by
+[ARCHITECTURE §5](ARCHITECTURE.md#5-plugin-subsystem-host-side).
+
 ## 4. Document ownership map
 
 | Topic | Owner | Ledger source |

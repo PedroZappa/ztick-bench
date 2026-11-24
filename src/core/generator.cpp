@@ -242,7 +242,6 @@ ConfigValue generator_to_config(const GeneratorSpec &spec) {
   return data;
 }
 
-// cppcheck-suppress unusedFunction
 std::optional<GeneratorSpec> generator_from_config(const ConfigValue &data, std::string *error) {
   if (data.type() != ConfigValueType::object) {
     record_error(error, "generator config must be an object");
@@ -322,7 +321,6 @@ std::optional<GeneratorSpec> generator_from_config(const ConfigValue &data, std:
   return std::nullopt;
 }
 
-// cppcheck-suppress unusedFunction
 // Sample rate and frame count are intentionally distinct, named units at this API boundary.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::vector<double> generate_samples(const GeneratorSpec &spec, double sample_rate_hz,

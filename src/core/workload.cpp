@@ -86,7 +86,6 @@ ConfigValue workload_to_config(const Workload &workload) {
   return data;
 }
 
-// cppcheck-suppress unusedFunction
 std::optional<Workload> workload_from_config(const ConfigValue &data, std::string *error) {
   if (data.type() != ConfigValueType::object) {
     record_error(error, "workload section must be an object");

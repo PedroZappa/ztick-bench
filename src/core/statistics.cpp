@@ -98,7 +98,6 @@ bool finite_positive(double value) noexcept { return std::isfinite(value) && val
 
 } // namespace
 
-// cppcheck-suppress unusedFunction
 std::string_view raw_basis_name(RawBasis basis) noexcept {
   switch (basis) {
   case RawBasis::per_block:
@@ -257,7 +256,6 @@ std::optional<double> scaling_efficiency_from_throughput(double throughput_one, 
   return throughput_n / (static_cast<double>(worker_count) * throughput_one);
 }
 
-// cppcheck-suppress unusedFunction
 std::optional<DurationStatistics> compute_duration_statistics(const std::vector<double> &samples,
                                                               RawBasis basis, std::string *error) {
   if (samples.empty()) {
@@ -287,7 +285,6 @@ std::optional<DurationStatistics> compute_duration_statistics(const std::vector<
 }
 
 std::optional<PerformanceMetrics>
-// cppcheck-suppress unusedFunction
 // Frames, channels, block size and sample rate are distinct, named units at this API boundary.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 compute_performance_metrics(std::uint64_t frames, double processing_seconds, std::uint32_t channels,

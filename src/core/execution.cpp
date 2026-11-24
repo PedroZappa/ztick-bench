@@ -61,7 +61,6 @@ void append_sample(std::vector<TimingSamples> &samples, TimingLevel level,
 
 } // namespace
 
-// cppcheck-suppress unusedFunction
 std::optional<TimingLevel> parse_timing_level(std::string_view token) noexcept {
   if (token == "per_block") {
     return TimingLevel::per_block;
@@ -75,7 +74,6 @@ std::optional<TimingLevel> parse_timing_level(std::string_view token) noexcept {
   return std::nullopt;
 }
 
-// cppcheck-suppress unusedFunction
 std::string_view timing_level_name(TimingLevel level) noexcept {
   switch (level) {
   case TimingLevel::per_block:
@@ -93,7 +91,6 @@ std::string_view timing_level_name(TimingLevel level) noexcept {
 // cppcheck-suppress unusedFunction
 double PhaseMeasurement::duration_seconds() const noexcept { return end_seconds - start_seconds; }
 
-// cppcheck-suppress unusedFunction
 std::optional<ExecutionTrace> run_sequence(const SequenceActions &actions,
                                            const SequenceOptions &options, const Clock &clock,
                                            std::string *error) {
@@ -186,7 +183,6 @@ std::optional<ExecutionTrace> run_sequence(const SequenceActions &actions,
   return trace;
 }
 
-// cppcheck-suppress unusedFunction
 const std::vector<double> *find_samples(const ExecutionTrace &trace, TimingLevel level) noexcept {
   const auto found =
       std::find_if(trace.timing.begin(), trace.timing.end(),
@@ -197,7 +193,6 @@ const std::vector<double> *find_samples(const ExecutionTrace &trace, TimingLevel
   return nullptr;
 }
 
-// cppcheck-suppress unusedFunction
 OverheadEstimate estimate_overhead(const Clock &clock, std::size_t sample_count,
                                    std::string *error) {
   OverheadEstimate estimate;
@@ -223,7 +218,6 @@ OverheadEstimate estimate_overhead(const Clock &clock, std::size_t sample_count,
   return estimate;
 }
 
-// cppcheck-suppress unusedFunction
 std::optional<double> overhead_percent(const OverheadEstimate &estimate) noexcept {
   if (estimate.status != ValueStatus::estimated || !(estimate.dsp_time_seconds > 0.0)) {
     return std::nullopt;

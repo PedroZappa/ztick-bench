@@ -3,10 +3,10 @@
  * @file config_value.hpp
  * @brief Minimal in-memory representation of config-shaped data for core models.
  *
- * The portable config document is owned by RESULTS_FORMAT §6 and is parsed from
- * JSON in a later phase. This value tree mirrors that document's object/array/
- * scalar shape so the Phase 2 workload and profile models can be built from, and
- * rendered back to, config-shaped data without depending on a JSON library.
+ * The portable config document is owned by RESULTS_FORMAT §6. This value tree
+ * mirrors that document's object/array/scalar shape so workload and profile
+ * models, the JSON reader and the config schema checker can exchange data
+ * without a runtime JSON dependency.
  *
  * Objects preserve insertion order, which makes rendered data deterministic and
  * allows equality-based round-trip tests. This header is private to ztick-bench
@@ -157,10 +157,22 @@ public:
   [[nodiscard]] const Object *as_object() const noexcept;
 
   /**
+   * @brief Mutably access the object member list.
+   * @return Pointer to the members, or `nullptr` when this is not an object.
+   */
+  [[nodiscard]] Object *as_object() noexcept;
+
+  /**
    * @brief Read the array elements.
    * @return Pointer to the elements, or `nullptr` when this is not an array.
    */
   [[nodiscard]] const Array *as_array() const noexcept;
+
+  /**
+   * @brief Mutably access the array elements.
+   * @return Pointer to the elements, or `nullptr` when this is not an array.
+   */
+  [[nodiscard]] Array *as_array() noexcept;
 
   /**
    * @brief Find an object member by key.
@@ -168,6 +180,13 @@ public:
    * @return Pointer to the member value, or `nullptr` when absent or not an object.
    */
   [[nodiscard]] const ConfigValue *find(std::string_view key) const noexcept;
+
+  /**
+   * @brief Mutably find an object member by key.
+   * @param key Member name to look up.
+   * @return Pointer to the member value, or `nullptr` when absent or not an object.
+   */
+  [[nodiscard]] ConfigValue *find(std::string_view key) noexcept;
 
   /**
    * @brief Insert or replace an object member.

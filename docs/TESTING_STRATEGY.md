@@ -184,6 +184,16 @@ the Phase 2 exit criterion is demonstrated across component boundaries.
 - Verify configurable thresholds and significance checks: differences below
   threshold or within normal variability must not be reported as regressions
   (BR §11.3, [METRICS](METRICS_REFERENCE.md#6-comparison-and-regression-statistics)).
+- P4.9 tests assert independently computed aggregate means and relative change,
+  polarity-aware regression and improvement classification, significant
+  sub-threshold raw differences, threshold-only within-variability outcomes,
+  insufficient-sample and unknown-polarity `not_applicable` states, one-sided and
+  two-sided interval decisions, and rejection of invalid policy values. CLI tests
+  cover policy-option parsing, classified rendering and option forwarding through
+  `execute_compare`; executable checks confirm the defaults render an applied
+  threshold and explicit unavailable significance. P4.10 adds a deterministic
+  regression fixture that asserts exit code `4` only under
+  `--fail-on-regression`, with the same comparison exiting `0` without the flag.
 - Verify build-to-build and machine-to-machine comparison paths, including
   comparability warnings when metadata differs (BR §11.2–§11.3).
 - Verify warning-not-reject behavior under simulated thermal/frequency/load
@@ -234,6 +244,18 @@ helper is launched for real: its final status crosses the fixed IPC message, a
 signal-terminated child is converted to a workload failure, and a later child still
 runs in the same host process (BR §14, ARCHITECTURE §6).
 
+**P4.10 discovery coverage (Derived design).** Unit tests inject both a directory
+enumerator and a shared-library loader, and a fake descriptor whose lifecycle
+callback counts calls. They assert that explicit, user and project candidates are
+enumerated in that order, duplicates keep the first source, a missing directory is
+reported with a reason, a malformed module is retained with its failure reason, and
+the lifecycle callback is never called. Trust-list tests distinguish a readable
+list from an explicit store failure, which must never become an empty trusted list.
+CLI-level tests cover `plugin list` option parsing (`--path` separated and inline,
+duplicates and unknown options), metadata rendering and inspect failure paths; an
+executable-level check confirms both commands reach the shell without loading a
+plugin (BR §6.1, §6.2).
+
 ## 9. Portability, comparison and CI tests
 
 - Round-trip portable config documents and result documents, including metadata
@@ -246,6 +268,91 @@ runs in the same host process (BR §14, ARCHITECTURE §6).
 - Verify build metadata capture (git commit, compiler, flags, configuration)
   where discoverable (BR §11.1).
 
+**P4.1 config coverage (Derived design).** Unit tests read a complete v1 config,
+assert both version fields, write it as compact JSON and compare a second read by
+value. They also reject a missing or unsupported `config_version`, a future SDK
+minor version, mistyped top-level sections, malformed JSON and non-finite reals,
+and check the numeric SDK version compatibility helper directly.
+
+**P4.2 result coverage (Derived design).** Unit tests derive the expected session
+status independently for complete, incomplete and failed run sets, verify that a
+run with recorded failures is demoted to `incomplete`, and confirm that a failed
+finalization leaves the document unchanged. Writer tests assert exact bytes after
+create and replace, verify that a failed replacement preserves the target and
+leaves no temporary file, and check that invalid documents create no file. A
+write/read round trip confirms that the derived statuses survive serialization.
+
+**P4.3 CSV coverage (Derived design).** Tests parse the exported CSV with an
+independent line reader and assert that run, metric, value, unit, status and
+source cells equal values specified in the source document. They cover the fixed
+header and omitted-fields marker, escaping of commas and quotes, unavailable
+metrics with an empty value and a retained reason, both row modes including the
+aggregate fallback, metric-less runs, invalid-document rejection and atomic file
+replacement.
+
+**P4.4 metadata coverage (Derived design).** Unit tests assert that build metadata
+contains one record per captured fact, that an empty captured value becomes an
+`unavailable` record with a reason, and that the no-argument builder agrees with
+the compile-time captured info. They project workload and environment sections
+from a config snapshot, verify attachment populates all three sections without
+changing the snapshot, and check that invalid metadata is rejected without partial
+mutation. Comparability tests cover equal values, differing values, differing
+statuses, matching non-value statuses, an undetectable value on one side, and a
+round trip through the atomic result writer. A platform-layer test converts an
+injected inventory with all four availability states and asserts each field keeps
+its state and reason.
+
+**P4.5 CLI coverage (Derived design).** Unit tests call `dispatch` directly for
+every exit-code token, global options, `list` subjects, malformed arguments and
+each recognized-but-unavailable command, asserting the exact stream carrying each
+message. An executable-level test runs the built binary through CMake to prove
+that the returned code reaches the shell and that help, version, list, usage-error
+and unavailable paths write the expected text (BR §12.2).
+
+**P4.7 CLI coverage (Derived design).** Unit tests inject a deterministic
+inventory containing all four availability states and assert that each rendered
+line retains its token, value or reason. They cover extra arguments, a missing
+collector and each whole-inventory non-value state, plus a production-collector
+smoke check. The executable dispatch test confirms that
+`system` exits successfully and writes the availability-state header.
+
+**P4.8 CLI coverage (Derived design).** Unit tests check core comparison deltas
+against independently computed values, including zero, negative and unavailable
+metrics, both unmatched sides, metadata-derived levels and invalid documents.
+CLI tests inject a result reader to cover report evidence and stale-status
+mismatch, raw comparison rendering, argument errors and read failures, plus
+production reads of atomically written files. Executable-level scripts run both
+commands on stored results and verify their usage-error codes.
+
+**P4.10 CI coverage (Derived design).** Unit tests parse `--format text|json` in
+both argument forms, reject missing, duplicate and unknown values, and assert that
+the JSON envelope has stable header fields and wraps success, failure and usage
+outcomes with empty stderr. Format-option errors are also enveloped when a complete
+`--format json` was requested. Executable-level dispatch checks verify the header
+fields for each outcome and the plugin commands; the end-to-end script generates
+two results with a large iteration gap and asserts exit code `4` under
+`--fail-on-regression` and exit code `0` without it. The envelope schema is owned by
+[RESULTS_FORMAT §12](RESULTS_FORMAT.md#12-machine-readable-output-envelope)
+(BR §12.2).
+
+**P4.11 verification coverage (Derived design).** One integration suite drives all
+four Phase 4 exit-criterion areas together through the documented surfaces, with
+expectations taken from the published contracts rather than the implementations.
+CLI workflows execute a real config with dotted overrides, then read and compare
+the written results and run both metadata-only plugin commands. Portability checks
+round-trip a versioned config through the canonical writer, reject incompatible
+schema and SDK versions, and verify that host differences produce explicit
+comparability warnings while matching explicit `unsupported` states stay
+comparable (BR §13). Comparison checks recompute means, absolute delta and
+relative change independently from the fixture samples, retain those samples,
+keep a sub-threshold change raw, and surface cross-host warnings. CI checks assert
+the stable exit-code tokens, both `--format` forms, the fixed six-field envelope
+for success, usage, failure and regression outcomes, and that `--fail-on-regression`
+gates only the exit code while detection is still reported. The verification also
+covers structured `system`, `report` and `compare` data reaching the envelope, a
+defect found and fixed during this pass. The suite is registered with CTest
+through `ztick_tests` and joins the `make verify` gate.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |
@@ -254,7 +361,7 @@ runs in the same host process (BR §14, ARCHITECTURE §6).
 | 2. Two independent SDK test apps | §3 App A built and run (P3.7); App B built and run in both runner modes (P3.8); Phase 3 end-to-end verification pass (P3.10) |
 | 3. Static and dynamic integrations | §3 apps A/B; §8 discovery/load tests |
 | 4. Initial metrics and workload levels | §4, §5, §6 tests across processor/chain/engine |
-| 5. CLI, JSON, comparisons, regressions | §9 tests; §6 comparison tests |
+| 5. CLI, JSON, comparisons, regressions | §9 tests; §6 comparison tests; Phase 4 end-to-end verification pass (P4.11) |
 | 6. TUI principal workflows | System tests through dashboard, config, execution monitoring and results screens ([TUI](TUI_SPECIFICATION.md)) |
 | 7. Automated correctness/overhead/repeatability/failure/isolation tests | §4–§8 |
 | 8. Third-party integration docs | [SDK_SPECIFICATION](SDK_SPECIFICATION.md) conformance checklist and build steps validated by the out-of-tree builds of both apps (P3.9) |
