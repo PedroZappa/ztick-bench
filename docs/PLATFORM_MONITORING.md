@@ -52,6 +52,12 @@ result metadata fields by the adapter in `ztick_platform`; the field record shap
 attachment rules and comparability warnings are owned by
 [RESULTS_FORMAT §4.4](RESULTS_FORMAT.md#44-metadata-attachment-behavior-derived-design).
 
+**Derived design (P4.7).** The CLI `system` command reuses that adapter to print
+one field per inventory item with the state tokens from §6 and the recorded value
+or reason. This is a presentation path, not a second availability mapping; the
+command syntax and exit behavior are owned by
+[PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set).
+
 ## 3. Runtime monitoring
 
 Collect and record during a run where available (BR §9):

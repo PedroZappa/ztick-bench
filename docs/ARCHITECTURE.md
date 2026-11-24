@@ -106,7 +106,7 @@ Planned targets (Derived design — names are not ledger requirements):
 | `ztick_core` | SDK headers, workload, timing, statistics, validation, results | No |
 | `ztick_results` | JSON serialization, config value tree, portable config and result document schemas, atomic writer, CSV projection and metadata attachment/comparison | No (CSV may be optional) |
 | `ztick_platform` | platform abstraction + Linux implementation + inventory-to-metadata adapter; depends on `ztick_results` for the field type | Monitoring implementation is platform-selected |
-| `ztick_cli` | core, results, platform; owns command dispatch, help/version, `list` and `run` argument parsing, overrides and file I/O | No for CLI users |
+| `ztick_cli` | core, results, platform; owns command dispatch, help/version, `list`, `run` argument parsing/overrides/file I/O and `system` inventory rendering | No for CLI users |
 | `ztick-bench` | `ztick_cli`; thin executable that writes dispatch output and returns its exit code | No for CLI users |
 | `ztick_tui` | core and results through the C ABI via Rust FFI; Cargo crate driven by CMake | **Yes** — Rust toolchain and ratatui are needed only for TUI builds |
 | `ztick_static_adapters` | SDK C ABI | **Yes** |
@@ -200,6 +200,13 @@ timestamps) are injected so the core stays independent of the CLI, TUI and OS.
 P4.6 executes a deterministic built-in reference workload and records a warning
 that no integration plugin was loaded; plugin discovery, trust and mode selection
 are separate host subsystems owned by later tasks.
+
+**P4.7 implementation (Derived design).** The CLI collects the static inventory
+through `ztick_platform::SystemInfoProvider`, converts it with the existing
+inventory-to-metadata adapter and renders each field's availability state and
+detail. The CLI does not duplicate the availability mapping in
+[PLATFORM §6](PLATFORM_MONITORING.md#6-availability-states), and the Phase 1
+`ztick-sysinfo` developer executable remains a separate tool.
 
 Parallel workloads add wall-clock and worker-thread CPU time where available
 (BR §7.2). IPC, process management and data movement for out-of-process execution

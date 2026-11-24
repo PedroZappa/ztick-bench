@@ -141,6 +141,18 @@ loaded; plugin execution is owned by later roadmap tasks. Invalid overrides are
 `usage_error`; unreadable configs, semantic failures and write failures are
 `failure`.
 
+**Derived design (P4.7).** `system` takes no arguments. It collects the static
+inventory through the platform abstraction
+([ARCHITECTURE §7](ARCHITECTURE.md#7-platform-abstraction-boundary)), reuses the
+platform-to-metadata adapter and prints one `name: status (detail)` line per
+field. The four status tokens are owned by
+[PLATFORM §6](PLATFORM_MONITORING.md#6-availability-states): a `value` field shows
+its value, while `unavailable`, `unsupported` and `not_applicable` fields show
+their reasons. Per-field non-value states are successful reports, not command
+failures (BR §17). Extra arguments are `usage_error`; a whole-inventory collector
+failure is `failure` and is still rendered as an explicit `system_inventory`
+field.
+
 ## 4. Document ownership map
 
 | Topic | Owner | Ledger source |

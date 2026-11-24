@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: MIT
 # CLI command layer and the ztick-bench executable. The dispatch module owns
 # argument routing and exit codes; the executable only writes the returned
-# streams. P4.5 implements --help, --version and `list`; P4.6 adds `run`.
+# streams. P4.5 implements --help, --version and `list`; P4.6 adds `run`; P4.7
+# adds `system`.
 
 add_library(ztick_cli STATIC
   cli.cpp
   run_command.cpp
+  system_command.cpp
 )
 
 target_include_directories(ztick_cli

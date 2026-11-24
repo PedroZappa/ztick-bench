@@ -59,6 +59,7 @@ add_executable(ztick_tests
   unit/sdk_runtime_test.cpp
   unit/statistics_test.cpp
   unit/sysinfo_report_test.cpp
+  unit/system_command_test.cpp
   unit/system_info_metadata_test.cpp
   unit/trust_test.cpp
   unit/validation_test.cpp

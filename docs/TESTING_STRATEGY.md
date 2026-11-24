@@ -287,6 +287,13 @@ message. An executable-level test runs the built binary through CMake to prove
 that the returned code reaches the shell and that help, version, list, usage-error
 and unavailable paths write the expected text (BR §12.2).
 
+**P4.7 CLI coverage (Derived design).** Unit tests inject a deterministic
+inventory containing all four availability states and assert that each rendered
+line retains its token, value or reason. They cover extra arguments, a missing
+collector and each whole-inventory non-value state, plus a production-collector
+smoke check. The executable dispatch test confirms that
+`system` exits successfully and writes the availability-state header.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |

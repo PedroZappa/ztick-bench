@@ -61,6 +61,7 @@ TEST_CASE("CLI exit codes have stable tokens", "[cli][results]") {
 TEST_CASE("CLI help and list text document the command set", "[cli][results]") {
   const std::string_view usage = ztick::cli::usage_text();
   require_contains(usage, "Usage:");
+  require_contains(usage, "system");
   require_contains(usage, "list [profiles]");
   require_contains(usage, "run <config.json>");
   require_contains(usage, "--output <path>");
@@ -125,11 +126,25 @@ TEST_CASE("CLI list command succeeds", "[cli][results]") {
 }
 
 /**
+ * @brief Verify `system` is routed to the platform inventory command.
+ */
+TEST_CASE("CLI system command succeeds", "[cli][results]") {
+  const CommandResult result = ztick::cli::dispatch(arguments({"system"}));
+  REQUIRE(result.code == ExitCode::success);
+  REQUIRE(result.error.empty());
+  require_contains(result.output, "availability states");
+  require_contains(result.output, "cpu_model:");
+
+  const CommandResult extra = ztick::cli::dispatch(arguments({"system", "extra"}));
+  REQUIRE(extra.code == ExitCode::usage_error);
+  require_contains(extra.error, "'system' accepts no arguments");
+}
+
+/**
  * @brief Verify later roadmap commands are recognized but reported unavailable.
  */
 TEST_CASE("CLI recognizes commands whose implementation lands later", "[cli][results]") {
-  for (const std::string_view command :
-       {"system", "compare", "report", "plugin list", "plugin inspect"}) {
+  for (const std::string_view command : {"compare", "report", "plugin list", "plugin inspect"}) {
     const std::size_t split = command.find(' ');
     const CommandResult result =
         split == std::string_view::npos
