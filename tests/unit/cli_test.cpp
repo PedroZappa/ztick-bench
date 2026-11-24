@@ -170,6 +170,11 @@ TEST_CASE("CLI system command succeeds", "[cli][results]") {
   REQUIRE(result.error.empty());
   require_contains(result.output, "availability states");
   require_contains(result.output, "cpu_model:");
+  REQUIRE(result.data.find("fields") != nullptr);
+
+  const CommandResult system_json = ztick::cli::dispatch(arguments({"--format=json", "system"}));
+  REQUIRE(system_json.code == ExitCode::success);
+  REQUIRE(parse_envelope(system_json).find("data")->find("fields") != nullptr);
 
   const CommandResult extra = ztick::cli::dispatch(arguments({"system", "extra"}));
   REQUIRE(extra.code == ExitCode::usage_error);

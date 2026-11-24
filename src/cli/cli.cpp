@@ -199,13 +199,19 @@ CommandResult dispatch_command(const std::vector<std::string_view> &args) {
     result.data = run_data(outcome);
   } else if (command == "system") {
     const std::vector<std::string_view> system_args(args.begin() + 1U, args.end());
-    result = execute_system(system_args, default_system_info_collector(), &result.data);
+    ConfigValue data = ConfigValue::null();
+    result = execute_system(system_args, default_system_info_collector(), &data);
+    result.data = std::move(data);
   } else if (command == "report") {
     const std::vector<std::string_view> report_args(args.begin() + 1U, args.end());
-    result = execute_report(report_args, default_result_reader(), &result.data);
+    ConfigValue data = ConfigValue::null();
+    result = execute_report(report_args, default_result_reader(), &data);
+    result.data = std::move(data);
   } else if (command == "compare") {
     const std::vector<std::string_view> compare_args(args.begin() + 1U, args.end());
-    result = execute_compare(compare_args, default_result_reader(), &result.data);
+    ConfigValue data = ConfigValue::null();
+    result = execute_compare(compare_args, default_result_reader(), &data);
+    result.data = std::move(data);
   } else if (command == "plugin") {
     if (args.size() < 2U) {
       return usage_error("ztick-bench: 'plugin' requires 'list' or 'inspect'\n");
