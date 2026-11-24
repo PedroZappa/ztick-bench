@@ -192,7 +192,7 @@ prerequisite before the Rust crate and screens are implemented.
       run state, availability states, plugin identity/version/compatibility,
       declared capabilities and trust state, with no hidden `unsupported` or
       `unavailable` fields ([TUI §2–§4](TUI_SPECIFICATION.md#2-screens)).
-- [ ] **P5.3 — Configuration and scheduling screens.** Done when: Workload,
+- [x] **P5.3 — Configuration and scheduling screens.** Done when: Workload,
       configuration, measurement/validation, parallelism/scheduling and
       profiles/settings edits produce a valid portable v1 config, including saved
       named profiles; higher priority requires explicit opt-in; and a config with

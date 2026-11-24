@@ -171,6 +171,8 @@ install(FILES
 # Defines BUILD_TESTING and enables CTest. Test registration starts at P1.8.
 include(CTest)
 
+option(ZTICK_BUILD_EXAMPLES "Build the SDK test applications" ON)
+
 # Source-tree targets (ARCHITECTURE §3.1). Per-directory CMakeLists.txt files
 # declare the targets; later phases populate their implementations. The SDK target
 # was already added above because install/export rules need it.
@@ -190,7 +192,6 @@ add_subdirectory(tools/ztick-sysinfo)
 # Optional SDK test applications (Phase 3, BR §17.2). App A is a complete static
 # harness; App B is a complete dynamic engine harness. Added before tests so CTest
 # can exercise both example targets.
-option(ZTICK_BUILD_EXAMPLES "Build the SDK test applications" ON)
 if(ZTICK_BUILD_EXAMPLES)
   add_subdirectory(examples/static_adapter)
   add_subdirectory(examples/dynamic_adapter)

@@ -199,7 +199,9 @@ Derived top-level shape:
   "measurement": { "detail": "aggregate", "end_to_end": false,
                    "timing_levels": ["per_block", "whole_run"] },
   "validation": { "level": "Basic", "tolerances": {}, "references": [] },
-  "parallelism": { "workers": "auto", "affinity": "auto" }
+  "parallelism": { "workers": "auto", "affinity": "auto",
+                   "cpu_isolation": "off", "priority_opt_in": false,
+                   "priority": 0 }
 }
 ```
 
@@ -221,21 +223,48 @@ Missing, mistyped or unsupported version tokens are rejected, and a rejected
 document is never applied partially. `integration.id` and `integration.version`
 must be non-empty strings. Semantic validation of the remaining sections belongs
 to the component that consumes each section; this reader owns only document
-shape, version tokens and integration identity.
+shape, version tokens and integration identity. The TUI front end rejects a
+document that the core planner would reject before retaining it
+([§7](#7-portability-checks)). The `cpu_isolation` token records
+an OS-permitted CPU-isolation request with `off` as the default; the platform may
+refuse the request and fall back to inherited scheduling (derived design; source
+BR §8.1). The `priority_opt_in` and `priority` tokens record explicit consent and
+the requested value; higher priority is never applied without a matching opt-in
+(source BR §8.1).
 
 ## 7. Portability checks
 
-When a config is loaded on another machine, the host compares required
-capabilities against the adapter's declarations and its own environment:
+Derived design (source BR §13): before a config is applied on another machine,
+the host compares it with the discovered integration and the reported system
+environment. No requested value is substituted or silently adapted.
 
-1. Integration present and SDK version compatible.
-2. Requested formats, layouts, dimensions and parameters supported.
-3. Execution settings (affinity count, isolation availability, priority) possible.
-4. Validation references resolvable.
+1. Integration identity, metadata inspection and SDK version compatibility are
+   checked; a missing or incompatible integration blocks the config. Trust is
+   enforced separately before first execution
+   ([TUI §4](TUI_SPECIFICATION.md#4-interaction-rules)).
+2. The authoritative core planner validates the document semantics: workload
+   level, generator kind and parameters, dimension values, execution, measurement
+   and validation settings. This is the shared `validate_run_config()` check used
+   by parse, load, override and run.
+3. The TUI portability gate then compares the retained config with the discovered
+   integration and host: every capability bit required by the settings must be
+   declared by the integration; an affinity request requires the matching core
+   count to be reported; out-of-process isolation is unavailable for the built-in
+   workload; and any priority above zero requires the explicit opt-in recorded in
+   §6. A CPU-isolation request is reported as a warning because the OS may refuse
+   it and fall back to inherited scheduling.
+4. Validation references and custom validation require the corresponding
+   `reference_data` and `custom_validation` capabilities. Metadata-only inspection
+   cannot resolve individual reference identifiers, so an adapter that does not
+   declare the capability blocks the config.
 
-Differences are reported as explicit `unsupported`/`unavailable` findings and as
-environment comparability warnings. The test must not be silently altered to fit
-the new machine (BR §13, REQ-PROJ-05).
+The v1.0 config has no separate sample-format or channel-layout token; those
+properties are integration capabilities declared under
+[SDK_SPECIFICATION §5](SDK_SPECIFICATION.md#5-audio-data-contract) and are
+checked by capability negotiation. Unsupported combinations are reported as
+explicit `unsupported`/`unavailable` findings and environment comparability
+warnings; the test must not be silently altered to fit the new machine
+(BR §13, REQ-PROJ-05).
 
 ## 8. CSV representation
 

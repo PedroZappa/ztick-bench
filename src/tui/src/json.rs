@@ -61,6 +61,22 @@ impl Json {
         }
     }
 
+    /// Return the floating-point value when this value is a finite JSON number.
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            Self::Number(text) => text.parse::<f64>().ok().filter(|value| value.is_finite()),
+            _ => None,
+        }
+    }
+
+    /// Return the boolean value when this value is a JSON boolean.
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Self::Bool(value) => Some(*value),
+            _ => None,
+        }
+    }
+
     /// Return the first member with the requested name when this value is an object.
     pub fn get(&self, key: &str) -> Option<&Json> {
         self.as_object()?
@@ -68,6 +84,70 @@ impl Json {
             .find(|(name, _)| name == key)
             .map(|(_, value)| value)
     }
+
+    /// Serialize this value as compact JSON, preserving member order.
+    ///
+    /// Numbers keep their original literal text; strings are escaped with the
+    /// shortest JSON representation that preserves their code points.
+    pub fn compact(&self) -> String {
+        let mut output = String::new();
+        self.write_compact(&mut output);
+        output
+    }
+
+    /// Append this value's compact JSON representation to @p output.
+    fn write_compact(&self, output: &mut String) {
+        match self {
+            Self::Null => output.push_str("null"),
+            Self::Bool(true) => output.push_str("true"),
+            Self::Bool(false) => output.push_str("false"),
+            Self::Number(text) => output.push_str(text),
+            Self::String(value) => write_json_string(output, value),
+            Self::Array(items) => {
+                output.push('[');
+                for (index, item) in items.iter().enumerate() {
+                    if index > 0 {
+                        output.push(',');
+                    }
+                    item.write_compact(output);
+                }
+                output.push(']');
+            }
+            Self::Object(entries) => {
+                output.push('{');
+                for (index, (name, value)) in entries.iter().enumerate() {
+                    if index > 0 {
+                        output.push(',');
+                    }
+                    write_json_string(output, name);
+                    output.push(':');
+                    value.write_compact(output);
+                }
+                output.push('}');
+            }
+        }
+    }
+}
+
+/// Append one JSON string literal to @p output.
+fn write_json_string(output: &mut String, value: &str) {
+    output.push('"');
+    for character in value.chars() {
+        match character {
+            '"' => output.push_str("\\\""),
+            '\\' => output.push_str("\\\\"),
+            '\u{08}' => output.push_str("\\b"),
+            '\u{0c}' => output.push_str("\\f"),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            other if other < '\u{20}' => {
+                output.push_str(&format!("\\u{:04x}", other as u32));
+            }
+            other => output.push(other),
+        }
+    }
+    output.push('"');
 }
 
 /// A syntax error in a front-end JSON envelope.
@@ -435,6 +515,14 @@ mod tests {
         let entries = value.as_object().expect("value is an object");
         let names: Vec<&str> = entries.iter().map(|(name, _)| name.as_str()).collect();
         assert_eq!(names, ["b", "a", "b_note"]);
+    }
+
+    /// Verify compact serialization preserves order, number text and escaping.
+    #[test]
+    fn compact_round_trips_decoded_json() {
+        let text = r#"{"z":"a\n\"b\"","n":-1.25e+2,"a":[true,null,2],"unicode":"é"}"#;
+        let value = parse(text).expect("value parses");
+        assert_eq!(value.compact(), text);
     }
 
     /// Verify parse decodes strings numbers and unicode.

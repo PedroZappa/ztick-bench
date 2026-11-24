@@ -24,9 +24,14 @@ fn header_lines(app: &App) -> Vec<Line<'static>> {
 }
 
 /// Build the key hint footer shared by every screen.
-fn footer_lines() -> Vec<Line<'static>> {
+fn footer_lines(app: &App) -> Vec<Line<'static>> {
+    if app.input().is_some() {
+        return vec![Line::from(
+            "type value  Backspace delete  Enter apply  Esc cancel  q quit",
+        )];
+    }
     vec![Line::from(
-        "1 dashboard  2 system  3 integrations  Tab cycle  Up/Down select  r refresh  q quit",
+        "1-8 screens  Tab cycle  Up/Down select  Left/Right cycle  Enter edit  +/- adjust  p priority  Ctrl+S save  Ctrl+O reload  r refresh  q quit",
     )]
 }
 
@@ -257,6 +262,161 @@ fn value_or_placeholder(value: &str, placeholder: &str) -> String {
     }
 }
 
+/// Build the standard editable-field list for one configuration screen.
+fn editable_field_lines(app: &App) -> Vec<Line<'static>> {
+    let Some(config) = app.config() else {
+        return vec![Line::from("Config: (not loaded)")];
+    };
+    let mut lines = Vec::new();
+    for (index, field) in app.editable_fields().iter().enumerate() {
+        let marker = if index == app.selected_field_index() {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(Line::from(format!(
+            "{marker} [{}] {:<24} {}  ({})",
+            index,
+            field.label(),
+            field.current_value(config),
+            field.path()
+        )));
+    }
+    lines
+}
+
+/// Build the config identity and gate lines shared by all editing screens.
+fn config_gate_lines(app: &App) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    if let Some(config) = app.config() {
+        lines.push(Line::from(format!(
+            "Config: version={} sdk={} integration={} {}",
+            config.config_version(),
+            config.sdk_version(),
+            config.integration_id(),
+            config.integration_version()
+        )));
+    }
+    if !app.config_error().is_empty() {
+        lines.push(Line::from(format!("Config error: {}", app.config_error())));
+    }
+    lines.push(Line::from(format!(
+        "Validation: {}",
+        value_or_placeholder(app.validation_note(), "not validated")
+    )));
+    if app.portability().is_allowed() {
+        lines.push(Line::from("Portability gate: allowed"));
+    } else {
+        lines.push(Line::from(format!(
+            "Portability gate: BLOCKED ({} findings)",
+            app.portability().blockers().len()
+        )));
+    }
+    for finding in app.portability().blockers() {
+        lines.push(Line::from(format!("  blocker: {}", finding.message())));
+    }
+    for finding in app.portability().warnings() {
+        lines.push(Line::from(format!("  warning: {}", finding.message())));
+    }
+    if let Some(desired) = app.pending_priority() {
+        lines.push(Line::from(format!(
+            "Priority confirmation pending: {desired}; press p again to confirm"
+        )));
+    }
+    if let Some(input) = app.input() {
+        lines.push(Line::from(format!(
+            "Editing: {}{}",
+            input.prompt(),
+            input.buffer()
+        )));
+    }
+    lines
+}
+
+/// Build the workload editing view.
+fn workload_lines(app: &App) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(
+        "Workload defines what runs; generator input is deterministic.",
+    )];
+    lines.extend(editable_field_lines(app));
+    lines.extend(config_gate_lines(app));
+    lines
+}
+
+/// Build the dimensions, profile and duration editing view.
+fn configuration_lines(app: &App) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(
+        "Dimensions and duration are recorded in the portable config before execution.",
+    )];
+    lines.extend(editable_field_lines(app));
+    lines.extend(config_gate_lines(app));
+    lines
+}
+
+/// Build the measurement detail and validation editing view.
+fn measurement_lines(app: &App) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        Line::from("Process-level and instrumented measurements remain distinct."),
+        Line::from("End-to-end timing is opt-in and includes setup outside the DSP interval."),
+    ];
+    lines.extend(editable_field_lines(app));
+    lines.extend(config_gate_lines(app));
+    lines
+}
+
+/// Build the scheduling editing view with explicit priority warnings.
+fn scheduling_lines(app: &App) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        Line::from("Higher priority is never applied without the explicit opt-in confirmation."),
+        Line::from("Raising priority can reduce system responsiveness and bias measurements."),
+        Line::from(
+            "CPU isolation is a request; the OS may refuse and fall back to inherited scheduling.",
+        ),
+        Line::from("Process isolation reduces crash impact; it is not a security sandbox."),
+    ];
+    lines.extend(editable_field_lines(app));
+    lines.extend(config_gate_lines(app));
+    lines
+}
+
+/// Build the built-in and saved profile view.
+fn profiles_lines(app: &App) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from("Built-in profiles:")];
+    for profile in app.data().profiles().profiles() {
+        lines.push(Line::from(format!(
+            "  {} ({})",
+            profile.name(),
+            profile.description()
+        )));
+    }
+    lines.push(Line::from(format!(
+        "Saved profiles in {}:",
+        app.profile_directory().display()
+    )));
+    if app.saved_profiles().is_empty() {
+        lines.push(Line::from("  (none)"));
+    }
+    for (index, profile) in app.saved_profiles().iter().enumerate() {
+        let marker = if index == app.selected_profile_index() {
+            ">"
+        } else {
+            " "
+        };
+        lines.push(Line::from(format!(
+            "{marker} [{}] {} -> {}",
+            index,
+            profile.name(),
+            profile.path().display()
+        )));
+    }
+    lines.push(Line::from(
+        "Enter edits the active profile name; Ctrl+S saves it; Ctrl+O reloads the selection.",
+    ));
+    lines.extend(editable_field_lines(app));
+    lines.extend(config_gate_lines(app));
+    lines
+}
+
 /// Render one complete application frame.
 pub fn render(frame: &mut Frame<'_>, app: &App) {
     let [header_area, main_area, keys_area] = Layout::vertical([
@@ -274,6 +434,11 @@ pub fn render(frame: &mut Frame<'_>, app: &App) {
         Screen::Dashboard => dashboard_lines(app),
         Screen::System => system_lines(app.data()),
         Screen::Integrations => integration_lines(app),
+        Screen::Workload => workload_lines(app),
+        Screen::Configuration => configuration_lines(app),
+        Screen::Measurement => measurement_lines(app),
+        Screen::Scheduling => scheduling_lines(app),
+        Screen::Profiles => profiles_lines(app),
     };
     frame.render_widget(
         Paragraph::new(body).block(Block::bordered().title(app.screen().title())),
@@ -281,7 +446,7 @@ pub fn render(frame: &mut Frame<'_>, app: &App) {
     );
 
     frame.render_widget(
-        Paragraph::new(footer_lines()).block(Block::bordered().title("Keys")),
+        Paragraph::new(footer_lines(app)).block(Block::bordered().title("Keys")),
         keys_area,
     );
 }
@@ -292,11 +457,14 @@ mod tests {
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::{
-        dashboard_lines, field_line, integration_lines, matching_inspection, render, system_lines,
+        config_gate_lines, dashboard_lines, editable_field_lines, field_line, integration_lines,
+        matching_inspection, profiles_lines, render, scheduling_lines, system_lines,
         system_summary, value_or_placeholder,
     };
     use crate::app::{App, Screen};
-    use crate::data::{DashboardData, PluginInspection};
+    use crate::config::DEFAULT_CONFIG_JSON;
+    use crate::data::{DashboardData, PluginInspection, PortabilityReport};
+    use crate::profile::SavedProfile;
 
     /// Dashboard data containing all four availability states and one plugin.
     fn test_data() -> DashboardData {
@@ -460,12 +628,68 @@ mod tests {
         assert!(matching_inspection(None, "/app.so").is_none());
     }
 
-    /// Verify render draws all three screens.
+    /// Verify editable screens show field paths, current values and gate state.
     #[test]
-    fn render_draws_all_three_screens() {
+    fn editable_screens_show_fields_values_and_gate_state() {
+        let mut app = App::new();
+        app.set_config_json(DEFAULT_CONFIG_JSON)
+            .expect("default config decodes");
+        app.set_validation_note("valid");
+        let report = PortabilityReport::blocked("integration lacks capability: per-block timing");
+        app.set_portability(report);
+
+        for screen in [
+            Screen::Workload,
+            Screen::Configuration,
+            Screen::Measurement,
+            Screen::Scheduling,
+            Screen::Profiles,
+        ] {
+            app.set_screen(screen);
+            let fields = lines_text(&editable_field_lines(&app));
+            let first_path = app
+                .editable_fields()
+                .first()
+                .expect("editing screens have fields")
+                .path();
+            assert!(fields.contains(first_path), "screen {screen:?} has fields");
+            let gate = lines_text(&config_gate_lines(&app));
+            assert!(gate.contains("Validation: valid"));
+            assert!(gate.contains("Portability gate: BLOCKED"));
+            assert!(gate.contains("integration lacks capability"));
+        }
+
+        app.set_screen(Screen::Scheduling);
+        let scheduling = lines_text(&scheduling_lines(&app));
+        assert!(scheduling.contains("explicit opt-in confirmation"));
+        assert!(scheduling.contains("not a security sandbox"));
+    }
+
+    /// Verify profile lines list built-ins, saved profiles and an empty fallback.
+    #[test]
+    fn profile_lines_list_builtins_and_saved_profiles() {
         let mut app = App::new();
         app.set_dashboard_data(test_data());
-        for screen in [Screen::Dashboard, Screen::System, Screen::Integrations] {
+        app.set_config_json(DEFAULT_CONFIG_JSON)
+            .expect("default config decodes");
+        let empty = lines_text(&profiles_lines(&app));
+        assert!(empty.contains("Quick (fast)"));
+        assert!(empty.contains("(none)"));
+
+        app.set_saved_profiles(vec![SavedProfile::new("Saved", "/profiles/Saved.json")]);
+        let text = lines_text(&profiles_lines(&app));
+        assert!(text.contains("Saved -> /profiles/Saved.json"));
+        assert!(!text.contains("(none)"));
+    }
+
+    /// Verify render draws every registered screen.
+    #[test]
+    fn render_draws_every_registered_screen() {
+        let mut app = App::new();
+        app.set_dashboard_data(test_data());
+        app.set_config_json(DEFAULT_CONFIG_JSON)
+            .expect("default config decodes");
+        for screen in Screen::ALL {
             app.set_screen(screen);
             let mut terminal =
                 Terminal::new(TestBackend::new(120, 30)).expect("test backend is valid");
@@ -482,7 +706,7 @@ mod tests {
                 "screen {screen:?} shows its title"
             );
             assert!(
-                text.contains("1 dashboard"),
+                text.contains("1-8 screens"),
                 "screen {screen:?} shows key hints"
             );
         }

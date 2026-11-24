@@ -20,6 +20,7 @@
 #include <ztick/plugin/trust.hpp>
 #include <ztick/result_document.hpp>
 #include <ztick/run_command.hpp>
+#include <ztick/run_session.hpp>
 #include <ztick/sdk.h>
 
 #include <algorithm>
@@ -295,15 +296,22 @@ void enqueue_event(SessionState *session, std::int32_t kind, std::int32_t state,
  * @brief Parse and retain one portable config document.
  * @param session Session to update.
  * @param text Complete config JSON.
- * @return Success or a status explaining the parse or schema failure.
+ * @return Success or a status explaining the parse, schema or semantic failure.
+ * @note A document the core planner would reject is never retained, so a front
+ *       end cannot later report it as runnable.
  */
 std::int32_t parse_config_text(SessionState *session, std::string_view text) {
-  const auto parsed = ztick::parse_config_document(text);
+  auto parsed = ztick::parse_config_document(text);
   if (!parsed.ok) {
     set_error(session, parsed.error);
     return parsed.offset == 0U ? ztick_status_validation_failure : ztick_status_invalid_argument;
   }
-  session->config = parsed.document;
+  std::string semantic_error;
+  if (!ztick::validate_run_config(parsed.document, &semantic_error)) {
+    set_error(session, semantic_error);
+    return ztick_status_validation_failure;
+  }
+  session->config = std::move(parsed.document);
   session->has_config = true;
   clear_error(session);
   enqueue_event(session, ztick_frontend_event_state_change, ztick_frontend_state_configuring, 0U,
@@ -559,7 +567,7 @@ int32_t ztick_frontend_config_validate(ztick_frontend_session *session) {
             state, ztick_frontend_event_state_change, ztick_frontend_state_validating, 0U,
             ztick_frontend_timing_unknown, ztick_frontend_isolation_unknown, "config validation");
         std::string error;
-        if (!ztick::validate_config_document(state->config, &error)) {
+        if (!ztick::validate_run_config(state->config, &error)) {
           ztick::frontend::set_error(state, error);
           return ztick_status_validation_failure;
         }
@@ -586,11 +594,17 @@ int32_t ztick_frontend_config_override(ztick_frontend_session *session,
           }
           overrides.emplace_back(assignments[index]);
         }
+        auto candidate = state->config;
         std::string error;
-        if (!ztick::cli::apply_config_overrides(state->config, overrides, &error)) {
+        if (!ztick::cli::apply_config_overrides(candidate, overrides, &error)) {
           ztick::frontend::set_error(state, error);
           return ztick_status_validation_failure;
         }
+        if (!ztick::validate_run_config(candidate, &error)) {
+          ztick::frontend::set_error(state, error);
+          return ztick_status_validation_failure;
+        }
+        state->config = std::move(candidate);
         std::string text;
         const std::int32_t status = ztick::frontend::serialize_config(state, text);
         if (status != ztick_status_success) {

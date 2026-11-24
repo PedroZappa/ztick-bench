@@ -54,7 +54,7 @@ Derived design principles:
 | Workload | Define what runs | Processor/chain/engine selection, generator and fixed parameters ([BENCHMARK](BENCHMARK_SPECIFICATION.md#2-workload-levels)) |
 | Configuration | Dimensions and profile | Sample rate, block size, channels, instances, oversampling, profile, duration/iterations/repetitions |
 | Measurement & Validation | Detail settings | Timing levels, aggregate/per-block choice, end-to-end opt-in, validation level, tolerances |
-| Parallelism & Scheduling | CPU controls | Worker count, affinity, physical/logical selection, isolation request, priority opt-in |
+| Parallelism & Scheduling | CPU controls | Worker count, affinity, physical/logical selection, CPU-isolation request, separate process-isolation request, priority opt-in |
 | Execution monitoring | Live run feedback | Progress by test point, current timing level, warnings as they occur, isolation mode in use |
 | Results inspection | Detailed review | Metrics with status labels, raw data availability, validation outcomes, warnings/failures, completeness |
 | Compare | Comparison workflow | Baseline/candidate selection, thresholds, significance outcome, comparability warnings |
@@ -99,6 +99,8 @@ Additional rules (Derived design):
 - Render the four metric statuses visually distinctly: `measured`, `estimated`,
   `unavailable`, `not_applicable`.
 - Show `unsupported`/`unavailable` platform fields rather than hiding them.
+- Apply higher priority only after a dedicated opt-in action with a second
+  explicit confirmation; field cycling and typed entry cannot bypass it.
 - Show when raw measurements and overhead estimates are both retained and confirm
   that overhead was not subtracted.
 - If a config from another machine contains unsupported capabilities, block the

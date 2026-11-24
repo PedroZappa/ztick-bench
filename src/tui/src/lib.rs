@@ -12,14 +12,48 @@ use core::ffi::{c_char, c_void};
 
 /// Owned run-state model for the terminal application.
 pub mod app;
+/// Portable v1 config defaults and field-edit helpers.
+pub mod config;
 /// Typed, read-only views over front-end JSON envelopes.
 pub mod data;
 /// Safe ownership of the private C11 front end.
 pub mod frontend;
 /// Minimal JSON reader used by the typed envelope views.
 mod json;
-/// Stateless ratatui rendering for the dashboard and detail screens.
+/// Named profile persistence as portable config documents.
+pub mod profile;
+/// Stateless ratatui rendering for the dashboard and configuration screens.
 pub mod ui;
+
+/// Successful status returned by a private-boundary operation.
+pub const ZTICK_STATUS_SUCCESS: i32 = 0;
+/// Requested capability, format or value is not supported.
+pub const ZTICK_STATUS_UNSUPPORTED: i32 = 1;
+/// Adapter SDK compatibility check failed.
+pub const ZTICK_STATUS_INCOMPATIBLE: i32 = 2;
+/// One or more arguments were invalid.
+pub const ZTICK_STATUS_INVALID_ARGUMENT: i32 = 3;
+/// A processing operation, such as reading a file, failed.
+pub const ZTICK_STATUS_PROCESSING_FAILURE: i32 = 4;
+/// Validation check failed outside the timed interval.
+pub const ZTICK_STATUS_VALIDATION_FAILURE: i32 = 5;
+/// An internal error with no more specific status.
+pub const ZTICK_STATUS_INTERNAL_ERROR: i32 = 6;
+
+/// Workload-level capability declared by an adapter.
+pub const ZTICK_CAPABILITY_PROCESSOR: u64 = 1 << 0;
+/// Processor-chain capability declared by an adapter.
+pub const ZTICK_CAPABILITY_CHAIN: u64 = 1 << 1;
+/// Complete-engine capability declared by an adapter.
+pub const ZTICK_CAPABILITY_ENGINE: u64 = 1 << 2;
+/// Per-block timing capability declared by an adapter.
+pub const ZTICK_CAPABILITY_PER_BLOCK_TIMING: u64 = 1 << 3;
+/// Internal threading capability declared by an adapter.
+pub const ZTICK_CAPABILITY_INTERNAL_THREADING: u64 = 1 << 4;
+/// Reference-data capability declared by an adapter.
+pub const ZTICK_CAPABILITY_REFERENCE_DATA: u64 = 1 << 5;
+/// Custom validation capability declared by an adapter.
+pub const ZTICK_CAPABILITY_CUSTOM_VALIDATION: u64 = 1 << 6;
 
 /// Layout version required in the header of every copied boundary struct.
 pub const ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION: u32 = 1;

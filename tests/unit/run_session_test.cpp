@@ -160,6 +160,24 @@ TEST_CASE("run session executes a valid config", "[core][run]") {
 }
 
 /**
+ * @brief Verify the shared semantic validator accepts runnable configs and rejects planner
+ * failures.
+ */
+TEST_CASE("validate run config checks core semantics without executing", "[core][run]") {
+  const auto valid = ztick::parse_config_document(make_config(4, 1));
+  REQUIRE(valid.valid());
+  std::string error;
+  REQUIRE(ztick::validate_run_config(valid.document, &error));
+  REQUIRE(error.empty());
+
+  const auto invalid = ztick::parse_config_document(make_config(0, 1));
+  REQUIRE(invalid.valid());
+  error.clear();
+  REQUIRE_FALSE(ztick::validate_run_config(invalid.document, &error));
+  REQUIRE(error.find("iterations") != std::string::npos);
+}
+
+/**
  * @brief Verify canonical timing and throughput values against independent constants.
  */
 TEST_CASE("run session records independently computed metrics", "[core][run][metrics]") {

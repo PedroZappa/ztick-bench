@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: MIT
 //! Application state shared by front-end event handling and rendering.
 //!
-//! P5.2 adds the three read-only screens and their selection state. Detail
-//! editing, live run monitoring and result workflows remain in later phases; no
-//! metric computation belongs here.
+//! P5.2 added the three read-only screens. P5.3 adds the editable config
+//! screens, typed input state, named-profile selection and the portability gate.
+//! Live run monitoring and result workflows remain in later phases; no metric
+//! computation belongs here.
 
-use crate::data::{DashboardData, PluginCandidate, PluginInspection};
+use std::path::PathBuf;
+
+use crate::config::EditableField;
+use crate::data::{DashboardData, PluginCandidate, PluginInspection, PortabilityReport};
+use crate::profile::SavedProfile;
 use crate::{
     ZTICK_FRONTEND_EVENT_WARNING, ZTICK_FRONTEND_STATE_COMPLETE, ZTICK_FRONTEND_STATE_CONFIGURING,
     ZTICK_FRONTEND_STATE_FAILED, ZTICK_FRONTEND_STATE_IDLE, ZTICK_FRONTEND_STATE_INCOMPLETE,
@@ -73,7 +78,7 @@ impl RunState {
     }
 }
 
-/// Read-only screens available in Phase 5.2.
+/// Screens available after Phase 5.3.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Screen {
     /// Orientation summary and active run state.
@@ -83,6 +88,16 @@ pub enum Screen {
     System,
     /// Discovered plugins, trust state and metadata-only inspection.
     Integrations,
+    /// Workload level, processors and generator definition.
+    Workload,
+    /// Dimensions, profile identity and execution duration settings.
+    Configuration,
+    /// Measurement detail, timing and validation settings.
+    Measurement,
+    /// Parallelism, affinity, isolation and explicit priority opt-in.
+    Scheduling,
+    /// Built-in and saved named config profiles.
+    Profiles,
 }
 
 /// Provide screen titles and cyclic navigation.
@@ -93,25 +108,99 @@ impl Screen {
             Self::Dashboard => "Dashboard",
             Self::System => "System inventory",
             Self::Integrations => "Integrations / plugins",
+            Self::Workload => "Workload",
+            Self::Configuration => "Configuration",
+            Self::Measurement => "Measurement & validation",
+            Self::Scheduling => "Parallelism & scheduling",
+            Self::Profiles => "Profiles & settings",
         }
     }
 
+    /// Return all screens in navigation order.
+    pub const ALL: [Self; 8] = [
+        Self::Dashboard,
+        Self::System,
+        Self::Integrations,
+        Self::Workload,
+        Self::Configuration,
+        Self::Measurement,
+        Self::Scheduling,
+        Self::Profiles,
+    ];
+
     /// Return the screen reached by moving forward once.
     pub fn next(self) -> Self {
-        match self {
-            Self::Dashboard => Self::System,
-            Self::System => Self::Integrations,
-            Self::Integrations => Self::Dashboard,
-        }
+        let position = Self::ALL
+            .iter()
+            .position(|screen| *screen == self)
+            .unwrap_or(0);
+        Self::ALL[(position + 1) % Self::ALL.len()]
     }
 
     /// Return the screen reached by moving backward once.
     pub fn previous(self) -> Self {
-        match self {
-            Self::Dashboard => Self::Integrations,
-            Self::System => Self::Dashboard,
-            Self::Integrations => Self::System,
+        let position = Self::ALL
+            .iter()
+            .position(|screen| *screen == self)
+            .unwrap_or(0);
+        Self::ALL[(position + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
+}
+
+/// One active text edit started from an editable config field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextInput {
+    /// The config field that receives the committed value.
+    target: EditableField,
+    /// The editable text buffer.
+    buffer: String,
+    /// The prompt shown while the editor is active.
+    prompt: String,
+}
+
+/// Construct and inspect one active text edit.
+impl TextInput {
+    /// Start one text edit for a config field.
+    ///
+    /// # Parameters
+    /// - `target`: Config field that receives the committed value.
+    /// - `buffer`: Initial editor contents; empty for replacement edits.
+    /// - `prompt`: Prompt shown above the editor while it is active.
+    pub fn new(
+        target: EditableField,
+        buffer: impl Into<String>,
+        prompt: impl Into<String>,
+    ) -> Self {
+        Self {
+            target,
+            buffer: buffer.into(),
+            prompt: prompt.into(),
         }
+    }
+
+    /// Return the field that receives the committed value.
+    pub fn target(&self) -> EditableField {
+        self.target
+    }
+
+    /// Return the current text buffer.
+    pub fn buffer(&self) -> &str {
+        &self.buffer
+    }
+
+    /// Return the prompt rendered while the editor is active.
+    pub fn prompt(&self) -> &str {
+        &self.prompt
+    }
+
+    /// Append one character to the buffer.
+    pub fn push(&mut self, character: char) {
+        self.buffer.push(character);
+    }
+
+    /// Remove the final character from the buffer, when present.
+    pub fn pop(&mut self) {
+        self.buffer.pop();
     }
 }
 
@@ -120,7 +209,7 @@ impl Screen {
 pub struct App {
     /// The active run state rendered by the dashboard.
     state: RunState,
-    /// The currently selected read-only screen.
+    /// The currently selected screen.
     screen: Screen,
     /// The read-only envelope data copied from the front end.
     data: DashboardData,
@@ -132,6 +221,26 @@ pub struct App {
     warnings: Vec<String>,
     /// The most recent status message shown on the dashboard.
     status: String,
+    /// The decoded portable config retained by the front-end session.
+    config: Option<crate::data::PortableConfig>,
+    /// The most recent config decode error.
+    config_error: String,
+    /// The most recent validation result.
+    validation_note: String,
+    /// The zero-based index of the selected editable field.
+    selected_field: usize,
+    /// The active text editor, when one is open.
+    input: Option<TextInput>,
+    /// The desired priority opt-in awaiting a second explicit confirmation.
+    pending_priority: Option<bool>,
+    /// The portability findings for the retained config.
+    portability: PortabilityReport,
+    /// The directory used for named profile documents.
+    profile_directory: PathBuf,
+    /// Saved profiles discovered on disk.
+    saved_profiles: Vec<SavedProfile>,
+    /// The zero-based index of the selected saved profile.
+    selected_profile: usize,
 }
 
 /// Provide the idle default application state.
@@ -146,6 +255,16 @@ impl Default for App {
             inspection: None,
             warnings: Vec::new(),
             status: "Ready".to_string(),
+            config: None,
+            config_error: String::new(),
+            validation_note: "not validated".to_string(),
+            selected_field: 0,
+            input: None,
+            pending_priority: None,
+            portability: PortabilityReport::default(),
+            profile_directory: crate::profile::default_directory(),
+            saved_profiles: Vec::new(),
+            selected_profile: 0,
         }
     }
 }
@@ -172,19 +291,22 @@ impl App {
         self.screen
     }
 
-    /// Select one screen explicitly.
+    /// Select one screen explicitly and reset transient field input state.
     pub fn set_screen(&mut self, screen: Screen) {
         self.screen = screen;
+        self.selected_field = 0;
+        self.input = None;
+        self.pending_priority = None;
     }
 
     /// Move to the next screen in dashboard order.
     pub fn next_screen(&mut self) {
-        self.screen = self.screen.next();
+        self.set_screen(self.screen.next());
     }
 
     /// Move to the previous screen in dashboard order.
     pub fn previous_screen(&mut self) {
-        self.screen = self.screen.previous();
+        self.set_screen(self.screen.previous());
     }
 
     /// Return all copied dashboard inputs.
@@ -261,6 +383,238 @@ impl App {
         self.status = status.into();
     }
 
+    /// Replace the decoded portable config and record any decode error.
+    ///
+    /// A rejected document is never retained, so stale edits cannot appear as
+    /// the effective config after a failed reload.
+    pub fn set_config_json(&mut self, text: &str) -> Result<(), crate::data::DataError> {
+        match crate::data::PortableConfig::from_json(text) {
+            Ok(config) => {
+                self.config = Some(config);
+                self.config_error.clear();
+                Ok(())
+            }
+            Err(error) => {
+                self.config = None;
+                self.config_error = error.message().to_string();
+                Err(error)
+            }
+        }
+    }
+
+    /// Return the decoded portable config, once one has been loaded.
+    pub fn config(&self) -> Option<&crate::data::PortableConfig> {
+        self.config.as_ref()
+    }
+
+    /// Return the most recent config decode error.
+    pub fn config_error(&self) -> &str {
+        &self.config_error
+    }
+
+    /// Return the most recent validation result text.
+    pub fn validation_note(&self) -> &str {
+        &self.validation_note
+    }
+
+    /// Replace the most recent validation result text.
+    pub fn set_validation_note(&mut self, note: impl Into<String>) {
+        self.validation_note = note.into();
+    }
+
+    /// Replace the portability findings for the retained config.
+    pub fn set_portability(&mut self, report: PortabilityReport) {
+        self.portability = report;
+    }
+
+    /// Return the portability findings for the retained config.
+    pub fn portability(&self) -> &PortabilityReport {
+        &self.portability
+    }
+
+    /// Return the editable fields shown on the active screen.
+    pub fn editable_fields(&self) -> &'static [EditableField] {
+        EditableField::fields_for(self.screen)
+    }
+
+    /// Return the zero-based index of the selected editable field.
+    pub fn selected_field_index(&self) -> usize {
+        self.selected_field
+    }
+
+    /// Return the selected editable field, when the active screen has one.
+    pub fn selected_editable_field(&self) -> Option<EditableField> {
+        self.editable_fields().get(self.selected_field).copied()
+    }
+
+    /// Select the next editable field with wrap-around.
+    pub fn select_next_field(&mut self) {
+        let count = self.editable_fields().len();
+        if count == 0 {
+            return;
+        }
+        self.selected_field = (self.selected_field + 1) % count;
+        self.input = None;
+    }
+
+    /// Select the previous editable field with wrap-around.
+    pub fn select_previous_field(&mut self) {
+        let count = self.editable_fields().len();
+        if count == 0 {
+            return;
+        }
+        self.selected_field = (self.selected_field + count - 1) % count;
+        self.input = None;
+    }
+
+    /// Open an empty replacement editor for one field and show its current value.
+    ///
+    /// # Returns
+    /// `true` when a config was loaded and the editor opened.
+    pub fn begin_field_edit(&mut self, field: EditableField) -> bool {
+        let Some(config) = self.config.as_ref() else {
+            return false;
+        };
+        let current = field.current_value(config);
+        let prompt = format!("{} [{}] = ", field.label(), current);
+        self.input = Some(TextInput::new(field, "", prompt));
+        true
+    }
+
+    /// Return the active text editor, when one is open.
+    pub fn input(&self) -> Option<&TextInput> {
+        self.input.as_ref()
+    }
+
+    /// Append one character to the active text editor.
+    pub fn push_input_char(&mut self, character: char) {
+        if let Some(input) = self.input.as_mut() {
+            input.push(character);
+        }
+    }
+
+    /// Remove the final character from the active text editor.
+    pub fn pop_input_char(&mut self) {
+        if let Some(input) = self.input.as_mut() {
+            input.pop();
+        }
+    }
+
+    /// Close the active text editor without applying its buffer.
+    pub fn cancel_input(&mut self) {
+        self.input = None;
+    }
+
+    /// Close and return the active text editor for application.
+    pub fn take_input(&mut self) -> Option<TextInput> {
+        self.input.take()
+    }
+
+    /// Request or confirm one scheduling-priority opt-in change.
+    ///
+    /// # Returns
+    /// `true` only on the second identical request, which is the explicit
+    /// confirmation. The first request records a pending decision and returns
+    /// `false`.
+    pub fn request_priority_change(&mut self, desired: bool) -> bool {
+        if self.pending_priority == Some(desired) {
+            self.pending_priority = None;
+            true
+        } else {
+            self.pending_priority = Some(desired);
+            false
+        }
+    }
+
+    /// Return the pending scheduling-priority decision, when one is awaiting confirmation.
+    pub fn pending_priority(&self) -> Option<bool> {
+        self.pending_priority
+    }
+
+    /// Cancel a pending scheduling-priority decision.
+    pub fn clear_pending_priority(&mut self) {
+        self.pending_priority = None;
+    }
+
+    /// Return the directory used for named profile documents.
+    pub fn profile_directory(&self) -> &PathBuf {
+        &self.profile_directory
+    }
+
+    /// Replace the directory used for named profile documents.
+    pub fn set_profile_directory(&mut self, directory: impl Into<PathBuf>) {
+        self.profile_directory = directory.into();
+    }
+
+    /// Replace saved profiles and keep the current selection by path.
+    ///
+    /// A missing path falls back to the first profile. This prevents profile
+    /// saves from shifting the selection when the sorted list changes.
+    pub fn set_saved_profiles(&mut self, profiles: Vec<SavedProfile>) {
+        let fallback = self
+            .selected_profile
+            .min(self.saved_profiles.len().saturating_sub(1));
+        let selected_path = self
+            .selected_saved_profile()
+            .map(|profile| profile.path().to_path_buf());
+        self.saved_profiles = profiles;
+        self.selected_profile = selected_path
+            .as_deref()
+            .and_then(|path| {
+                self.saved_profiles
+                    .iter()
+                    .position(|profile| profile.path() == path)
+            })
+            .unwrap_or_else(|| fallback.min(self.saved_profiles.len().saturating_sub(1)));
+    }
+
+    /// Select the saved profile with the given path, if it exists.
+    pub fn select_saved_profile_path(&mut self, path: &std::path::Path) -> bool {
+        if let Some(index) = self
+            .saved_profiles
+            .iter()
+            .position(|profile| profile.path() == path)
+        {
+            self.selected_profile = index;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Return every discovered saved profile.
+    pub fn saved_profiles(&self) -> &[SavedProfile] {
+        &self.saved_profiles
+    }
+
+    /// Return the zero-based index of the selected saved profile.
+    pub fn selected_profile_index(&self) -> usize {
+        self.selected_profile
+    }
+
+    /// Return the selected saved profile, when one exists.
+    pub fn selected_saved_profile(&self) -> Option<&SavedProfile> {
+        self.saved_profiles.get(self.selected_profile)
+    }
+
+    /// Select the next saved profile with wrap-around.
+    pub fn select_next_profile(&mut self) {
+        let count = self.saved_profiles.len();
+        if count == 0 {
+            return;
+        }
+        self.selected_profile = (self.selected_profile + 1) % count;
+    }
+
+    /// Select the previous saved profile with wrap-around.
+    pub fn select_previous_profile(&mut self) {
+        let count = self.saved_profiles.len();
+        if count == 0 {
+            return;
+        }
+        self.selected_profile = (self.selected_profile + count - 1) % count;
+    }
+
     /// Apply one copied boundary event to the application state.
     ///
     /// State changes update the displayed state, every non-empty event message
@@ -301,7 +655,9 @@ mod tests {
     use std::ffi::c_char;
 
     use super::{App, RunState, Screen, event_message};
-    use crate::data::{DashboardData, PluginInspection};
+    use crate::config::DEFAULT_CONFIG_JSON;
+    use crate::data::{DashboardData, PluginInspection, PortabilityReport};
+    use crate::profile::SavedProfile;
     use crate::{
         ZTICK_FRONTEND_EVENT_COMPLETION, ZTICK_FRONTEND_EVENT_MESSAGE_SIZE,
         ZTICK_FRONTEND_EVENT_STATE_CHANGE, ZTICK_FRONTEND_EVENT_WARNING,
@@ -385,14 +741,16 @@ mod tests {
         assert_eq!(unique.len(), labels.len());
     }
 
-    /// Verify screen cycles forward and backward.
+    /// Verify screen cycles forward and backward through every registered screen.
     #[test]
     fn screen_cycles_forward_and_backward() {
-        assert_eq!(Screen::Dashboard.next(), Screen::System);
-        assert_eq!(Screen::System.next(), Screen::Integrations);
-        assert_eq!(Screen::Integrations.next(), Screen::Dashboard);
-        assert_eq!(Screen::Dashboard.previous(), Screen::Integrations);
-        assert_eq!(Screen::Integrations.previous(), Screen::System);
+        assert_eq!(Screen::ALL.len(), 8);
+        for (index, screen) in Screen::ALL.iter().enumerate() {
+            let next = Screen::ALL[(index + 1) % Screen::ALL.len()];
+            let previous = Screen::ALL[(index + Screen::ALL.len() - 1) % Screen::ALL.len()];
+            assert_eq!(screen.next(), next);
+            assert_eq!(screen.previous(), previous);
+        }
         assert_eq!(Screen::System.title(), "System inventory");
     }
 
@@ -525,5 +883,117 @@ mod tests {
         ));
         assert_eq!(app.warnings(), ["warning reported without context"]);
         assert_eq!(app.status(), "Ready");
+    }
+
+    /// Verify config replacement exposes typed values and rejects malformed text.
+    #[test]
+    fn config_replacement_exposes_values_and_rejects_malformed_text() {
+        let mut app = App::new();
+        app.set_config_json(DEFAULT_CONFIG_JSON)
+            .expect("default config decodes");
+        assert_eq!(
+            app.config().expect("config is retained").profile_name(),
+            "Quick"
+        );
+        assert!(app.config_error().is_empty());
+
+        assert!(app.set_config_json("not json").is_err());
+        assert!(app.config().is_none());
+        assert!(!app.config_error().is_empty());
+    }
+
+    /// Verify field selection wraps and screen changes reset transient input.
+    #[test]
+    fn field_selection_wraps_and_screen_changes_reset_transient_input() {
+        let mut app = App::new();
+        app.set_config_json(DEFAULT_CONFIG_JSON)
+            .expect("default config decodes");
+        app.set_screen(Screen::Workload);
+        let count = app.editable_fields().len();
+        assert_eq!(app.selected_field_index(), 0);
+        app.select_previous_field();
+        assert_eq!(app.selected_field_index(), count - 1);
+        app.select_next_field();
+        assert_eq!(app.selected_field_index(), 0);
+
+        let field = app.selected_editable_field().expect("field exists");
+        assert!(app.begin_field_edit(field));
+        app.push_input_char('x');
+        app.request_priority_change(true);
+        app.set_screen(Screen::Configuration);
+        assert!(app.input().is_none());
+        assert_eq!(app.pending_priority(), None);
+        assert_eq!(app.selected_field_index(), 0);
+    }
+
+    /// Verify text input edits buffer characters and can be cancelled.
+    #[test]
+    fn text_input_buffers_characters_and_can_be_cancelled() {
+        let mut app = App::new();
+        app.set_config_json(DEFAULT_CONFIG_JSON)
+            .expect("default config decodes");
+        assert!(app.begin_field_edit(crate::config::EditableField::ProfileName));
+        app.push_input_char('A');
+        app.push_input_char('B');
+        assert_eq!(app.input().expect("input is open").buffer(), "AB");
+        assert!(
+            app.input()
+                .expect("input is open")
+                .prompt()
+                .contains("[Quick]")
+        );
+        app.pop_input_char();
+        assert_eq!(app.input().expect("input is open").buffer(), "A");
+        let taken = app.take_input().expect("input is returned");
+        assert_eq!(taken.target(), crate::config::EditableField::ProfileName);
+        assert!(app.input().is_none());
+    }
+
+    /// Verify priority confirmation needs an identical second request.
+    #[test]
+    fn priority_confirmation_needs_an_identical_second_request() {
+        let mut app = App::new();
+        assert!(!app.request_priority_change(true));
+        assert_eq!(app.pending_priority(), Some(true));
+        assert!(!app.request_priority_change(false));
+        assert_eq!(app.pending_priority(), Some(false));
+        assert!(app.request_priority_change(false));
+        assert_eq!(app.pending_priority(), None);
+        app.request_priority_change(true);
+        app.clear_pending_priority();
+        assert_eq!(app.pending_priority(), None);
+    }
+
+    /// Verify saved profile selection wraps and clamps after replacement.
+    #[test]
+    fn saved_profile_selection_wraps_and_clamps() {
+        let mut app = App::new();
+        app.set_saved_profiles(vec![
+            SavedProfile::new("A", "/p/A.json"),
+            SavedProfile::new("B", "/p/B.json"),
+        ]);
+        app.select_previous_profile();
+        assert_eq!(app.selected_profile_index(), 1);
+        app.select_next_profile();
+        assert_eq!(app.selected_profile_index(), 0);
+        assert_eq!(
+            app.selected_saved_profile().expect("profile exists").name(),
+            "A"
+        );
+        app.set_saved_profiles(vec![SavedProfile::new("C", "/p/C.json")]);
+        assert_eq!(app.selected_profile_index(), 0);
+    }
+
+    /// Verify validation and portability accessors retain explicit values.
+    #[test]
+    fn validation_and_portability_accessors_retain_explicit_values() {
+        let mut app = App::new();
+        assert_eq!(app.validation_note(), "not validated");
+        assert!(app.portability().is_allowed());
+        app.set_validation_note("valid");
+        app.set_portability(PortabilityReport::blocked("unsupported capability"));
+        assert_eq!(app.validation_note(), "valid");
+        assert!(!app.portability().is_allowed());
+        assert_eq!(app.portability().blockers()[0].severity(), "blocker");
     }
 }

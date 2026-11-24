@@ -336,12 +336,12 @@ RunOutcome execute_run(const std::vector<std::string_view> &args, const RunConte
   }
 
   ConfigValue config = parsed.document;
-  if (!validate_config_document(config, &error)) {
+  if (!validate_run_config(config, &error)) {
     outcome.command = CommandResult{ExitCode::failure, {}, "ztick-bench: " + error + "\n"};
     return outcome;
   }
   if (!apply_config_overrides(config, invocation->overrides, &error) ||
-      !validate_config_document(config, &error)) {
+      !validate_run_config(config, &error)) {
     outcome.command = CommandResult{ExitCode::usage_error, {}, "ztick-bench: " + error + "\n"};
     return outcome;
   }

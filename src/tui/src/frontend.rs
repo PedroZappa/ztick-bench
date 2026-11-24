@@ -13,10 +13,12 @@ use std::ptr;
 use crate::data::{DashboardData, PluginInspection};
 use crate::{
     ZTICK_FRONTEND_EVENT_MESSAGE_SIZE, ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION, ZtickFrontendEvent,
-    ZtickFrontendSession, ZtickFrontendSessionOptions, ztick_frontend_config_validate,
-    ztick_frontend_last_error, ztick_frontend_list, ztick_frontend_plugin_inspect,
-    ztick_frontend_plugin_list, ztick_frontend_progress_poll, ztick_frontend_session_create,
-    ztick_frontend_session_destroy, ztick_frontend_system,
+    ZtickFrontendSession, ZtickFrontendSessionOptions, ztick_frontend_config_load,
+    ztick_frontend_config_override, ztick_frontend_config_parse, ztick_frontend_config_save,
+    ztick_frontend_config_serialize, ztick_frontend_config_validate, ztick_frontend_last_error,
+    ztick_frontend_list, ztick_frontend_plugin_inspect, ztick_frontend_plugin_list,
+    ztick_frontend_progress_poll, ztick_frontend_session_create, ztick_frontend_session_destroy,
+    ztick_frontend_system,
 };
 
 /// Status returned by every successful private-boundary operation.
@@ -182,6 +184,101 @@ impl Session {
         }
     }
 
+    /// Parse, semantically validate and retain one portable config document.
+    ///
+    /// # Parameters
+    /// - `text`: Complete config JSON text.
+    ///
+    /// # Returns
+    /// The serialized config retained by the front end, or the copied error.
+    /// A document rejected by the core planner is never retained.
+    pub fn parse_config(&self, text: &str) -> Result<String, FrontendError> {
+        let config = CString::new(text)
+            .map_err(|_| FrontendError::new(-1, "config contains an interior NUL byte"))?;
+        let status = unsafe {
+            ztick_frontend_config_parse(self.handle, config.as_ptr(), config.as_bytes().len())
+        };
+        if status != STATUS_SUCCESS {
+            return Err(FrontendError::new(status, self.last_error()));
+        }
+        self.serialize_config()
+    }
+
+    /// Load and parse one portable config document from a file.
+    ///
+    /// # Parameters
+    /// - `path`: Filesystem path of a versioned config document.
+    ///
+    /// # Returns
+    /// The serialized config retained by the front end, or the copied error.
+    pub fn load_config(&self, path: &str) -> Result<String, FrontendError> {
+        let path = CString::new(path)
+            .map_err(|_| FrontendError::new(-1, "config path contains an interior NUL byte"))?;
+        let status = unsafe { ztick_frontend_config_load(self.handle, path.as_ptr()) };
+        if status != STATUS_SUCCESS {
+            return Err(FrontendError::new(status, self.last_error()));
+        }
+        self.serialize_config()
+    }
+
+    /// Apply and semantically validate dotted `path=value` assignments.
+    ///
+    /// # Parameters
+    /// - `assignments`: Overrides in application order.
+    ///
+    /// # Returns
+    /// The serialized config after all assignments, or the copied error. The
+    /// boundary applies overrides atomically, so a rejected assignment or a
+    /// core-invalid result leaves the retained config unchanged.
+    pub fn apply_overrides(&self, assignments: &[String]) -> Result<String, FrontendError> {
+        let owned: Vec<CString> = assignments
+            .iter()
+            .map(|assignment| {
+                CString::new(assignment.as_str())
+                    .map_err(|_| FrontendError::new(-1, "override contains an interior NUL byte"))
+            })
+            .collect::<Result<_, _>>()?;
+        let pointers: Vec<*const c_char> = owned.iter().map(|value| value.as_ptr()).collect();
+        self.call_config_string(|session, buffer, capacity, length| unsafe {
+            ztick_frontend_config_override(
+                session,
+                pointers.as_ptr(),
+                pointers.len(),
+                buffer,
+                capacity,
+                length,
+            )
+        })
+    }
+
+    /// Copy the retained config as compact JSON.
+    ///
+    /// # Returns
+    /// The serialized config, or the copied boundary error.
+    pub fn serialize_config(&self) -> Result<String, FrontendError> {
+        self.call_config_string(|session, buffer, capacity, length| unsafe {
+            ztick_frontend_config_serialize(session, buffer, capacity, length)
+        })
+    }
+
+    /// Atomically save the retained config to a file.
+    ///
+    /// # Parameters
+    /// - `path`: Destination config path.
+    ///
+    /// # Returns
+    /// Success, or the copied boundary error.
+    pub fn save_config(&self, path: &str) -> Result<(), FrontendError> {
+        let path = CString::new(path)
+            .map_err(|_| FrontendError::new(-1, "config path contains an interior NUL byte"))?;
+        let status = unsafe { ztick_frontend_config_save(self.handle, path.as_ptr()) };
+        if status == STATUS_SUCCESS {
+            Ok(())
+        } else {
+            Err(FrontendError::new(status, self.last_error()))
+        }
+    }
+
     /// Copy the dashboard's read-only envelopes from the front end.
     ///
     /// # Returns
@@ -279,6 +376,38 @@ impl Session {
             return Err(FrontendError::new(status, self.last_error()));
         }
         Ok(if available == 0 { None } else { Some(event) })
+    }
+
+    /// Call one config copy operation and require a successful status.
+    ///
+    /// Config operations return plain JSON rather than a CLI envelope, so a
+    /// non-zero status carries no usable payload and is reported immediately.
+    fn call_config_string<F>(&self, call: F) -> Result<String, FrontendError>
+    where
+        F: FnOnce(*mut ZtickFrontendSession, *mut c_char, usize, *mut usize) -> i32,
+    {
+        let mut buffer: Vec<c_char> = vec![0; JSON_CAPACITY];
+        let mut length = 0_usize;
+        let status = call(self.handle, buffer.as_mut_ptr(), buffer.len(), &mut length);
+        if status != STATUS_SUCCESS {
+            return Err(FrontendError::new(status, self.last_error()));
+        }
+        if length >= buffer.len() {
+            return Err(FrontendError::new(
+                status,
+                "front-end config output exceeded the copy buffer",
+            ));
+        }
+        let text = unsafe { CStr::from_ptr(buffer.as_ptr()) }
+            .to_string_lossy()
+            .into_owned();
+        if text.is_empty() {
+            return Err(FrontendError::new(
+                status,
+                "front-end returned an empty config",
+            ));
+        }
+        Ok(text)
     }
 
     /// Call one string-returning boundary operation and copy its output.
@@ -450,12 +579,15 @@ mod tests {
     #[test]
     fn session_plugin_inspect_returns_core_compatibility() {
         let session = Session::new().expect("session creation succeeds");
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../build/ci/lib/ztick_test_app_dynamic.so"
-        );
+        let path = std::env::var("ZTICK_TUI_TEST_MODULE").unwrap_or_else(|_| {
+            format!(
+                "{}/../../build/lib/ztick_test_app_dynamic.{}",
+                env!("CARGO_MANIFEST_DIR"),
+                std::env::consts::DLL_EXTENSION
+            )
+        });
         let inspection = session
-            .plugin_inspect(path)
+            .plugin_inspect(&path)
             .expect("the built test adapter can be inspected");
         assert_eq!(inspection.path(), path);
         assert_eq!(inspection.compatibility().status(), "success");
@@ -470,6 +602,93 @@ mod tests {
             .plugin_inspect("bad\0path")
             .expect_err("interior NUL cannot cross the C boundary");
         assert_ne!(error.status(), 0);
+    }
+
+    /// Verify parse override validate save and load use one retained config.
+    #[test]
+    fn session_config_operations_round_trip_one_document() {
+        use crate::config::DEFAULT_CONFIG_JSON;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let session = Session::new().expect("session creation succeeds");
+        let parsed = session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("the default config parses");
+        assert!(parsed.contains("\"config_version\":\"1.0.0\""));
+        session
+            .validate_config()
+            .expect("the default config validates");
+
+        let updated = session
+            .apply_overrides(&["profile.name=\"Saved\"".to_string()])
+            .expect("a documented override applies");
+        assert!(updated.contains("\"name\":\"Saved\""));
+        session
+            .validate_config()
+            .expect("an overridden config still validates");
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after the epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("ztick-config-roundtrip-{nonce}"));
+        std::fs::create_dir_all(&directory).expect("temporary directory is created");
+        let path = directory.join("config.json");
+        let path_text = path.to_string_lossy().to_string();
+        session
+            .save_config(&path_text)
+            .expect("the retained config is saved");
+        let reloaded = Session::new().expect("reload session is created");
+        let loaded = reloaded
+            .load_config(&path_text)
+            .expect("the saved config loads");
+        assert!(loaded.contains("\"name\":\"Saved\""));
+        std::fs::remove_dir_all(&directory).expect("temporary directory is removed");
+    }
+
+    /// Verify invalid config operations report errors without panicking.
+    #[test]
+    fn session_config_operations_reject_invalid_input() {
+        use crate::config::DEFAULT_CONFIG_JSON;
+
+        let session = Session::new().expect("session creation succeeds");
+        assert!(session.parse_config("bad\0json").is_err());
+        assert!(session.load_config("bad\0path").is_err());
+        assert!(session.save_config("bad\0path").is_err());
+        assert!(
+            session
+                .apply_overrides(&["bad\0override".to_string()])
+                .is_err()
+        );
+        let semantic_invalid = DEFAULT_CONFIG_JSON.replace("\"channels\":2", "\"channels\":0");
+        assert!(
+            session.parse_config(&semantic_invalid).is_err(),
+            "the core planner rejects zero channels at parse time"
+        );
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("a valid config parses after rejected input");
+        assert!(
+            session
+                .apply_overrides(&["missing.path=1".to_string()])
+                .is_err()
+        );
+        let before = session
+            .serialize_config()
+            .expect("the valid config remains serialized");
+        assert!(
+            session
+                .apply_overrides(&["dimensions.channels=0".to_string()])
+                .is_err(),
+            "a core-invalid override is rejected"
+        );
+        assert_eq!(
+            session
+                .serialize_config()
+                .expect("the rejected override left a config"),
+            before,
+            "a rejected override must not mutate the retained config"
+        );
     }
 
     /// Verify progress polling drains boundary events to an empty queue.

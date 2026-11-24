@@ -32,6 +32,23 @@ static const char kConfigJson[] =
     "\"validation\":{\"level\":\"Basic\",\"tolerances\":{},\"references\":[]},"
     "\"parallelism\":{\"workers\":\"auto\",\"affinity\":\"auto\"}}";
 
+static const char kInvalidConfigJson[] =
+    "{\"config_version\":\"1.0.0\",\"sdk_version\":\"1.0.0\","
+    "\"integration\":{\"id\":\"app-a\",\"version\":\"1.2.3\"},"
+    "\"workload\":{\"level\":\"processor\",\"processors\":[\"eq\"],"
+    "\"generator\":{\"kind\":\"sine\",\"amplitude\":0.5,\"frequency_hz\":1000.0,"
+    "\"phase_rad\":0.0}},"
+    "\"dimensions\":{\"sample_rate_hz\":48000.0,\"block_size\":128,\"channels\":2,"
+    "\"oversampling\":1,\"instances\":1},"
+    "\"execution\":{\"duration_mode\":\"iterations\",\"iterations\":0,"
+    "\"duration_seconds\":0.0,\"repetitions\":2,\"warmup\":{\"iterations\":0},"
+    "\"isolation\":\"auto\"},"
+    "\"profile\":{\"name\":\"Quick\"},"
+    "\"measurement\":{\"detail\":\"aggregate\",\"end_to_end\":false,"
+    "\"timing_levels\":[\"per_block\",\"whole_run\"]},"
+    "\"validation\":{\"level\":\"Basic\",\"tolerances\":{},\"references\":[]},"
+    "\"parallelism\":{\"workers\":\"auto\",\"affinity\":\"auto\"}}";
+
 /** @brief Number of progress callbacks observed by this test. */
 static int g_callback_count = 0;
 
@@ -245,12 +262,55 @@ int main(void) {
     return check;
   }
   {
+    char retained[sizeof(output)];
+    size_t retained_length = 0U;
+    if ((check = require(
+             ztick_frontend_config_serialize(session, retained, sizeof(retained),
+                                             &retained_length) == ztick_status_success,
+             230)) != 0) {
+      return check;
+    }
+    if ((check = require(ztick_frontend_config_parse(session, kInvalidConfigJson,
+                                                     sizeof(kInvalidConfigJson) - 1U) ==
+                                 ztick_status_validation_failure,
+                         231)) != 0) {
+      return check;
+    }
+    if ((check = require(
+             ztick_frontend_config_serialize(session, output, sizeof(output), &length) ==
+                 ztick_status_success &&
+             strcmp(output, retained) == 0,
+             232)) != 0) {
+      return check;
+    }
+  }
+  {
     const char *overrides[] = {"dimensions.channels=4"};
     if ((check =
              require(ztick_frontend_config_override(session, overrides, 1U, output, sizeof(output),
                                                     &length) == ztick_status_success &&
                          strstr(output, "\"channels\":4") != NULL,
                      200)) != 0) {
+      return check;
+    }
+  }
+  {
+    const char *invalid_override[] = {"dimensions.channels=0"};
+    if ((check = require(ztick_frontend_config_override(session, invalid_override, 1U, output,
+                                                        sizeof(output), &length) ==
+                                 ztick_status_validation_failure,
+                             201)) != 0) {
+      return check;
+    }
+    if ((check = require(ztick_frontend_config_validate(session) == ztick_status_success,
+                         202)) != 0) {
+      return check;
+    }
+    if ((check =
+             require(ztick_frontend_config_serialize(session, output, sizeof(output), &length) ==
+                             ztick_status_success &&
+                         strstr(output, "\"channels\":4") != NULL,
+                     203)) != 0) {
       return check;
     }
   }
@@ -278,6 +338,29 @@ int main(void) {
   if ((check = require(ztick_frontend_config_load(session, config_path) == ztick_status_success,
                        11)) != 0) {
     return check;
+  }
+  {
+    char invalid_path[256] = {0};
+    FILE *file = NULL;
+    if ((check = temp_path("invalid-config.json", invalid_path, sizeof(invalid_path))) != 0) {
+      return check;
+    }
+    file = fopen(invalid_path, "wb");
+    if (file == NULL) {
+      return 12;
+    }
+    if (fwrite(kInvalidConfigJson, 1U, sizeof(kInvalidConfigJson) - 1U, file) !=
+        sizeof(kInvalidConfigJson) - 1U) {
+      fclose(file);
+      return 13;
+    }
+    fclose(file);
+    if ((check = require(ztick_frontend_config_load(session, invalid_path) ==
+                                 ztick_status_validation_failure,
+                         233)) != 0) {
+      return check;
+    }
+    (void)remove(invalid_path);
   }
 
   if ((check = require(ztick_frontend_list(session, output, sizeof(output), &length) ==

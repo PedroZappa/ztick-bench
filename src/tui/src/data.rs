@@ -928,13 +928,721 @@ fn record_error(output: &mut String, section: &str, error: DataError) {
     output.push_str(error.message());
 }
 
+/// Find one member in an ordered JSON object's entries.
+fn json_member<'a>(
+    entries: &'a [(String, crate::json::Json)],
+    name: &str,
+) -> Option<&'a crate::json::Json> {
+    entries
+        .iter()
+        .find(|(member, _)| member == name)
+        .map(|(_, value)| value)
+}
+
+/// Replace or append one member in an ordered JSON object.
+fn set_json_member(
+    entries: &mut Vec<(String, crate::json::Json)>,
+    name: &str,
+    value: crate::json::Json,
+) {
+    if let Some((_, existing)) = entries.iter_mut().find(|(member, _)| member == name) {
+        *existing = value;
+    } else {
+        entries.push((name.to_string(), value));
+    }
+}
+
+/// Return whether a named object member is a non-empty JSON array.
+fn has_nonempty_array(entries: &[(String, crate::json::Json)], name: &str) -> bool {
+    json_member(entries, name)
+        .and_then(crate::json::Json::as_array)
+        .is_some_and(|items| !items.is_empty())
+}
+
+/// A decoded portable v1 configuration document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PortableConfig {
+    /// The serialized text returned by the front end.
+    text: String,
+    /// The decoded document root.
+    root: Json,
+}
+
+/// Decode and query portable config fields used by the editing screens.
+impl PortableConfig {
+    /// Decode one portable config document and require its v1 top-level shape.
+    ///
+    /// # Parameters
+    /// - `text`: Compact JSON returned by `ztick_frontend_config_serialize`.
+    ///
+    /// # Returns
+    /// The decoded document, or an error that names the missing or invalid member.
+    pub fn from_json(text: &str) -> Result<Self, DataError> {
+        let root = json::parse(text)
+            .map_err(|error| DataError::new(format!("invalid config JSON: {error}")))?;
+        if root.as_object().is_none() {
+            return Err(DataError::new("config root is not an object"));
+        }
+        let version = Self::member(&root, &["config_version"]).and_then(Json::as_str);
+        if version.is_none() {
+            return Err(DataError::new("config_version is missing or not a string"));
+        }
+        if version != Some("1.0.0") {
+            return Err(DataError::new(format!(
+                "unsupported config_version '{}'",
+                version.unwrap_or("(unset)")
+            )));
+        }
+        for name in [
+            "sdk_version",
+            "integration",
+            "workload",
+            "dimensions",
+            "execution",
+            "profile",
+            "measurement",
+            "validation",
+            "parallelism",
+        ] {
+            if Self::member(&root, &[name]).is_none() {
+                return Err(DataError::new(format!("config member '{name}' is missing")));
+            }
+        }
+        Ok(Self {
+            text: text.to_string(),
+            root,
+        })
+    }
+
+    /// Return the serialized config text.
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Follow one dotted member path from a decoded JSON root.
+    fn member<'a>(root: &'a Json, path: &[&str]) -> Option<&'a Json> {
+        let mut current = root;
+        for key in path {
+            current = current.get(key)?;
+        }
+        Some(current)
+    }
+
+    /// Read one string member by dotted path.
+    fn string(&self, path: &[&str]) -> Option<&str> {
+        Self::member(&self.root, path).and_then(Json::as_str)
+    }
+
+    /// Read one integer member by dotted path.
+    fn integer(&self, path: &[&str]) -> Option<i64> {
+        Self::member(&self.root, path).and_then(Json::as_i64)
+    }
+
+    /// Read one numeric member by dotted path.
+    fn number(&self, path: &[&str]) -> Option<f64> {
+        Self::member(&self.root, path).and_then(Json::as_f64)
+    }
+
+    /// Read one boolean member by dotted path.
+    fn boolean(&self, path: &[&str]) -> Option<bool> {
+        Self::member(&self.root, path).and_then(Json::as_bool)
+    }
+
+    /// Read one array-of-strings member by dotted path.
+    fn strings(&self, path: &[&str]) -> Vec<String> {
+        Self::member(&self.root, path)
+            .and_then(Json::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(Json::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Return the portable config format version.
+    pub fn config_version(&self) -> &str {
+        self.string(&["config_version"]).unwrap_or("(unset)")
+    }
+
+    /// Return the SDK version recorded in the config.
+    pub fn sdk_version(&self) -> &str {
+        self.string(&["sdk_version"]).unwrap_or("(unset)")
+    }
+
+    /// Return the configured integration identifier.
+    pub fn integration_id(&self) -> &str {
+        self.string(&["integration", "id"]).unwrap_or("(unset)")
+    }
+
+    /// Return the configured integration version.
+    pub fn integration_version(&self) -> &str {
+        self.string(&["integration", "version"])
+            .unwrap_or("(unset)")
+    }
+
+    /// Return the configured workload level token.
+    pub fn workload_level(&self) -> &str {
+        self.string(&["workload", "level"]).unwrap_or("(unset)")
+    }
+
+    /// Return the configured processor names.
+    pub fn processors(&self) -> Vec<String> {
+        self.strings(&["workload", "processors"])
+    }
+
+    /// Return the configured generator kind.
+    pub fn generator_kind(&self) -> &str {
+        self.string(&["workload", "generator", "kind"])
+            .unwrap_or("(unset)")
+    }
+
+    /// Return the configured generator amplitude.
+    pub fn amplitude(&self) -> Option<f64> {
+        self.number(&["workload", "generator", "amplitude"])
+    }
+
+    /// Return the configured sine generator frequency.
+    pub fn frequency_hz(&self) -> Option<f64> {
+        self.number(&["workload", "generator", "frequency_hz"])
+    }
+
+    /// Return the generator object with its kind changed and required members retained.
+    ///
+    /// Existing amplitude, phase and tone or position settings are preserved. A
+    /// newly selected multitone or impulse generator receives one deterministic
+    /// default tone or position so the result remains runnable.
+    ///
+    /// # Parameters
+    /// - `kind`: One of `sine`, `multitone` or `impulse`.
+    ///
+    /// # Returns
+    /// Compact JSON for the replacement `workload.generator` value.
+    pub fn generator_with_kind(&self, kind: &str) -> String {
+        let mut generator = Self::member(&self.root, &["workload", "generator"])
+            .cloned()
+            .unwrap_or_else(|| {
+                crate::json::Json::Object(vec![(
+                    "amplitude".to_string(),
+                    crate::json::Json::Number("0.5".to_string()),
+                )])
+            });
+        if let crate::json::Json::Object(ref mut entries) = generator {
+            set_json_member(entries, "kind", crate::json::Json::String(kind.to_string()));
+            if json_member(entries, "amplitude").is_none() {
+                set_json_member(
+                    entries,
+                    "amplitude",
+                    crate::json::Json::Number("0.5".to_string()),
+                );
+            }
+            if kind == "sine" {
+                if json_member(entries, "frequency_hz").is_none() {
+                    set_json_member(
+                        entries,
+                        "frequency_hz",
+                        crate::json::Json::Number("1000.0".to_string()),
+                    );
+                }
+                if json_member(entries, "phase_rad").is_none() {
+                    set_json_member(
+                        entries,
+                        "phase_rad",
+                        crate::json::Json::Number("0.0".to_string()),
+                    );
+                }
+            }
+            if kind == "multitone" && !has_nonempty_array(entries, "tones") {
+                let tone = crate::json::Json::Object(vec![
+                    (
+                        "frequency_hz".to_string(),
+                        crate::json::Json::Number("1000.0".to_string()),
+                    ),
+                    (
+                        "phase_rad".to_string(),
+                        crate::json::Json::Number("0.0".to_string()),
+                    ),
+                    (
+                        "weight".to_string(),
+                        crate::json::Json::Number("1.0".to_string()),
+                    ),
+                ]);
+                set_json_member(entries, "tones", crate::json::Json::Array(vec![tone]));
+            }
+            if kind == "impulse" && json_member(entries, "position").is_none() {
+                set_json_member(
+                    entries,
+                    "position",
+                    crate::json::Json::Number("0".to_string()),
+                );
+            }
+        }
+        generator.compact()
+    }
+
+    /// Return the configured absolute validation tolerance.
+    pub fn absolute_tolerance(&self) -> Option<f64> {
+        self.number(&["validation", "tolerances", "absolute"])
+    }
+
+    /// Return the configured relative validation tolerance.
+    pub fn relative_tolerance(&self) -> Option<f64> {
+        self.number(&["validation", "tolerances", "relative"])
+    }
+
+    /// Return the configured sample rate.
+    pub fn sample_rate_hz(&self) -> Option<f64> {
+        self.number(&["dimensions", "sample_rate_hz"])
+    }
+
+    /// Return the configured block size.
+    pub fn block_size(&self) -> Option<i64> {
+        self.integer(&["dimensions", "block_size"])
+    }
+
+    /// Return the configured channel count.
+    pub fn channels(&self) -> Option<i64> {
+        self.integer(&["dimensions", "channels"])
+    }
+
+    /// Return the configured instance count.
+    pub fn instances(&self) -> Option<i64> {
+        self.integer(&["dimensions", "instances"])
+    }
+
+    /// Return the configured oversampling factor.
+    pub fn oversampling(&self) -> Option<i64> {
+        self.integer(&["dimensions", "oversampling"])
+    }
+
+    /// Return the configured profile name.
+    pub fn profile_name(&self) -> &str {
+        self.string(&["profile", "name"]).unwrap_or("(unset)")
+    }
+
+    /// Return the configured profile reliability check tokens.
+    pub fn reliability_checks(&self) -> Vec<String> {
+        self.strings(&["profile", "reliability_checks"])
+    }
+
+    /// Return the configured warm-up iteration count.
+    pub fn warmup_iterations(&self) -> Option<i64> {
+        self.integer(&["execution", "warmup", "iterations"])
+    }
+
+    /// Return the configured duration mode.
+    pub fn duration_mode(&self) -> &str {
+        self.string(&["execution", "duration_mode"])
+            .unwrap_or("(unset)")
+    }
+
+    /// Return the configured iteration count.
+    pub fn iterations(&self) -> Option<i64> {
+        self.integer(&["execution", "iterations"])
+    }
+
+    /// Return the configured target duration in seconds.
+    pub fn duration_seconds(&self) -> Option<f64> {
+        self.number(&["execution", "duration_seconds"])
+    }
+
+    /// Return the configured repetition count.
+    pub fn repetitions(&self) -> Option<i64> {
+        self.integer(&["execution", "repetitions"])
+    }
+
+    /// Return the configured isolation request.
+    pub fn isolation(&self) -> &str {
+        self.string(&["execution", "isolation"])
+            .unwrap_or("(unset)")
+    }
+
+    /// Return the configured measurement detail token.
+    pub fn measurement_detail(&self) -> &str {
+        self.string(&["measurement", "detail"]).unwrap_or("(unset)")
+    }
+
+    /// Return whether explicit end-to-end timing is enabled.
+    pub fn end_to_end(&self) -> Option<bool> {
+        self.boolean(&["measurement", "end_to_end"])
+    }
+
+    /// Return the configured timing level tokens.
+    pub fn timing_levels(&self) -> Vec<String> {
+        self.strings(&["measurement", "timing_levels"])
+    }
+
+    /// Return the configured validation level.
+    pub fn validation_level(&self) -> &str {
+        self.string(&["validation", "level"]).unwrap_or("(unset)")
+    }
+
+    /// Return the configured worker token.
+    pub fn workers(&self) -> &str {
+        self.string(&["parallelism", "workers"])
+            .unwrap_or("(unset)")
+    }
+
+    /// Return the configured affinity token.
+    pub fn affinity(&self) -> &str {
+        self.string(&["parallelism", "affinity"])
+            .unwrap_or("(unset)")
+    }
+
+    /// Return the optional OS-permitted CPU isolation request token.
+    pub fn cpu_isolation(&self) -> &str {
+        self.string(&["parallelism", "cpu_isolation"])
+            .unwrap_or("off")
+    }
+
+    /// Return whether higher scheduling priority was explicitly accepted.
+    pub fn priority_opt_in(&self) -> bool {
+        self.boolean(&["parallelism", "priority_opt_in"])
+            .unwrap_or(false)
+    }
+
+    /// Return the requested scheduling priority when one was recorded.
+    pub fn priority(&self) -> Option<i64> {
+        self.integer(&["parallelism", "priority"])
+    }
+
+    /// Compute the adapter capability bits required by this config.
+    ///
+    /// Unknown or missing tokens add no bits; the portability gate reports them
+    /// separately so a malformed config is never silently treated as portable.
+    pub fn required_capabilities(&self) -> u64 {
+        let mut mask = match self.workload_level() {
+            "processor" => crate::ZTICK_CAPABILITY_PROCESSOR,
+            "chain" => crate::ZTICK_CAPABILITY_CHAIN,
+            "engine" => crate::ZTICK_CAPABILITY_ENGINE,
+            _ => 0,
+        };
+        if self
+            .timing_levels()
+            .iter()
+            .any(|level| level == "per_block")
+        {
+            mask |= crate::ZTICK_CAPABILITY_PER_BLOCK_TIMING;
+        }
+        let workers = self.workers().parse::<u64>().unwrap_or(0);
+        if workers > 1 {
+            mask |= crate::ZTICK_CAPABILITY_INTERNAL_THREADING;
+        }
+        if !self.strings(&["validation", "references"]).is_empty() {
+            mask |= crate::ZTICK_CAPABILITY_REFERENCE_DATA;
+        }
+        if self.boolean(&["validation", "custom"]).unwrap_or(false) {
+            mask |= crate::ZTICK_CAPABILITY_CUSTOM_VALIDATION;
+        }
+        mask
+    }
+}
+
+/// One explicit portability finding shown before a config can be applied.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PortabilityFinding {
+    /// `blocker` prevents applying the config; `warning` remains visible.
+    severity: String,
+    /// The human-readable finding.
+    message: String,
+}
+
+/// Construct and expose one portability finding.
+impl PortabilityFinding {
+    /// Build one finding with an explicit severity token.
+    pub fn new(severity: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            severity: severity.into(),
+            message: message.into(),
+        }
+    }
+
+    /// Return the severity token.
+    pub fn severity(&self) -> &str {
+        &self.severity
+    }
+
+    /// Return the human-readable explanation.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+/// Portability results for one config against one discovered integration.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PortabilityReport {
+    /// Findings that prevent applying the config.
+    blockers: Vec<PortabilityFinding>,
+    /// Findings that must remain visible without blocking.
+    warnings: Vec<PortabilityFinding>,
+}
+
+/// Evaluate and inspect portability findings.
+impl PortabilityReport {
+    /// Compare one config with the currently discovered integration.
+    ///
+    /// No value is adapted. Missing metadata, incompatible SDK versions, absent
+    /// capabilities and unsupported isolation requests all block explicitly.
+    pub fn evaluate(
+        config: &PortableConfig,
+        plugin: Option<&PluginCandidate>,
+        inspection: Option<&PluginInspection>,
+        system: &SystemInventory,
+    ) -> Self {
+        let mut report = Self::default();
+        report.extend_config_warnings(config, system);
+        let Some(plugin) = plugin else {
+            report.block("select an integration before applying the config");
+            return report;
+        };
+        if !plugin.has_metadata() {
+            report.block(format!(
+                "integration inspection failed: {}",
+                value_or_placeholder(plugin.reason(), "no reason recorded")
+            ));
+        }
+        if !sdk_version_compatible(config.sdk_version(), plugin.sdk_version()) {
+            report.block(format!(
+                "SDK version mismatch: config {} but integration {}",
+                config.sdk_version(),
+                value_or_placeholder(plugin.sdk_version(), "unknown")
+            ));
+        }
+        if !plugin.identifier().is_empty() && plugin.identifier() != config.integration_id() {
+            report.block(format!(
+                "integration mismatch: config '{}' but discovered '{}'",
+                config.integration_id(),
+                plugin.identifier()
+            ));
+        }
+        if let Some(inspection) = inspection
+            && inspection.path() == plugin.path()
+            && inspection.compatibility().status() != "success"
+        {
+            report.block(format!(
+                "core compatibility {}: {}",
+                inspection.compatibility().status(),
+                value_or_placeholder(inspection.compatibility().reason(), "no reason recorded")
+            ));
+        }
+        let Some(capabilities) = parse_capability_mask(plugin.capabilities()) else {
+            report.block(format!(
+                "integration capability mask is not decodable: '{}'",
+                plugin.capabilities()
+            ));
+            return report;
+        };
+        if !["processor", "chain", "engine"].contains(&config.workload_level()) {
+            report.block(format!(
+                "unsupported workload level '{}'",
+                config.workload_level()
+            ));
+        }
+        if !["sine", "multitone", "impulse"].contains(&config.generator_kind()) {
+            report.block(format!(
+                "unsupported generator kind '{}'",
+                config.generator_kind()
+            ));
+        }
+        if matches!(config.workload_level(), "processor" | "chain")
+            && config.processors().is_empty()
+        {
+            report.block("processor workload requires at least one processor name");
+        }
+        let required = config.required_capabilities();
+        let missing = required & !capabilities;
+        for (bit, capability) in [
+            (crate::ZTICK_CAPABILITY_PROCESSOR, "processor workload"),
+            (crate::ZTICK_CAPABILITY_CHAIN, "chain workload"),
+            (crate::ZTICK_CAPABILITY_ENGINE, "engine workload"),
+            (crate::ZTICK_CAPABILITY_PER_BLOCK_TIMING, "per-block timing"),
+            (
+                crate::ZTICK_CAPABILITY_INTERNAL_THREADING,
+                "internal threading",
+            ),
+            (
+                crate::ZTICK_CAPABILITY_REFERENCE_DATA,
+                "validation reference data",
+            ),
+            (
+                crate::ZTICK_CAPABILITY_CUSTOM_VALIDATION,
+                "custom validation",
+            ),
+        ] {
+            if missing & bit != 0 {
+                report.block(format!("integration lacks capability: {capability}"));
+            }
+        }
+        if config.priority().is_some_and(|value| value > 0) && !config.priority_opt_in() {
+            report.block(format!(
+                "priority {} has no explicit opt-in; press p twice to accept higher priority",
+                config.priority().unwrap_or(0)
+            ));
+        }
+        if config.isolation() == "out_of_process" {
+            report.block("out-of-process isolation is unavailable for the built-in workload");
+        }
+        if config.affinity() != "auto"
+            && system
+                .field("process_affinity")
+                .is_some_and(|field| !field.status().has_value())
+        {
+            report.block(format!(
+                "affinity request '{}' cannot be checked: {}",
+                config.affinity(),
+                system
+                    .field("process_affinity")
+                    .map(AvailabilityField::display_value)
+                    .unwrap_or_else(|| "process affinity not reported".to_string())
+            ));
+        }
+        if matches!(config.affinity(), "physical" | "logical") {
+            let field_name = if config.affinity() == "physical" {
+                "physical_core_count"
+            } else {
+                "logical_core_count"
+            };
+            match available_count(system, field_name) {
+                Some(0) => report.block(format!("{field_name} is zero for affinity request")),
+                Some(_) => {}
+                None => report.block(format!(
+                    "{field_name} is not reported; affinity cannot be checked"
+                )),
+            }
+        }
+        report
+    }
+
+    /// Add warnings that describe config choices even when integration checks block.
+    fn extend_config_warnings(&mut self, config: &PortableConfig, system: &SystemInventory) {
+        if config.priority().is_some_and(|value| value > 0) && !config.priority_opt_in() {
+            self.warn(format!(
+                "priority {} is not accepted; higher priority can reduce responsiveness and bias measurements",
+                config.priority().unwrap_or(0)
+            ));
+        } else if config.priority_opt_in() {
+            self.warn(format!(
+                "higher priority {} is explicitly accepted; responsiveness and measurement bias may change",
+                config.priority().unwrap_or(0)
+            ));
+        }
+        if config.cpu_isolation() == "request" {
+            let note = system
+                .field("scheduling_configuration")
+                .map(AvailabilityField::display_value)
+                .unwrap_or_else(|| "scheduling configuration is not reported".to_string());
+            self.warn(format!(
+                "CPU isolation requested; {note}; the OS may refuse and fall back to inherited scheduling"
+            ));
+        }
+        if config.end_to_end() == Some(true) {
+            self.warn("end-to-end timing includes setup outside the DSP interval");
+        }
+    }
+
+    /// Add one blocking finding.
+    fn block(&mut self, message: impl Into<String>) {
+        self.blockers
+            .push(PortabilityFinding::new("blocker", message));
+    }
+
+    /// Add one non-blocking finding.
+    fn warn(&mut self, message: impl Into<String>) {
+        self.warnings
+            .push(PortabilityFinding::new("warning", message));
+    }
+
+    /// Build a report containing one explicit blocker.
+    pub fn blocked(message: impl Into<String>) -> Self {
+        let mut report = Self::default();
+        report.block(message);
+        report
+    }
+
+    /// Return every blocking finding.
+    pub fn blockers(&self) -> &[PortabilityFinding] {
+        &self.blockers
+    }
+
+    /// Return every non-blocking finding.
+    pub fn warnings(&self) -> &[PortabilityFinding] {
+        &self.warnings
+    }
+
+    /// Return true only when no blocker was recorded.
+    pub fn is_allowed(&self) -> bool {
+        self.blockers.is_empty()
+    }
+}
+
+/// Read one non-negative availability-aware count from the system inventory.
+fn available_count(system: &SystemInventory, name: &str) -> Option<u64> {
+    let field = system.field(name)?;
+    if !field.status().has_value() {
+        return None;
+    }
+    field.value().parse().ok()
+}
+
+/// Parse a three-part numeric version token.
+fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = text.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+/// Return whether an integration version can be used with a config version.
+///
+/// The major versions must match and the integration's minor version must not
+/// exceed the config's; patch differences remain compatible.
+fn sdk_version_compatible(config_version: &str, integration_version: &str) -> bool {
+    let Some((config_major, config_minor, _)) = parse_version(config_version) else {
+        return false;
+    };
+    let Some((integration_major, integration_minor, _)) = parse_version(integration_version) else {
+        return false;
+    };
+    config_major == integration_major && integration_minor <= config_minor
+}
+
+/// Return one non-empty value or an explicit placeholder.
+fn value_or_placeholder(value: &str, placeholder: &str) -> String {
+    if value.is_empty() {
+        placeholder.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+/// Decode one hexadecimal or decimal adapter capability mask.
+fn parse_capability_mask(text: &str) -> Option<u64> {
+    let trimmed = text.trim();
+    let digits = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .unwrap_or(trimmed);
+    if digits.is_empty() {
+        return None;
+    }
+    u64::from_str_radix(digits, 16).ok()
+}
+
 /// Unit tests for typed envelope decoding and error reporting.
 #[cfg(test)]
 mod tests {
     use super::{
         AvailabilityField, AvailabilityStatus, DashboardData, DataError, Envelope,
-        PluginInspection, PluginList, ProfileList, SystemInventory,
+        PluginInspection, PluginList, PortabilityReport, PortableConfig, ProfileList,
+        SystemInventory,
     };
+    use crate::config::DEFAULT_CONFIG_JSON;
     use crate::json::{Json, parse};
 
     /// A system envelope covering all four availability states.
@@ -1147,5 +1855,220 @@ mod tests {
         assert_eq!(items[3].as_str(), Some("x"));
         assert!(items[4].as_object().is_some());
         assert!(items[5].as_array().is_some());
+        assert_eq!(items[1].as_bool(), Some(true));
+        assert_eq!(items[2].as_f64(), Some(1.0));
+    }
+
+    /// Verify portable config decoding exposes typed fields and required capabilities.
+    #[test]
+    fn portable_config_decodes_typed_fields_and_capabilities() {
+        let config = PortableConfig::from_json(DEFAULT_CONFIG_JSON).expect("config decodes");
+        assert_eq!(config.sdk_version(), "1.0.0");
+        assert_eq!(config.integration_id(), "app-a");
+        assert_eq!(config.workload_level(), "processor");
+        assert_eq!(config.processors(), ["eq"]);
+        assert_eq!(config.sample_rate_hz(), Some(48000.0));
+        assert_eq!(config.block_size(), Some(128));
+        assert_eq!(config.profile_name(), "Quick");
+        assert_eq!(config.timing_levels(), ["per_block", "whole_run"]);
+        assert_eq!(config.required_capabilities(), 0x9);
+        assert_eq!(config.cpu_isolation(), "off");
+
+        let future = DEFAULT_CONFIG_JSON.replace(
+            "\"config_version\":\"1.0.0\"",
+            "\"config_version\":\"2.0.0\"",
+        );
+        assert!(PortableConfig::from_json(&future).is_err());
+        assert!(PortableConfig::from_json("{\"config_version\":\"1.0.0\"}").is_err());
+    }
+
+    /// Verify generator kind changes preserve existing parameters and add required defaults.
+    #[test]
+    fn generator_kind_change_preserves_parameters() {
+        let config = PortableConfig::from_json(DEFAULT_CONFIG_JSON).expect("config decodes");
+        let multitone = config.generator_with_kind("multitone");
+        assert!(multitone.contains("\"amplitude\":0.5"));
+        assert!(multitone.contains("\"frequency_hz\":1000.0"));
+        assert!(multitone.contains("\"tones\":[{"));
+        let impulse = config.generator_with_kind("impulse");
+        assert!(impulse.contains("\"amplitude\":0.5"));
+        assert!(impulse.contains("\"position\":0"));
+        assert!(!impulse.contains("\"tones\""));
+    }
+
+    /// Verify SDK compatibility allows patch differences but rejects minor or major regressions.
+    #[test]
+    fn sdk_compatibility_follows_major_and_minor_rules() {
+        assert!(super::sdk_version_compatible("1.0.0", "1.0.3"));
+        assert!(!super::sdk_version_compatible("1.0.0", "1.1.0"));
+        assert!(!super::sdk_version_compatible("1.0.0", "2.0.0"));
+        assert!(!super::sdk_version_compatible("1.0.0", "malformed"));
+    }
+
+    /// Verify a priority value without explicit opt-in blocks and still warns.
+    #[test]
+    fn portability_blocks_priority_without_opt_in() {
+        let text = DEFAULT_CONFIG_JSON.replace("\"priority\":0", "\"priority\":5");
+        let config = PortableConfig::from_json(&text).expect("priority config decodes");
+        let plugins =
+            PluginList::from_json(&PLUGIN_JSON.replace("0x7c", "0x7f")).expect("plugins decode");
+        let inspection = PluginInspection::from_json(&INSPECT_JSON.replace("0x7c", "0x7f"))
+            .expect("inspection decodes");
+        let system = SystemInventory::from_json(SYSTEM_JSON).expect("system decodes");
+        let report = PortabilityReport::evaluate(
+            &config,
+            Some(&plugins.plugins()[0]),
+            Some(&inspection),
+            &system,
+        );
+        assert!(!report.is_allowed());
+        assert!(
+            report.blockers()[0]
+                .message()
+                .contains("no explicit opt-in")
+        );
+        assert!(report.warnings()[0].message().contains("responsiveness"));
+    }
+
+    /// Verify CPU isolation and unknown affinity requests are reported explicitly.
+    #[test]
+    fn portability_reports_cpu_isolation_and_affinity_requests() {
+        let plugins =
+            PluginList::from_json(&PLUGIN_JSON.replace("0x7c", "0x7f")).expect("plugins decode");
+        let inspection = PluginInspection::from_json(&INSPECT_JSON.replace("0x7c", "0x7f"))
+            .expect("inspection decodes");
+        let system = SystemInventory::from_json(SYSTEM_JSON).expect("system decodes");
+        let cpu_request = DEFAULT_CONFIG_JSON
+            .replace("\"cpu_isolation\":\"off\"", "\"cpu_isolation\":\"request\"");
+        let cpu_request = PortableConfig::from_json(&cpu_request).expect("config decodes");
+        let report = PortabilityReport::evaluate(
+            &cpu_request,
+            Some(&plugins.plugins()[0]),
+            Some(&inspection),
+            &system,
+        );
+        assert!(report.is_allowed());
+        assert!(
+            report.warnings()[0]
+                .message()
+                .contains("CPU isolation requested")
+        );
+
+        let affinity =
+            DEFAULT_CONFIG_JSON.replace("\"affinity\":\"auto\"", "\"affinity\":\"physical\"");
+        let affinity = PortableConfig::from_json(&affinity).expect("config decodes");
+        let report = PortabilityReport::evaluate(
+            &affinity,
+            Some(&plugins.plugins()[0]),
+            Some(&inspection),
+            &system,
+        );
+        assert!(!report.is_allowed());
+        assert!(
+            report
+                .blockers()
+                .iter()
+                .any(|finding| finding.message().contains("physical_core_count"))
+        );
+    }
+
+    /// Verify missing integrations and missing capabilities block explicitly.
+    #[test]
+    fn portability_blocks_missing_integration_and_capabilities() {
+        let config = PortableConfig::from_json(DEFAULT_CONFIG_JSON).expect("config decodes");
+        let plugins = PluginList::from_json(PLUGIN_JSON).expect("plugins decode");
+        let inspection = PluginInspection::from_json(INSPECT_JSON).expect("inspection decodes");
+        let system = SystemInventory::from_json(SYSTEM_JSON).expect("system decodes");
+
+        let empty = PortabilityReport::evaluate(&config, None, None, &system);
+        assert!(!empty.is_allowed());
+        assert!(
+            empty.blockers()[0]
+                .message()
+                .contains("select an integration")
+        );
+
+        let missing = PortabilityReport::evaluate(
+            &config,
+            Some(&plugins.plugins()[0]),
+            Some(&inspection),
+            &system,
+        );
+        assert!(!missing.is_allowed());
+        assert!(
+            missing
+                .blockers()
+                .iter()
+                .any(|finding| finding.message().contains("processor workload"))
+        );
+    }
+
+    /// Verify supported capabilities pass and explicit priority opt-in warns.
+    #[test]
+    fn portability_allows_supported_capabilities_and_warns_on_priority() {
+        let config = PortableConfig::from_json(DEFAULT_CONFIG_JSON).expect("config decodes");
+        let supported_plugin = PLUGIN_JSON.replace("0x7c", "0x7f");
+        let supported_inspection = INSPECT_JSON.replace("0x7c", "0x7f");
+        let priority_config =
+            DEFAULT_CONFIG_JSON.replace("\"priority_opt_in\":false", "\"priority_opt_in\":true");
+        let priority_config =
+            PortableConfig::from_json(&priority_config).expect("priority config decodes");
+        let plugins = PluginList::from_json(&supported_plugin).expect("plugins decode");
+        let inspection =
+            PluginInspection::from_json(&supported_inspection).expect("inspection decodes");
+        let system = SystemInventory::from_json(SYSTEM_JSON).expect("system decodes");
+
+        let allowed = PortabilityReport::evaluate(
+            &config,
+            Some(&plugins.plugins()[0]),
+            Some(&inspection),
+            &system,
+        );
+        assert!(allowed.is_allowed(), "{:?}", allowed.blockers());
+        assert!(allowed.warnings().is_empty());
+
+        let warned = PortabilityReport::evaluate(
+            &priority_config,
+            Some(&plugins.plugins()[0]),
+            Some(&inspection),
+            &system,
+        );
+        assert!(warned.is_allowed());
+        assert!(
+            warned.warnings()[0]
+                .message()
+                .contains("explicitly accepted")
+        );
+    }
+
+    /// Verify unsupported isolation and SDK mismatch are never silently adapted.
+    #[test]
+    fn portability_blocks_isolation_and_sdk_mismatch() {
+        let config = DEFAULT_CONFIG_JSON
+            .replace("\"isolation\":\"auto\"", "\"isolation\":\"out_of_process\"");
+        let config = PortableConfig::from_json(&config).expect("config decodes");
+        let plugins =
+            PluginList::from_json(&PLUGIN_JSON.replace("1.0.0", "2.0.0")).expect("plugins decode");
+        let inspection = PluginInspection::from_json(INSPECT_JSON).expect("inspection decodes");
+        let system = SystemInventory::from_json(SYSTEM_JSON).expect("system decodes");
+
+        let report = PortabilityReport::evaluate(
+            &config,
+            Some(&plugins.plugins()[0]),
+            Some(&inspection),
+            &system,
+        );
+        assert!(
+            report
+                .blockers()
+                .iter()
+                .any(|finding| finding.message().contains("out-of-process isolation"))
+        );
+        assert!(
+            report
+                .blockers()
+                .iter()
+                .any(|finding| finding.message().contains("SDK version mismatch"))
+        );
     }
 }

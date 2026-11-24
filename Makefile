@@ -193,7 +193,7 @@ tui-build:	## Configure with the TUI enabled and build its binary
 	@$(CMAKE) --build $(BUILD_DIR) --target ztick_tui_binary --parallel
 	@echo "$(YEL)* $(_SUCCESS) TUI binary ready at $(TUI_BINARY)$(D)"
 
-tui: tui-build	## Open the TUI (1/2/3 screens, Tab cycles, Up/Down selects, r refreshes, q quits)
+tui: tui-build	## Open the TUI (1-8 screens, arrows edit fields, Ctrl-S saves, Ctrl-O loads, p confirms priority, r refreshes, q quits)
 	@if [ ! -x "$(TUI_BINARY)" ]; then \
 		echo "$(RED)$(TUI_BINARY) is not built$(D)"; \
 		exit 1; \
@@ -212,7 +212,11 @@ tui-demo:	## Open the TUI with a seeded plugin and isolated XDG state
 	@XDG_DATA_HOME="$(TUI_DEMO_DATA)" XDG_CONFIG_HOME="$(TUI_DEMO_CONFIG)" \
 		TERM="$${TERM:-xterm-256color}" "$(TUI_BINARY)"
 
-tui-check: tui-build	## Run registered TUI Rust gates through CTest
+tui-check:	## Run registered TUI Rust gates through CTest (example adapter enabled)
+	@echo "$(YEL)Configuring TUI test build...$(D)"
+	@$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(CMAKE_ARGS) $(TUI_DEMO_CMAKE_ARGS)
+	@$(CMAKE) --build $(BUILD_DIR) --target ztick_tui_binary ztick_test_app_dynamic --parallel
 	@echo "$(YEL)Running TUI Rust gates...$(D)"
 	@$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure -R '^tui\.'
 	@echo "$(YEL)* $(_SUCCESS) TUI Rust gates passed$(D)"

@@ -22,6 +22,11 @@ set(_ztick_cargo_env
   "ZTICK_FRONTEND_LIB_DIR=${_ztick_frontend_lib_dir}"
   "LD_LIBRARY_PATH=${_ztick_frontend_lib_dir}"
 )
+if(ZTICK_BUILD_EXAMPLES)
+  list(APPEND _ztick_cargo_env
+    "ZTICK_TUI_TEST_MODULE=$<TARGET_FILE:ztick_test_app_dynamic>"
+  )
+endif()
 
 # The optional executable is built with the normal project build. Cargo uses its
 # debug profile so the test and runtime gates share one compiled frontend.

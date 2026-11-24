@@ -145,6 +145,8 @@ Labels used in requirement statements; see
 | **CPU affinity** | Restriction of threads to a chosen set of CPUs. |
 | **Physical core / logical core** | Hardware core versus SMT thread; distinguishable where the platform exposes it. |
 | **Scheduling priority** | OS thread/process priority; unchanged by default, optionally raised only with explicit opt-in and warnings. |
+| **CPU isolation request** | An optional request to isolate benchmark work from other OS work where permitted; refusal falls back to inherited scheduling and is reported as a warning. |
+| **Process isolation request** | The execution-mode request for out-of-process isolation of an integration; process isolation reduces crash impact and is not a security sandbox. |
 
 ## Results and validation
 

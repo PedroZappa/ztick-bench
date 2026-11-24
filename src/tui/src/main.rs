@@ -2,18 +2,20 @@
 //! Terminal entry point for the optional ztick-bench front end.
 //!
 //! This binary contains no benchmark logic. It copies read-only envelopes from
-//! the private C11 boundary, renders them with ratatui and processes navigation
-//! input until the user quits. Editing, live runs and result workflows land in
-//! later Phase 5 tasks.
+//! the private C11 boundary, edits portable configs through the same boundary,
+//! renders ratatui screens and processes navigation input until the user quits.
+//! Live runs and result workflows land in later Phase 5 tasks.
 
 use std::io;
 use std::time::Duration;
 
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use ztick_tui::app::{App, Screen};
-use ztick_tui::data::{DashboardData, PluginInspection};
+use ztick_tui::config::{DEFAULT_CONFIG_JSON, EditableField};
+use ztick_tui::data::{DashboardData, PluginInspection, PortabilityReport};
 use ztick_tui::frontend::{FrontendError, Session};
+use ztick_tui::profile;
 use ztick_tui::ui;
 
 /// Poll interval used when no terminal input is waiting.
@@ -23,7 +25,16 @@ const POLL_INTERVAL: Duration = Duration::from_millis(200);
 fn main() -> io::Result<()> {
     let session = Session::new().map_err(io::Error::other)?;
     let mut app = App::new();
+    match session.parse_config(DEFAULT_CONFIG_JSON) {
+        Ok(text) => {
+            if let Err(error) = app.set_config_json(&text) {
+                app.set_status(format!("default config decode failed: {error}"));
+            }
+        }
+        Err(error) => app.set_status(format!("default config parse failed: {error}")),
+    }
     refresh_dashboard(&session, &mut app);
+    refresh_profiles(&mut app);
 
     ratatui::run(|terminal| {
         loop {
@@ -33,44 +44,312 @@ fn main() -> io::Result<()> {
                 continue;
             }
             match event::read()? {
-                Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => break Ok(()),
-                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    if handle_key(&session, &mut app, key) {
                         break Ok(());
                     }
-                    KeyCode::Char('1') => app.set_screen(Screen::Dashboard),
-                    KeyCode::Char('2') => app.set_screen(Screen::System),
-                    KeyCode::Char('3') => {
-                        app.set_screen(Screen::Integrations);
-                        refresh_inspection(&session, &mut app);
-                    }
-                    KeyCode::Tab => {
-                        app.next_screen();
-                        refresh_screen(&session, &mut app);
-                    }
-                    KeyCode::BackTab => {
-                        app.previous_screen();
-                        refresh_screen(&session, &mut app);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') if app.screen() == Screen::Integrations => {
-                        app.select_next_plugin();
-                        refresh_inspection(&session, &mut app);
-                    }
-                    KeyCode::Up | KeyCode::Char('k') if app.screen() == Screen::Integrations => {
-                        app.select_previous_plugin();
-                        refresh_inspection(&session, &mut app);
-                    }
-                    KeyCode::Char('r') => {
-                        refresh_dashboard(&session, &mut app);
-                        refresh_screen(&session, &mut app);
-                    }
-                    _ => {}
-                },
+                }
                 Event::Resize(_, _) => {}
                 _ => {}
             }
         }
     })
+}
+
+/// Apply one key press to the application and return true when it requests quit.
+///
+/// Text input is handled first so ordinary characters cannot trigger screen
+/// shortcuts while an editor is open. Every config edit crosses the private
+/// boundary through [`Session::apply_overrides`].
+fn handle_key(session: &Session, app: &mut App, key: KeyEvent) -> bool {
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('c') => return true,
+            KeyCode::Char('s') => {
+                save_current_profile(session, app);
+                return false;
+            }
+            KeyCode::Char('o') => {
+                load_selected_profile(session, app);
+                return false;
+            }
+            _ => {}
+        }
+    }
+
+    if app.input().is_some() {
+        match key.code {
+            KeyCode::Esc => {
+                app.cancel_input();
+                app.set_status("edit cancelled");
+            }
+            KeyCode::Backspace => app.pop_input_char(),
+            KeyCode::Enter => apply_input(session, app),
+            KeyCode::Char(character) => app.push_input_char(character),
+            _ => {}
+        }
+        return false;
+    }
+
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Esc => true,
+        KeyCode::Char(character) if character.is_ascii_digit() => {
+            let index = character.to_digit(10).expect("digit is valid") as usize;
+            if index >= 1 && index <= Screen::ALL.len() {
+                app.set_screen(Screen::ALL[index - 1]);
+                refresh_screen(session, app);
+            }
+            false
+        }
+        KeyCode::Tab => {
+            app.next_screen();
+            refresh_screen(session, app);
+            false
+        }
+        KeyCode::BackTab => {
+            app.previous_screen();
+            refresh_screen(session, app);
+            false
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            select_next(session, app);
+            false
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            select_previous(session, app);
+            false
+        }
+        KeyCode::Left => {
+            cycle_selected_field(session, app, false);
+            false
+        }
+        KeyCode::Right | KeyCode::Char('+') | KeyCode::Char('=') => {
+            cycle_selected_field(session, app, true);
+            false
+        }
+        KeyCode::Char('-') => {
+            cycle_selected_field(session, app, false);
+            false
+        }
+        KeyCode::Enter => {
+            if let Some(field) = app.selected_editable_field()
+                && !app.begin_field_edit(field)
+            {
+                app.set_status("no config is available to edit");
+            }
+            false
+        }
+        KeyCode::Char('p') if app.screen() == Screen::Scheduling => {
+            confirm_priority_change(session, app);
+            false
+        }
+        KeyCode::Char('r') => {
+            refresh_dashboard(session, app);
+            refresh_screen(session, app);
+            false
+        }
+        _ => false,
+    }
+}
+
+/// Move the active screen's selection forward.
+fn select_next(session: &Session, app: &mut App) {
+    match app.screen() {
+        Screen::Integrations => {
+            app.select_next_plugin();
+            refresh_inspection(session, app);
+            refresh_portability(app);
+        }
+        Screen::Profiles => app.select_next_profile(),
+        _ => app.select_next_field(),
+    }
+}
+
+/// Move the active screen's selection backward.
+fn select_previous(session: &Session, app: &mut App) {
+    match app.screen() {
+        Screen::Integrations => {
+            app.select_previous_plugin();
+            refresh_inspection(session, app);
+            refresh_portability(app);
+        }
+        Screen::Profiles => app.select_previous_profile(),
+        _ => app.select_previous_field(),
+    }
+}
+
+/// Cycle the selected editable field and apply the generated override.
+fn cycle_selected_field(session: &Session, app: &mut App, forward: bool) {
+    let Some(config) = app.config() else {
+        app.set_status("no config is available to edit");
+        return;
+    };
+    let Some(field) = app.selected_editable_field() else {
+        return;
+    };
+    let options = ztick_tui::config::EditOptions {
+        integration_ids: app
+            .data()
+            .plugins()
+            .plugins()
+            .iter()
+            .filter(|plugin| plugin.has_metadata())
+            .map(|plugin| plugin.identifier().to_string())
+            .collect(),
+    };
+    let Some(assignments) = field.cycle_assignments(config, forward, &options) else {
+        if matches!(
+            field,
+            EditableField::PriorityOptIn | EditableField::PriorityValue
+        ) {
+            app.set_status("higher priority requires p and a second confirmation");
+        } else {
+            app.set_status(format!("{} has no discovered alternative", field.label()));
+        }
+        return;
+    };
+    apply_assignments(session, app, &assignments);
+}
+
+/// Commit the active text editor through the private boundary.
+fn apply_input(session: &Session, app: &mut App) {
+    let Some(input) = app.take_input() else {
+        return;
+    };
+    let Some(config) = app.config() else {
+        app.set_status("no config is available to edit");
+        return;
+    };
+    let assignments = match input
+        .target()
+        .assignment_batch_from_input(input.buffer(), config)
+    {
+        Ok(assignments) => assignments,
+        Err(error) => {
+            app.set_status(format!("invalid {}: {}", input.target().label(), error));
+            return;
+        }
+    };
+    apply_assignments(session, app, &assignments);
+}
+
+/// Apply one semantically validated override for tests and single-value flows.
+fn apply_assignment(session: &Session, app: &mut App, assignment: &str) {
+    apply_assignments(session, app, &[assignment.to_string()]);
+}
+
+/// Apply one override batch, refresh the typed config and recheck portability.
+fn apply_assignments(session: &Session, app: &mut App, assignments: &[String]) {
+    match session.apply_overrides(assignments) {
+        Ok(text) => {
+            if let Err(error) = app.set_config_json(&text) {
+                app.set_status(format!("config decode failed: {error}"));
+                return;
+            }
+            app.set_validation_note("validated by core planner");
+            refresh_portability(app);
+            let summary = assignments.join(", ");
+            if app.portability().is_allowed() {
+                app.set_status(format!("applied {summary}"));
+            } else {
+                app.set_status(format!(
+                    "applied {summary}; config is blocked by portability findings"
+                ));
+            }
+        }
+        Err(error) => {
+            app.set_validation_note("last edit rejected; current config unchanged");
+            app.set_status(format!("override rejected: {error}"));
+        }
+    }
+}
+
+/// Require a second identical key press before changing priority opt-in.
+fn confirm_priority_change(session: &Session, app: &mut App) {
+    let Some(config) = app.config() else {
+        app.set_status("no config is available to edit");
+        return;
+    };
+    let desired = !config.priority_opt_in();
+    if !app.request_priority_change(desired) {
+        app.set_status(format!(
+            "priority opt-in {desired} is pending; press p again to confirm"
+        ));
+        return;
+    }
+    apply_assignment(
+        session,
+        app,
+        &format!("parallelism.priority_opt_in={desired}"),
+    );
+}
+
+/// Validate and save the active named profile only when portability allows it.
+fn save_current_profile(session: &Session, app: &mut App) {
+    if !app.portability().is_allowed() {
+        let detail = app
+            .portability()
+            .blockers()
+            .first()
+            .map(|finding| finding.message())
+            .unwrap_or("portability findings are present");
+        app.set_status(format!("save BLOCKED: {detail}"));
+        return;
+    }
+    if let Err(error) = session.validate_config() {
+        app.set_validation_note("invalid");
+        app.set_status(format!("save blocked by validation: {error}"));
+        return;
+    }
+    app.set_validation_note("valid");
+    let Some(config) = app.config() else {
+        app.set_status("save blocked: no config is retained");
+        return;
+    };
+    let name = config.profile_name().to_string();
+    let text = config.text().to_string();
+    match profile::save(app.profile_directory(), &name, &text) {
+        Ok(path) => {
+            refresh_profiles(app);
+            app.select_saved_profile_path(&path);
+            app.set_status(format!(
+                "saved named profile '{name}' to {}",
+                path.display()
+            ));
+        }
+        Err(error) => app.set_status(format!("profile save failed: {error}")),
+    }
+}
+
+/// Load the selected named profile without adapting unsupported capabilities.
+fn load_selected_profile(session: &Session, app: &mut App) {
+    let Some(path) = app
+        .selected_saved_profile()
+        .map(|value| value.path().to_path_buf())
+    else {
+        app.set_status("no saved profile is selected");
+        return;
+    };
+    let path_text = path.to_string_lossy().to_string();
+    match session.load_config(&path_text) {
+        Ok(text) => {
+            if let Err(error) = app.set_config_json(&text) {
+                app.set_status(format!("profile decode failed: {error}"));
+                return;
+            }
+            app.set_validation_note("loaded; validated by core planner");
+            refresh_portability(app);
+            if app.portability().is_allowed() {
+                app.set_status(format!("loaded profile from {}", path.display()));
+            } else {
+                app.set_status(format!(
+                    "loaded profile from {} but it is BLOCKED by portability findings",
+                    path.display()
+                ));
+            }
+        }
+        Err(error) => app.set_status(format!("profile load failed: {error}")),
+    }
 }
 
 /// Apply all queued boundary events to the displayed run state and status.
@@ -106,13 +385,39 @@ fn apply_dashboard_result(result: Result<DashboardData, FrontendError>, app: &mu
 /// Reload all dashboard envelopes and record decode failures visibly.
 fn refresh_dashboard(session: &Session, app: &mut App) {
     apply_dashboard_result(session.dashboard_data(), app);
+    refresh_portability(app);
 }
 
 /// Load detail for the active screen when it needs boundary data.
 fn refresh_screen(session: &Session, app: &mut App) {
-    if app.screen() == Screen::Integrations {
-        refresh_inspection(session, app);
+    match app.screen() {
+        Screen::Integrations => refresh_inspection(session, app),
+        Screen::Profiles => refresh_profiles(app),
+        _ => {}
     }
+}
+
+/// Reload the saved profile list from the configured profile directory.
+fn refresh_profiles(app: &mut App) {
+    app.set_saved_profiles(profile::list(app.profile_directory()));
+}
+
+/// Recompute portability findings from the retained config and inspection.
+///
+/// A missing config is itself a blocker; no missing or unsupported capability
+/// is adapted or hidden.
+fn refresh_portability(app: &mut App) {
+    let Some(config) = app.config() else {
+        app.set_portability(PortabilityReport::blocked("no config is retained"));
+        return;
+    };
+    let report = PortabilityReport::evaluate(
+        config,
+        app.selected_plugin(),
+        app.inspection(),
+        app.data().system(),
+    );
+    app.set_portability(report);
 }
 
 /// Apply one plugin inspection result to the selected candidate.
@@ -136,17 +441,21 @@ fn refresh_inspection(session: &Session, app: &mut App) {
         return;
     };
     apply_inspection_result(session.plugin_inspect(&path), app);
+    refresh_portability(app);
 }
 
 /// Unit tests for terminal event handling and refresh helpers.
 #[cfg(test)]
 mod tests {
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
     use super::{
-        apply_dashboard_result, apply_inspection_result, consume_events, refresh_dashboard,
-        refresh_screen,
+        apply_assignment, apply_dashboard_result, apply_inspection_result, consume_events,
+        handle_key, refresh_dashboard, refresh_profiles, refresh_screen, save_current_profile,
     };
     use ztick_tui::app::{App, RunState, Screen};
-    use ztick_tui::data::DashboardData;
+    use ztick_tui::config::{DEFAULT_CONFIG_JSON, EditableField};
+    use ztick_tui::data::{DashboardData, PortabilityReport};
     use ztick_tui::frontend::{FrontendError, Session};
 
     /// Build dashboard data with one plugin from valid envelopes.
@@ -155,6 +464,19 @@ mod tests {
         let list = r#"{"schema_version":1,"command":"list","status":"success","exit_code":0,"data":{"profiles":[]},"error":""}"#;
         let plugins = r#"{"schema_version":1,"command":"plugin list","status":"success","exit_code":0,"data":{"directories":[],"trust":{"status":"available","reason":"","entries":[]},"plugins":[{"path":"/app.so","source":"explicit_path","status":"success","reason":"","identifier":"app-a","name":"App A","version":"1.2.3","sdk_version":"1.0.0","capabilities":"0x7c","trust":"untrusted"}]},"error":""}"#;
         DashboardData::from_json(system, list, plugins)
+    }
+
+    /// Build an application with the default portable config retained.
+    fn configured_app() -> App {
+        let mut app = App::new();
+        app.set_config_json(DEFAULT_CONFIG_JSON)
+            .expect("default config decodes");
+        app
+    }
+
+    /// Build one key press with no modifiers.
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
     }
 
     /// Verify dashboard load errors never erase already-loaded data.
@@ -229,5 +551,167 @@ mod tests {
         app.set_screen(Screen::Dashboard);
         refresh_screen(&session, &mut app);
         assert!(app.inspection().is_none());
+    }
+
+    /// Verify number keys select registered screens without quitting.
+    #[test]
+    fn number_keys_select_registered_screens() {
+        let session = Session::new().expect("session creation succeeds");
+        let mut app = configured_app();
+        for (index, expected) in Screen::ALL.iter().enumerate() {
+            let digit = char::from_digit((index + 1) as u32, 10).expect("index is a digit");
+            assert!(!handle_key(&session, &mut app, key(KeyCode::Char(digit))));
+            assert_eq!(app.screen(), *expected);
+        }
+        assert!(handle_key(&session, &mut app, key(KeyCode::Char('q'))));
+    }
+
+    /// Verify right arrow applies a documented field override through the boundary.
+    #[test]
+    fn right_arrow_applies_a_field_override() {
+        let session = Session::new().expect("session creation succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+        let mut app = configured_app();
+        app.set_screen(Screen::Configuration);
+        assert!(!handle_key(&session, &mut app, key(KeyCode::Right)));
+        assert_eq!(
+            app.config().expect("config remains").sample_rate_hz(),
+            Some(96000.0)
+        );
+    }
+
+    /// Verify typed editor input commits a quoted portable profile name.
+    #[test]
+    fn typed_editor_input_commits_a_quoted_profile_name() {
+        let session = Session::new().expect("session creation succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+        let mut app = configured_app();
+        app.set_screen(Screen::Profiles);
+        assert!(app.begin_field_edit(EditableField::ProfileName));
+        for character in "Rename Me".chars() {
+            app.push_input_char(character);
+        }
+        assert!(!handle_key(&session, &mut app, key(KeyCode::Enter)));
+        assert_eq!(
+            app.config().expect("config remains").profile_name(),
+            "Rename Me"
+        );
+        assert!(app.input().is_none());
+    }
+
+    /// Verify higher priority needs a second explicit confirmation.
+    #[test]
+    fn higher_priority_requires_a_second_explicit_confirmation() {
+        let session = Session::new().expect("session creation succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+        let mut app = configured_app();
+        app.set_screen(Screen::Scheduling);
+        assert!(!handle_key(&session, &mut app, key(KeyCode::Char('p'))));
+        assert_eq!(app.pending_priority(), Some(true));
+        assert!(!app.config().expect("config remains").priority_opt_in());
+        assert!(!handle_key(&session, &mut app, key(KeyCode::Char('p'))));
+        assert_eq!(app.pending_priority(), None);
+        assert!(app.config().expect("config remains").priority_opt_in());
+        assert!(
+            app.portability()
+                .warnings()
+                .iter()
+                .any(|finding| finding.message().contains("explicitly accepted"))
+        );
+    }
+
+    /// Verify core-invalid overrides are rejected without mutating the session config.
+    #[test]
+    fn core_invalid_override_is_rejected_without_mutating_config() {
+        let session = Session::new().expect("session creation succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+        let mut app = configured_app();
+        apply_assignment(&session, &mut app, "dimensions.channels=0");
+        assert_eq!(app.config().expect("config remains").channels(), Some(2));
+        assert_eq!(
+            app.validation_note(),
+            "last edit rejected; current config unchanged"
+        );
+        assert!(app.status().contains("override rejected"));
+    }
+
+    /// Verify typed priority entries cannot bypass the explicit opt-in flow.
+    #[test]
+    fn typed_priority_cannot_bypass_explicit_opt_in() {
+        let session = Session::new().expect("session creation succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+        let mut app = configured_app();
+        app.set_screen(Screen::Scheduling);
+        assert!(app.begin_field_edit(EditableField::PriorityValue));
+        app.push_input_char('5');
+        assert!(!handle_key(&session, &mut app, key(KeyCode::Enter)));
+        assert_eq!(app.config().expect("config remains").priority(), Some(0));
+        assert!(app.status().contains("higher priority requires p"));
+    }
+
+    /// Verify a blocked config cannot be saved as a named profile.
+    #[test]
+    fn blocked_config_cannot_be_saved() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let session = Session::new().expect("session creation succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+        let mut app = configured_app();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after the epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("ztick-blocked-save-{nonce}"));
+        app.set_profile_directory(&directory);
+        refresh_dashboard(&session, &mut app);
+        assert!(!app.portability().is_allowed());
+
+        save_current_profile(&session, &mut app);
+        assert!(app.status().contains("save BLOCKED"));
+        assert!(!directory.exists());
+    }
+
+    /// Verify an allowed config saves a named portable profile document.
+    #[test]
+    fn allowed_config_saves_a_named_portable_profile() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let session = Session::new().expect("session creation succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+        let mut app = configured_app();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after the epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("ztick-allowed-save-{nonce}"));
+        app.set_profile_directory(&directory);
+        app.set_portability(PortabilityReport::default());
+        apply_assignment(&session, &mut app, "profile.name=\"Saved\"");
+        app.set_portability(PortabilityReport::default());
+
+        save_current_profile(&session, &mut app);
+        let path = directory.join("Saved.json");
+        let text = std::fs::read_to_string(&path).expect("named profile is saved");
+        assert!(text.contains("\"config_version\":\"1.0.0\""));
+        assert!(text.contains("\"name\":\"Saved\""));
+        assert_eq!(app.validation_note(), "valid");
+        refresh_profiles(&mut app);
+        assert_eq!(app.saved_profiles()[0].name(), "Saved");
+
+        std::fs::remove_dir_all(&directory).expect("temporary directory is removed");
     }
 }

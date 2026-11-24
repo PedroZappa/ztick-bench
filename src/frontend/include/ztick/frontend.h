@@ -232,7 +232,8 @@ ZTICK_FRONTEND_API int32_t ztick_frontend_last_error(const ztick_frontend_sessio
  * @param text Complete JSON text; must not be NULL when @p length is non-zero.
  * @param length Byte length of @p text.
  * @return Success, `ztick_status_invalid_argument` for malformed input, or
- *         `ztick_status_validation_failure` for schema rejection.
+ *         `ztick_status_validation_failure` for schema or core semantic rejection.
+ * @note A rejected document is not retained; validation matches the core planner.
  */
 ZTICK_FRONTEND_API int32_t ztick_frontend_config_parse(ztick_frontend_session *session,
                                                        const char *text, size_t length);
@@ -241,8 +242,10 @@ ZTICK_FRONTEND_API int32_t ztick_frontend_config_parse(ztick_frontend_session *s
  * @brief Load and parse one v1 config document from a file.
  * @param session Session to update; must not be NULL.
  * @param path NUL-terminated file path; must not be NULL.
- * @return Success, `ztick_status_invalid_argument` for malformed input, or
+ * @return Success, `ztick_status_invalid_argument` for malformed input,
+ *         `ztick_status_validation_failure` for schema or semantic rejection, or
  *         `ztick_status_processing_failure` when the file cannot be read.
+ * @note A rejected document is not retained; validation matches the core planner.
  */
 ZTICK_FRONTEND_API int32_t ztick_frontend_config_load(ztick_frontend_session *session,
                                                       const char *path);
@@ -251,7 +254,10 @@ ZTICK_FRONTEND_API int32_t ztick_frontend_config_load(ztick_frontend_session *se
  * @brief Revalidate the config retained by a session.
  * @param session Session holding a parsed config; must not be NULL.
  * @return Success, `ztick_status_invalid_argument` when no config is retained, or
- *         `ztick_status_validation_failure` when the document is invalid.
+ *         `ztick_status_validation_failure` when the document fails schema or core
+ *         semantic validation.
+ * @note Semantic validation uses the core execution planner, so a document that
+ *       the core would reject at run time cannot be reported as valid here.
  */
 ZTICK_FRONTEND_API int32_t ztick_frontend_config_validate(ztick_frontend_session *session);
 
@@ -266,8 +272,9 @@ ZTICK_FRONTEND_API int32_t ztick_frontend_config_validate(ztick_frontend_session
  * @param capacity Byte capacity of @p buffer.
  * @param out_length Optional receiver for the JSON length excluding the NUL.
  * @return Success, `ztick_status_invalid_argument` for malformed arguments, or
- *         `ztick_status_validation_failure` when an override is rejected.
- * @note The retained config is unchanged when any override fails.
+ *         `ztick_status_validation_failure` when an override or the resulting
+ *         config is rejected by the core planner.
+ * @note The retained config is unchanged when any override or semantic check fails.
  */
 ZTICK_FRONTEND_API int32_t ztick_frontend_config_override(ztick_frontend_session *session,
                                                           const char *const *assignments,

@@ -43,6 +43,17 @@ struct SessionContext {
 };
 
 /**
+ * @brief Validate one config document against the core execution planner.
+ * @param config Portable config document that has passed schema validation.
+ * @param error Optional receiver for a human-readable semantic failure explanation.
+ * @return True when the core can build an execution plan from @p config.
+ * @note This performs the same semantic checks as @ref run_configured_session
+ *       before any timed work starts; it does not execute DSP code or require a
+ *       @ref SessionContext. Front ends use it to reject edits the core cannot run.
+ */
+bool validate_run_config(const ConfigValue &config, std::string *error = nullptr);
+
+/**
  * @brief Execute one validated config document and build its result.
  * @param config Portable config document that has passed schema validation.
  * @param context Injectable clock, metadata and identity services.

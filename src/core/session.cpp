@@ -691,6 +691,13 @@ ConfigValue run_record(const RunPlan &plan, std::uint32_t repetition, const Exec
 
 // Public library API: exercised by the test target, which is outside the
 // cppcheck scan of include/, src/ and tools/.
+bool validate_run_config(const ConfigValue &config, std::string *error) {
+  if (!validate_config_document(config, error)) {
+    return false;
+  }
+  return detail::make_run_plan(config, error).has_value();
+}
+
 std::optional<ConfigValue> run_configured_session(const ConfigValue &config,
                                                   const SessionContext &context,
                                                   std::string *error) {
@@ -698,7 +705,7 @@ std::optional<ConfigValue> run_configured_session(const ConfigValue &config,
     detail::record_error(error, "session context is incomplete");
     return std::nullopt;
   }
-  if (!validate_config_document(config, error)) {
+  if (!validate_run_config(config, error)) {
     return std::nullopt;
   }
   const auto plan = detail::make_run_plan(config, error);
