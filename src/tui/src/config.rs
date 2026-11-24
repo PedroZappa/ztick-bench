@@ -894,10 +894,7 @@ fn generator_object(kind: &str, amplitude: f64) -> String {
             ),
             amplitude = amplitude
         ),
-        "impulse" => format!(
-            "{{\"kind\":\"impulse\",\"amplitude\":{amplitude},\"position\":0}}",
-            amplitude = amplitude
-        ),
+        "impulse" => format!("{{\"kind\":\"impulse\",\"amplitude\":{amplitude},\"position\":0}}"),
         _ => format!(
             concat!(
                 "{{\"kind\":\"sine\",\"amplitude\":{amplitude},",
@@ -983,7 +980,7 @@ fn cycle_integer_step(
     } else {
         (current - step).clamp(minimum, maximum)
     };
-    format!("{}={next}", path)
+    format!("{path}={next}")
 }
 
 /// Return the next or previous token in a non-empty choice list.
