@@ -7,8 +7,9 @@
  * codes. This module parses arguments, routes them to the documented commands
  * and returns text plus an exit code instead of writing to streams, so every
  * dispatch path is deterministic and unit-testable. P4.5 implements `list` and
- * the dispatch skeleton; P4.6 implements `run`; P4.7 implements `system`.
- * Remaining commands report `unavailable` until their roadmap tasks land.
+ * the dispatch skeleton; P4.6 implements `run`; P4.7 implements `system`; P4.8
+ * implements `report` and `compare`. Remaining commands report `unavailable`
+ * until their roadmap tasks land.
  * This header is private to ztick-bench and is not installed.
  */
 
@@ -83,8 +84,10 @@ struct CommandResult {
  * @return Output text and exit code for the selected command.
  * @note `--help` and `--version` are global options and take no extra arguments.
  *       `list` accepts no argument or the single subject `profiles`. `system`
- *       prints the platform inventory with explicit availability states, and
- *       `run` delegates to the config-driven execution path. Commands with a
+ *       prints the platform inventory with explicit availability states,
+ *       `run` delegates to the config-driven execution path, `report` renders a
+ *       stored result, and `compare` renders a core-produced raw comparison.
+ *       Commands with a
  *       later roadmap task return @ref ExitCode::unavailable rather than being
  *       silently ignored.
  */

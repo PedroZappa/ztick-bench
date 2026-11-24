@@ -1,0 +1,96 @@
+// SPDX-License-Identifier: MIT
+/**
+ * @file result_commands.hpp
+ * @brief Command-line surfaces of `ztick-bench report` and `compare`.
+ *
+ * PROJECT_SPEC §3.3 owns both commands. These modules read and validate stored
+ * result documents, use the core comparison record for `compare`, and render
+ * text that preserves availability states, incomplete statuses and raw
+ * differences. File reads are injectable so every success and error path is
+ * unit-testable. This header is private to ztick-bench and is not installed.
+ */
+
+#ifndef ZTICK_RESULT_COMMANDS_HPP
+#define ZTICK_RESULT_COMMANDS_HPP
+
+#include "ztick/cli.hpp"
+#include "ztick/config_value.hpp"
+#include "ztick/result_document.hpp"
+
+#include <filesystem>
+#include <functional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+/** @brief Command-line front end for ztick-bench. */
+namespace ztick::cli {
+
+/**
+ * @brief Read and validate one stored result document.
+ * @note The production reader calls @ref ztick::read_result_document. Tests may
+ *       inject a deterministic reader without creating files.
+ */
+using ResultReader = std::function<ResultParseResult(const std::filesystem::path &)>;
+
+/**
+ * @brief Supply the production result-document reader.
+ * @return Reader that opens, parses and validates a file through `ztick_results`.
+ */
+ResultReader default_result_reader();
+
+/**
+ * @brief Render a human-readable report from a stored result document.
+ * @param document Validated result document to render.
+ * @return Deterministic report text ending with a newline.
+ * @note The session status is derived from run evidence rather than trusting a
+ *       stale stored token; the stored token is printed separately. Metadata,
+ *       metrics, warnings and failures are retained with explicit states.
+ */
+std::string render_result_report(const ConfigValue &document);
+
+/**
+ * @brief Render a core-produced comparison record.
+ * @param comparison Comparison record from @ref ztick::compare_result_documents.
+ * @return Deterministic comparison text ending with a newline.
+ * @note Raw differences are displayed without regression classification.
+ *       Threshold and significance fields are rendered as not-applicable.
+ */
+std::string render_result_comparison(const ConfigValue &comparison);
+
+/**
+ * @brief Execute `report` with an injected result reader.
+ * @param args Arguments after the command name; exactly one result path.
+ * @param reader Reader that parses and validates result files.
+ * @return Rendered report on success, usage error for wrong arguments, or a
+ *         runtime failure when the document cannot be read or validated.
+ */
+CommandResult execute_report(const std::vector<std::string_view> &args, const ResultReader &reader);
+
+/**
+ * @brief Execute `report` with the production result reader.
+ * @param args Arguments after the command name; exactly one result path.
+ * @return Outcome of the report command.
+ */
+CommandResult execute_report(const std::vector<std::string_view> &args);
+
+/**
+ * @brief Execute `compare` with an injected result reader.
+ * @param args Arguments after the command name; baseline then candidate path.
+ * @param reader Reader that parses and validates result files.
+ * @return Rendered raw comparison on success, usage error for wrong arguments,
+ *         or a runtime failure when either document or the comparison fails.
+ */
+CommandResult execute_compare(const std::vector<std::string_view> &args,
+                              const ResultReader &reader);
+
+/**
+ * @brief Execute `compare` with the production result reader.
+ * @param args Arguments after the command name; baseline then candidate path.
+ * @return Outcome of the comparison command.
+ */
+CommandResult execute_compare(const std::vector<std::string_view> &args);
+
+} // namespace ztick::cli
+
+#endif // ZTICK_RESULT_COMMANDS_HPP

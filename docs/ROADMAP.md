@@ -141,7 +141,7 @@ and P3.10 are complete.
 - [x] **P4.5 — CLI skeleton and `list`.** Done when: Command dispatch and documented exit codes work.
 - [x] **P4.6 — `run` command with config files and overrides.** Done when: Runs execute with overrides applied.
 - [x] **P4.7 — `system` command using the platform abstraction.** Done when: It prints availability states (BR §22).
-- [ ] **P4.8 — `report` and `compare` commands.** Done when: Stored results render through both commands.
+- [x] **P4.8 — `report` and `compare` commands.** Done when: Stored results render through both commands.
 - [ ] **P4.9 — Regression thresholds and significance checks.** Done when: Sub-threshold or normal-variability differences are not flagged.
 - [ ] **P4.10 — `plugin list` / `plugin inspect`, CI exit codes, machine-readable output.** Done when: CI-oriented tests pass.
 - [ ] **P4.11 — Phase 4 verification pass.** Done when: CLI workflows, config portability, comparisons and CI support are verified.

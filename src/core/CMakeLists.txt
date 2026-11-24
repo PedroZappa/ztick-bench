@@ -6,8 +6,10 @@
 # P4.1 moves the config-shaped value tree into ztick_results, the dependency
 # owner for JSON serialization and the portable config document schema.
 # P4.6 adds config-driven session orchestration and result rendering.
+# P4.8 adds core-owned comparison of stored result documents.
 
 add_library(ztick_core STATIC
+  comparison.cpp
   core.cpp
   execution.cpp
   generator.cpp

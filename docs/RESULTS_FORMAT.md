@@ -325,6 +325,17 @@ Comparison records preserve the underlying measurements and context (BR §11.3):
 | `comparability_warnings` | Build/machine/environment mismatches from [§4.4](#44-metadata-attachment-behavior-derived-design) |
 | `context` | Copies of relevant metadata so the comparison is self-contained |
 
+**Derived design (P4.8).** A raw comparison produced before significance checking
+has `classification: raw_difference`, a null `threshold_percent`, and
+`threshold_status`, `statistics` and `significance` objects whose status is
+`not_applicable`. Metric entries retain both raw values and statuses; `delta` is
+`candidate - baseline` and `relative_change_percent` is
+`(candidate - baseline) / baseline * 100`, with a null relative field and an
+explicit reason when the baseline is zero. A metric present on only one side is
+an `unmatched` entry carrying `side` instead of being dropped. P4.9 fills the
+deferred fields; command behavior is owned by
+[PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set).
+
 ## 11. Session export/import and storage
 
 - A session export bundles the result document(s), comparison records and config

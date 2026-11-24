@@ -153,6 +153,19 @@ failures (BR §17). Extra arguments are `usage_error`; a whole-inventory collect
 failure is `failure` and is still rendered as an explicit `system_inventory`
 field.
 
+**Derived design (P4.8).** `report` takes exactly one stored result path;
+`compare` takes a baseline path followed by a candidate path. Both read and
+validate documents through [RESULTS §3](RESULTS_FORMAT.md#3-result-document-structure) without
+rewriting them. `report` derives the displayed session status from run evidence
+on a copy and prints the stored token separately, so a stale `complete` token is
+visible rather than presented as success. `compare` asks the core for a raw
+comparison record ([ARCHITECTURE §8](ARCHITECTURE.md#8-comparison-and-reporting-placement))
+and renders it without regression classification; comparability warnings and
+metrics present on only one side are explicit. Extra or missing paths are
+`usage_error`; unreadable documents, invalid documents and comparison failures
+are `failure`. Machine-readable formats, thresholds and significance remain
+owned by later command tasks (BR §12.2).
+
 ## 4. Document ownership map
 
 | Topic | Owner | Ledger source |

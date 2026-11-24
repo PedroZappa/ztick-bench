@@ -66,6 +66,8 @@ TEST_CASE("CLI help and list text document the command set", "[cli][results]") {
   require_contains(usage, "run <config.json>");
   require_contains(usage, "--output <path>");
   require_contains(usage, "--set key=value");
+  require_contains(usage, "compare <a.json> <b.json>");
+  require_contains(usage, "report <run.json>");
   require_contains(usage, "plugin inspect");
   require_contains(usage, "0  success");
   require_contains(usage, "3  failure");
@@ -141,10 +143,31 @@ TEST_CASE("CLI system command succeeds", "[cli][results]") {
 }
 
 /**
+ * @brief Verify result commands are routed to real readers rather than stubs.
+ */
+TEST_CASE("CLI routes report and compare to stored-result commands", "[cli][results]") {
+  const CommandResult report = ztick::cli::dispatch(arguments({"report", "missing.json"}));
+  REQUIRE(report.code == ExitCode::failure);
+  require_contains(report.error, "cannot read report result 'missing.json'");
+
+  const CommandResult compare = ztick::cli::dispatch(arguments({"compare", "a.json", "b.json"}));
+  REQUIRE(compare.code == ExitCode::failure);
+  require_contains(compare.error, "cannot read baseline result 'a.json'");
+
+  const CommandResult bad_report = ztick::cli::dispatch(arguments({"report"}));
+  REQUIRE(bad_report.code == ExitCode::usage_error);
+  require_contains(bad_report.error, "requires exactly one result path");
+
+  const CommandResult bad_compare = ztick::cli::dispatch(arguments({"compare", "a.json"}));
+  REQUIRE(bad_compare.code == ExitCode::usage_error);
+  require_contains(bad_compare.error, "requires a baseline and a candidate path");
+}
+
+/**
  * @brief Verify later roadmap commands are recognized but reported unavailable.
  */
 TEST_CASE("CLI recognizes commands whose implementation lands later", "[cli][results]") {
-  for (const std::string_view command : {"compare", "report", "plugin list", "plugin inspect"}) {
+  for (const std::string_view command : {"plugin list", "plugin inspect"}) {
     const std::size_t split = command.find(' ');
     const CommandResult result =
         split == std::string_view::npos

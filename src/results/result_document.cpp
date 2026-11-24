@@ -261,9 +261,6 @@ ResultParseResult parse_result_document(std::string_view text) {
   return result;
 }
 
-// Public library API: exercised by the test target, which is outside the
-// cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 ResultParseResult read_result_document(const std::filesystem::path &path) {
   ResultParseResult result;
   std::ifstream stream(path, std::ios::binary);

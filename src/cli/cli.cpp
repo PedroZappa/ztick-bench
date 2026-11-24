@@ -6,12 +6,13 @@
  * Dispatch never writes to a stream directly: it returns the text and exit code
  * that the executable emits. This keeps every documented path unit-testable and
  * lets later command phases replace a stub without changing argument routing.
- * P4.6 adds `run`; P4.7 adds `system`. Other data-bearing commands remain
- * unavailable until landed.
+ * P4.6 adds `run`; P4.7 adds `system`; P4.8 adds `report` and `compare`. The
+ * plugin commands remain unavailable until landed.
  */
 
 #include <ztick/cli.hpp>
 
+#include <ztick/result_commands.hpp>
 #include <ztick/run_command.hpp>
 #include <ztick/system_command.hpp>
 
@@ -148,8 +149,11 @@ CommandResult dispatch(const std::vector<std::string_view> &args) {
   if (command == "system") {
     return execute_system(std::vector<std::string_view>(args.begin() + 1U, args.end()));
   }
-  if (command == "compare" || command == "report") {
-    return detail::unavailable_command(command);
+  if (command == "report") {
+    return execute_report(std::vector<std::string_view>(args.begin() + 1U, args.end()));
+  }
+  if (command == "compare") {
+    return execute_compare(std::vector<std::string_view>(args.begin() + 1U, args.end()));
   }
   if (command == "plugin") {
     if (args.size() < 2U) {

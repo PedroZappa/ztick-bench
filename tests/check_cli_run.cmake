@@ -112,3 +112,46 @@ endif()
 if(EXISTS "${INVALID_RESULT}")
   message(FATAL_ERROR "invalid override must not write a result")
 endif()
+
+# P4.8: the same executable renders both stored results through report and compare.
+execute_process(
+  COMMAND "${CLI_BINARY}" report "${RESULT}"
+  RESULT_VARIABLE report_status
+  OUTPUT_VARIABLE report_output
+  ERROR_VARIABLE report_errors
+)
+if(NOT report_status EQUAL 0)
+  message(FATAL_ERROR "ztick-bench report failed with ${report_status}: ${report_output}${report_errors}")
+endif()
+if(NOT report_output MATCHES "result report")
+  message(FATAL_ERROR "report did not render a stored result: ${report_output}${report_errors}")
+endif()
+if(NOT report_output MATCHES "MET-01")
+  message(FATAL_ERROR "report omitted stored metrics: ${report_output}${report_errors}")
+endif()
+
+execute_process(
+  COMMAND "${CLI_BINARY}" compare "${RESULT}" "${DEFAULT_RESULT}"
+  RESULT_VARIABLE compare_status
+  OUTPUT_VARIABLE compare_output
+  ERROR_VARIABLE compare_errors
+)
+if(NOT compare_status EQUAL 0)
+  message(FATAL_ERROR "ztick-bench compare failed with ${compare_status}: ${compare_output}${compare_errors}")
+endif()
+if(NOT compare_output MATCHES "stored result comparison")
+  message(FATAL_ERROR "compare did not render the core comparison: ${compare_output}${compare_errors}")
+endif()
+if(NOT compare_output MATCHES "classification: raw_difference")
+  message(FATAL_ERROR "compare omitted the raw-difference classification: ${compare_output}${compare_errors}")
+endif()
+
+execute_process(
+  COMMAND "${CLI_BINARY}" report "${WORK_DIR}/missing.json"
+  RESULT_VARIABLE missing_status
+  OUTPUT_VARIABLE missing_output
+  ERROR_VARIABLE missing_errors
+)
+if(NOT missing_status EQUAL 3)
+  message(FATAL_ERROR "missing result should exit 3, got ${missing_status}: ${missing_output}${missing_errors}")
+endif()

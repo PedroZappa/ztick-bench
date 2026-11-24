@@ -294,6 +294,14 @@ collector and each whole-inventory non-value state, plus a production-collector
 smoke check. The executable dispatch test confirms that
 `system` exits successfully and writes the availability-state header.
 
+**P4.8 CLI coverage (Derived design).** Unit tests check core comparison deltas
+against independently computed values, including zero, negative and unavailable
+metrics, both unmatched sides, metadata-derived levels and invalid documents.
+CLI tests inject a result reader to cover report evidence and stale-status
+mismatch, raw comparison rendering, argument errors and read failures, plus
+production reads of atomically written files. Executable-level scripts run both
+commands on stored results and verify their usage-error codes.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |

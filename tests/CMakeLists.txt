@@ -37,6 +37,7 @@ add_executable(ztick_tests
   unit/atomic_writer_test.cpp
   unit/catch2_integration_test.cpp
   unit/cli_test.cpp
+  unit/comparison_test.cpp
   unit/compatibility_test.cpp
   unit/config_document_test.cpp
   unit/config_value_test.cpp
@@ -55,6 +56,7 @@ add_executable(ztick_tests
   unit/result_document_test.cpp
   unit/run_command_test.cpp
   unit/run_session_test.cpp
+  unit/result_commands_test.cpp
   unit/runner_test.cpp
   unit/sdk_runtime_test.cpp
   unit/statistics_test.cpp

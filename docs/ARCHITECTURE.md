@@ -106,7 +106,7 @@ Planned targets (Derived design — names are not ledger requirements):
 | `ztick_core` | SDK headers, workload, timing, statistics, validation, results | No |
 | `ztick_results` | JSON serialization, config value tree, portable config and result document schemas, atomic writer, CSV projection and metadata attachment/comparison | No (CSV may be optional) |
 | `ztick_platform` | platform abstraction + Linux implementation + inventory-to-metadata adapter; depends on `ztick_results` for the field type | Monitoring implementation is platform-selected |
-| `ztick_cli` | core, results, platform; owns command dispatch, help/version, `list`, `run` argument parsing/overrides/file I/O and `system` inventory rendering | No for CLI users |
+| `ztick_cli` | core, results, platform; owns command dispatch, help/version, `list`, `run` argument parsing/overrides/file I/O, `system` inventory rendering and stored-result rendering | No for CLI users |
 | `ztick-bench` | `ztick_cli`; thin executable that writes dispatch output and returns its exit code | No for CLI users |
 | `ztick_tui` | core and results through the C ABI via Rust FFI; Cargo crate driven by CMake | **Yes** — Rust toolchain and ratatui are needed only for TUI builds |
 | `ztick_static_adapters` | SDK C ABI | **Yes** |
@@ -324,6 +324,14 @@ and the persisted representation by [RESULTS_FORMAT](RESULTS_FORMAT.md). The
 `compare` and `report` CLI commands are specified in
 [PROJECT_SPEC §3](PROJECT_SPEC.md#31-in-scope-for-v10) and
 [TESTING_STRATEGY](TESTING_STRATEGY.md).
+
+**P4.8 implementation (Derived design).** The core function
+`compare_result_documents` validates two stored results, reuses the metadata
+comparison owned by `ztick_results` and returns the persisted comparison shape
+without writing a file or classifying regressions. The CLI owns file reads,
+argument validation and text rendering, with an injectable reader so both success
+and failure paths are testable. P4.9 extends the record with thresholds and
+significance; P4.10 owns machine-readable output.
 
 ## 9. Decision dependencies
 

@@ -251,9 +251,6 @@ std::string_view metadata_status_token(MetadataStatus status) noexcept {
   return "unavailable";
 }
 
-// Public library API: exercised by the test target, which is outside the
-// cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 std::optional<MetadataStatus> parse_metadata_status(std::string_view token) noexcept {
   for (const MetadataStatus status :
        {MetadataStatus::value, MetadataStatus::unavailable, MetadataStatus::unsupported,
@@ -384,9 +381,6 @@ bool attach_metadata(ConfigValue &document, const ConfigValue &build, const Conf
   return true;
 }
 
-// Public library API: exercised by the test target, which is outside the
-// cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 MetadataComparison compare_metadata(const ConfigValue &left, const ConfigValue &right) {
   MetadataComparison comparison;
   const ConfigValue *sections[2]{&left, &right};
