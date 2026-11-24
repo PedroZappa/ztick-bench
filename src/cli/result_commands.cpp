@@ -342,18 +342,41 @@ std::optional<double> numeric_field(const ConfigValue *field) {
 }
 
 /**
- * @brief Append one not-applicable comparison field to the rendered record.
+ * @brief Append one status-bearing comparison field to the rendered record.
  * @param out Comparison text to extend.
  * @param label Field label to print.
- * @param note Object with `status` and `reason`, or `nullptr`.
+ * @param note Object with `status`, `reason` and optional detail fields.
+ * @note Applied fields print their retained details on an indented second line;
+ *       not-applicable fields remain a single explicit line.
  */
-void append_deferred_field(std::string &out, std::string_view label, const ConfigValue *note) {
+void append_status_field(std::string &out, std::string_view label, const ConfigValue *note) {
+  const std::string status = display_text(field_text(note, "status"));
   out += label;
   out += ": ";
-  out += display_text(field_text(note, "status"));
+  out += status;
   out += " (";
   out += display_text(field_text(note, "reason"));
   out += ")\n";
+  if (status == "not_applicable" || note == nullptr) {
+    return;
+  }
+  out += "  ";
+  out += label;
+  out += "_detail:";
+  for (const std::string_view key :
+       {"method", "alpha", "sided", "iterations", "seed", "multiplicity", "metrics_compared",
+        "metrics_tested", "outliers_removed", "regressions", "improvements", "raw_differences",
+        "within_variability"}) {
+    const ConfigValue *field = note->find(key);
+    if (field == nullptr) {
+      continue;
+    }
+    out += ' ';
+    out += key;
+    out += '=';
+    out += render_scalar(*field);
+  }
+  out += '\n';
 }
 
 /**
@@ -431,7 +454,79 @@ void append_comparison_metric(std::string &out, const ConfigValue &record) {
     out += field_text(&record, "side");
     out += "_only)";
   }
+
+  const ConfigValue *classification = record.find("classification");
+  if (classification != nullptr) {
+    out += " classification=";
+    out += render_scalar(*classification);
+  }
+  const ConfigValue *polarity = record.find("polarity");
+  if (polarity != nullptr) {
+    out += " polarity=";
+    out += render_scalar(*polarity);
+  }
+  const ConfigValue *significance = record.find("significance");
+  if (significance != nullptr) {
+    const std::string significance_status = field_text(significance, "status");
+    out += " significance=";
+    out += significance_status;
+    if (significance_status == "applied") {
+      out += " significant=";
+      out += field_text(significance, "significant");
+      out += " interval=[";
+      out += field_text(significance, "interval_low");
+      out += ",";
+      out += field_text(significance, "interval_high");
+      out += ']';
+    }
+  }
+  const ConfigValue *baseline_count = record.find("baseline_sample_count");
+  const ConfigValue *candidate_count = record.find("candidate_sample_count");
+  if (baseline_count != nullptr && candidate_count != nullptr) {
+    out += " samples=";
+    out += render_scalar(*baseline_count);
+    out += "/";
+    out += render_scalar(*candidate_count);
+  }
   out += '\n';
+}
+
+/**
+ * @brief Parse one finite command-line real number.
+ * @param text Text to parse.
+ * @param value Receiver for the parsed number.
+ * @return True when the whole text is a finite real number.
+ */
+bool parse_policy_number(std::string_view text, double &value) {
+  if (text.empty()) {
+    return false;
+  }
+  const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+  return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() &&
+         std::isfinite(value);
+}
+
+/**
+ * @brief Read an option value supplied as a separate argument.
+ * @param args Complete argument list.
+ * @param index Index of the option token; advanced to the value token on success.
+ * @param option Option name used in error messages.
+ * @param error Receiver for a usage error.
+ * @return Option value, or `std::nullopt` when absent or empty.
+ */
+std::optional<std::string_view> option_value(const std::vector<std::string_view> &args,
+                                             std::size_t &index, std::string_view option,
+                                             std::string &error) {
+  if (index + 1U >= args.size()) {
+    error = "option " + std::string(option) + " requires a value";
+    return std::nullopt;
+  }
+  const std::string_view value = args[++index];
+  if (value.empty()) {
+    error = "option " + std::string(option) + " requires a non-empty value";
+    return std::nullopt;
+  }
+  return value;
 }
 
 /**
@@ -467,6 +562,116 @@ bool load_result(const ResultReader &reader, const std::filesystem::path &path,
 
 ResultReader default_result_reader() {
   return [](const std::filesystem::path &path) { return read_result_document(path); };
+}
+
+std::optional<CompareInvocation> parse_compare_arguments(const std::vector<std::string_view> &args,
+                                                         std::string *error) {
+  std::vector<std::string_view> paths;
+  CompareInvocation invocation;
+  bool threshold_seen = false;
+  bool alpha_seen = false;
+  bool sided_seen = false;
+
+  for (std::size_t index = 0U; index < args.size(); ++index) {
+    const std::string_view argument = args[index];
+    std::string_view name = argument;
+    std::string_view inline_value;
+    bool has_inline_value = false;
+    if (const std::size_t separator = argument.find('='); separator != std::string_view::npos) {
+      name = argument.substr(0U, separator);
+      inline_value = argument.substr(separator + 1U);
+      has_inline_value = true;
+    }
+
+    if (name != "--threshold" && name != "--alpha" && name != "--sided") {
+      if (argument.starts_with('-')) {
+        if (error != nullptr) {
+          *error = "unknown option '" + std::string(argument) + "'";
+        }
+        return std::nullopt;
+      }
+      paths.push_back(argument);
+      continue;
+    }
+
+    std::string message;
+    if ((name == "--threshold" && threshold_seen) || (name == "--alpha" && alpha_seen) ||
+        (name == "--sided" && sided_seen)) {
+      if (error != nullptr) {
+        *error = "option " + std::string(name) + " was specified more than once";
+      }
+      return std::nullopt;
+    }
+    std::string_view value = inline_value;
+    if (!has_inline_value) {
+      const auto separate = option_value(args, index, name, message);
+      if (!separate.has_value()) {
+        if (error != nullptr) {
+          *error = message;
+        }
+        return std::nullopt;
+      }
+      value = *separate;
+    }
+    if (value.empty()) {
+      if (error != nullptr) {
+        *error = "option " + std::string(name) + " requires a non-empty value";
+      }
+      return std::nullopt;
+    }
+
+    if (name == "--sided") {
+      if (value == "one") {
+        invocation.policy.sidedness = ztick::SignificanceSidedness::one_sided;
+      } else if (value == "two") {
+        invocation.policy.sidedness = ztick::SignificanceSidedness::two_sided;
+      } else {
+        if (error != nullptr) {
+          *error = "option --sided accepts 'one' or 'two'";
+        }
+        return std::nullopt;
+      }
+      sided_seen = true;
+      continue;
+    }
+
+    double number = 0.0;
+    if (!parse_policy_number(value, number)) {
+      if (error != nullptr) {
+        *error = "option " + std::string(name) + " requires a finite number";
+      }
+      return std::nullopt;
+    }
+    if (name == "--threshold") {
+      if (number < 0.0) {
+        if (error != nullptr) {
+          *error = "option --threshold requires a non-negative percentage";
+        }
+        return std::nullopt;
+      }
+      invocation.policy.threshold_percent = number;
+      threshold_seen = true;
+    } else {
+      if (number <= 0.0 || number >= 1.0) {
+        if (error != nullptr) {
+          *error = "option --alpha must be greater than 0 and less than 1";
+        }
+        return std::nullopt;
+      }
+      invocation.policy.alpha = number;
+      alpha_seen = true;
+    }
+  }
+
+  if (paths.size() != 2U) {
+    if (error != nullptr) {
+      *error = "compare requires a baseline and a candidate path";
+    }
+    return std::nullopt;
+  }
+  invocation.baseline = std::filesystem::path(paths.front());
+  invocation.candidate = std::filesystem::path(paths[1U]);
+  return invocation;
 }
 
 std::string render_result_report(const ConfigValue &document) {
@@ -544,8 +749,8 @@ std::string render_result_comparison(const ConfigValue &comparison) {
   out += " (";
   out += field_text(comparison.find("threshold_status"), "status");
   out += ")\n";
-  append_deferred_field(out, "statistics", comparison.find("statistics"));
-  append_deferred_field(out, "significance", comparison.find("significance"));
+  append_status_field(out, "statistics", comparison.find("statistics"));
+  append_status_field(out, "significance", comparison.find("significance"));
 
   const ConfigValue *warnings = comparison.find("comparability_warnings");
   out += "comparability_warnings: ";
@@ -593,17 +798,17 @@ CommandResult execute_report(const std::vector<std::string_view> &args) {
 
 CommandResult execute_compare(const std::vector<std::string_view> &args,
                               const ResultReader &reader) {
-  if (args.size() != 2U) {
-    return CommandResult{ExitCode::usage_error,
-                         {},
-                         "ztick-bench: compare requires a baseline and a candidate path\n"};
+  std::string usage_error;
+  const std::optional<CompareInvocation> invocation = parse_compare_arguments(args, &usage_error);
+  if (!invocation.has_value()) {
+    return CommandResult{ExitCode::usage_error, {}, "ztick-bench: " + usage_error + "\n"};
   }
   if (!reader) {
     return CommandResult{ExitCode::failure, {}, "ztick-bench: result reader is missing\n"};
   }
 
-  const std::filesystem::path baseline_path(args.front());
-  const std::filesystem::path candidate_path(args[1U]);
+  const std::filesystem::path &baseline_path = invocation->baseline;
+  const std::filesystem::path &candidate_path = invocation->candidate;
   ConfigValue baseline = ConfigValue::null();
   ConfigValue candidate = ConfigValue::null();
   std::string error;
@@ -614,9 +819,9 @@ CommandResult execute_compare(const std::vector<std::string_view> &args,
     return CommandResult{ExitCode::failure, {}, "ztick-bench: " + error + "\n"};
   }
 
-  const std::optional<ConfigValue> comparison = compare_result_documents(
+  const std::optional<ConfigValue> comparison = compare_result_documents_with_policy(
       baseline, candidate, ComparisonReferences{baseline_path.string(), candidate_path.string()},
-      &error);
+      invocation->policy, &error);
   if (!comparison.has_value()) {
     return CommandResult{ExitCode::failure,
                          {},

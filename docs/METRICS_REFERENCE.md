@@ -210,6 +210,32 @@ Derived design:
 6. Outlier handling is configurable and reported; outliers are not silently
    discarded, consistent with the warn-not-reject policy in BR §9.
 
+**Derived design (P4.9).** The initial implementation uses a deterministic
+percentile bootstrap of the difference between run-level sample means. Every
+finite run value of a metric contributes one sample; per-block timings are never
+resampled. Resampling uses a fixed in-process xorshift generator with a recorded
+seed and iteration count, so the same documents and policy always produce the
+same record. Two-sided checks use `alpha/2` tails and one-sided checks use an
+`alpha` tail in the observed direction; significance means the interval excludes
+zero in that direction. The threshold compares
+`abs((mean_candidate - mean_baseline) / mean_baseline * 100)` with the configured
+percentage, so a baseline mean of zero is explicitly `not_applicable`. Registered
+MET identifiers derive polarity from the metric registry: throughput (MET-11 and
+its frames/s, samples/s and blocks/s units) and scaling efficiency (MET-15) are
+higher-is-better, other registered metrics are lower-is-better, and unknown
+identifiers are `unspecified`. Polarity affects only the
+`regression`/`improvement` label; an `unspecified` metric is never a regression.
+Per-metric intervals are
+unadjusted for multiplicity; this is recorded in `statistics.multiplicity`. All
+run-level samples are retained and `statistics.outliers_removed` is zero, so no
+observation is silently discarded. A significant change that is below threshold
+or whose threshold is not applicable is `raw_difference`; all other matched
+metrics are `within_variability`. An overall comparison is a `regression` if any
+distinct metric is a regression, otherwise the same precedence applies to
+improvements and raw differences. "No significant difference detected" is not
+proof of equivalence. The exact tokens and storage locations are owned by
+[RESULTS §10](RESULTS_FORMAT.md#10-comparison-records).
+
 ## 7. Method metadata
 
 Every metric-bearing result records: percentile method, aggregation window (the

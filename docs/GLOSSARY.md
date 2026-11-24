@@ -86,6 +86,13 @@ Labels used in requirement statements; see
 | **Scaling efficiency** | How processing capacity grows with added instances or worker threads relative to ideal linear scaling. |
 | **Deadline miss** | Failure to complete processing within a configured deadline; meaningful for simulated real-time or live modes, otherwise not applicable. |
 | **Regression** | A performance difference that is both beyond the configured threshold and statistically significant, after comparability checks. |
+| **Raw difference** | A measured difference that is significant but below the threshold, or whose threshold cannot be computed; not a regression. |
+| **Within variability** | A matched difference that does not meet both threshold and significance criteria, or that cannot be tested. |
+| **Metric polarity** | The preferred direction of a metric: `lower_is_better` for registered duration, timing, RTF, resource and overhead metrics, `higher_is_better` for throughput and scaling efficiency, or `unspecified` when not registered. |
+| **Aggregate relative change** | `100 × (candidate run mean - baseline run mean) / baseline run mean`; the value compared with the percentage threshold. |
+| **Significance level (alpha)** | The configured probability threshold used to choose bootstrap interval tails; a number strictly between 0 and 1. |
+| **One-sided / two-sided significance** | Tail selection for an interval check: one-sided uses the observed direction, two-sided tests either direction. |
+| **Bootstrap percentile interval** | A deterministic interval derived from resampled run-level values with replacement; the interval endpoints decide statistical significance. |
 
 ## Audio data
 

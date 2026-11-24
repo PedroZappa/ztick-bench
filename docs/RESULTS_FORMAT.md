@@ -319,21 +319,51 @@ Comparison records preserve the underlying measurements and context (BR §11.3):
 | `baseline`, `candidate` | References to result documents and selected metrics |
 | `level` | `run_to_run`, `build_to_build`, `machine_to_machine` (BR §11.2) |
 | `threshold_percent` | Configured percentage threshold, applied to the absolute relative change |
-| `statistics` | Metric polarity, significance level `alpha`, one/two-sided choice, test method and metrics tested |
+| `threshold_status` | `applied` or `not_applicable`, with an explicit reason |
+| `statistics` | Significance level `alpha`, one/two-sided choice, test method, iteration/seed details, multiplicity disclosure and metrics tested |
 | `significance` | Test/method used and outcome from [METRICS §6](METRICS_REFERENCE.md#6-comparison-and-regression-statistics) |
 | `classification` | `raw_difference`, `within_variability`, `regression`, `improvement` |
 | `comparability_warnings` | Build/machine/environment mismatches from [§4.4](#44-metadata-attachment-behavior-derived-design) |
 | `context` | Copies of relevant metadata so the comparison is self-contained |
 
-**Derived design (P4.8).** A raw comparison produced before significance checking
-has `classification: raw_difference`, a null `threshold_percent`, and
+**Derived design (P4.8).** The core's raw comparison entry point produces
+`classification: raw_difference`, a null `threshold_percent`, and
 `threshold_status`, `statistics` and `significance` objects whose status is
 `not_applicable`. Metric entries retain both raw values and statuses; `delta` is
 `candidate - baseline` and `relative_change_percent` is
 `(candidate - baseline) / baseline * 100`, with a null relative field and an
 explicit reason when the baseline is zero. A metric present on only one side is
-an `unmatched` entry carrying `side` instead of being dropped. P4.9 fills the
-deferred fields; command behavior is owned by
+an `unmatched` entry carrying `side` instead of being dropped.
+
+**Derived design (P4.9).** The classified comparison entry point preserves every
+P4.8 field and adds the following evidence. The test, alpha, sidedness, seed and
+iteration count are recorded in `statistics`; `statistics.multiplicity` is
+`unadjusted`, and `statistics.outliers_removed` is zero. Counts are per distinct
+metric identifier, not per run pair. The top-level `significance` object carries
+the aggregate regression, improvement, raw-difference and within-variability
+counts; its status is `not_applicable` when no metric could be tested.
+
+| Metric field | Contents |
+| --- | --- |
+| `baseline_samples`, `candidate_samples` | All finite run-level values collected for that metric; never per-block samples |
+| `baseline_sample_count`, `candidate_sample_count` | Number of retained values on each side |
+| `baseline_mean`, `candidate_mean` | Arithmetic means of the retained run-level values |
+| `aggregate_delta` | `candidate_mean - baseline_mean` |
+| `aggregate_relative_change_percent` | `aggregate_delta / baseline_mean * 100`, or null when the baseline mean is zero |
+| `polarity` | `lower_is_better`, `higher_is_better` or `unspecified` |
+| `threshold_status`, `threshold_exceeded` | Threshold decision and its explicit reason |
+| `significance` | `method`, `alpha`, `sided`, `significant`, `interval_low`, `interval_high` and an explicit status/reason |
+| `classification` | Per-metric `regression`, `improvement`, `raw_difference` or `within_variability` |
+
+A metric is a `regression` only when its absolute aggregate relative change meets
+the threshold and its significance interval supports the observed adverse
+direction under the recorded polarity. A favourable change meeting both criteria
+is an `improvement`. A significant change below the threshold, or one whose
+threshold is not applicable, is a `raw_difference`; threshold-only and untestable
+changes are `within_variability`. Unmatched and unavailable entries carry
+`not_applicable` significance and are never reported as regressions. The
+overall `classification` follows the METRICS §6 precedence with any regression
+dominating. Command behavior is owned by
 [PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set).
 
 ## 11. Session export/import and storage

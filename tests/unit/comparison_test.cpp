@@ -94,6 +94,25 @@ ConfigValue make_run(std::string run_id, double metric_value) {
 }
 
 /**
+ * @brief Build one run carrying a selected metric and an unavailable metric.
+ * @param run_id Stable run identifier.
+ * @param metric_id Stable metric identifier.
+ * @param value Measured value of @p metric_id.
+ * @return Complete run record.
+ */
+ConfigValue make_metric_run(std::string run_id, std::string_view metric_id, double value) {
+  ConfigValue run = ConfigValue::object();
+  run.set("id", ConfigValue::string(std::move(run_id)));
+  run.set("status", ConfigValue::string("complete"));
+  run.set("failures", ConfigValue::array());
+  ConfigValue metrics = ConfigValue::array();
+  metrics.push_back(make_metric(std::string(metric_id), value));
+  metrics.push_back(make_unavailable_metric());
+  run.set("metrics", std::move(metrics));
+  return run;
+}
+
+/**
  * @brief Build a valid stored result document.
  * @param session_id Session identifier.
  * @param cpu_model Recorded CPU model.
@@ -120,6 +139,25 @@ ConfigValue make_document(std::string session_id, std::string cpu_model, double 
   document.set("warnings", ConfigValue::array());
   document.set("failures", ConfigValue::array());
   document.set("status", ConfigValue::string("complete"));
+  return document;
+}
+
+/**
+ * @brief Build a result document whose runs hold one run-level metric sample each.
+ * @param session_id Session identifier.
+ * @param cpu_model Recorded CPU model.
+ * @param metric_id Metric identifier to populate.
+ * @param values Run-level values in stored order.
+ * @return Complete v1 result document with one repetition per value.
+ */
+ConfigValue make_multi_run_document(std::string session_id, std::string cpu_model,
+                                    std::string_view metric_id, const std::vector<double> &values) {
+  ConfigValue document = make_document(std::move(session_id), std::move(cpu_model), 0.0);
+  ConfigValue runs = ConfigValue::array();
+  for (std::size_t index = 0U; index < values.size(); ++index) {
+    runs.push_back(make_metric_run("run-" + std::to_string(index + 1U), metric_id, values[index]));
+  }
+  document.set("runs", std::move(runs));
   return document;
 }
 
@@ -153,6 +191,17 @@ double number_member(const ConfigValue &object, std::string_view key) {
     return static_cast<double>(*member->as_integer());
   }
   return 0.0;
+}
+
+/**
+ * @brief Read one boolean member used in comparison assertions.
+ * @param object Object to inspect.
+ * @param key Member name.
+ * @return Stored boolean, or false for a missing or mistyped member.
+ */
+bool bool_member(const ConfigValue &object, std::string_view key) {
+  const ConfigValue *member = object.find(key);
+  return member != nullptr && member->as_boolean().has_value() && *member->as_boolean();
 }
 
 /**
@@ -295,4 +344,203 @@ TEST_CASE("core comparison rejects invalid result documents", "[core][compare]")
 
   REQUIRE_FALSE(comparison.has_value());
   REQUIRE(error.find("invalid baseline result") != std::string::npos);
+}
+
+/**
+ * @brief Verify a significant thresholded duration increase is a regression.
+ */
+TEST_CASE("P4.9 policy classifies a significant duration regression", "[core][compare][p49]") {
+  ztick::ComparisonPolicy policy;
+  policy.bootstrap_iterations = 256U;
+  const ConfigValue baseline =
+      make_multi_run_document("base", "Alpha CPU", "MET-01", {0.100, 0.101, 0.099, 0.100, 0.100});
+  const ConfigValue candidate =
+      make_multi_run_document("cand", "Alpha CPU", "MET-01", {0.150, 0.151, 0.149, 0.150, 0.150});
+  std::string error;
+  const auto comparison = ztick::compare_result_documents_with_policy(
+      baseline, candidate, ztick::ComparisonReferences{"base.json", "cand.json"}, policy, &error);
+
+  REQUIRE(comparison.has_value());
+  REQUIRE(error.empty());
+  REQUIRE(string_member(*comparison, "classification") == "regression");
+  REQUIRE(number_member(*comparison, "threshold_percent") == Catch::Approx(1.0));
+  REQUIRE(string_member(*comparison->find("threshold_status"), "status") == "applied");
+  REQUIRE(string_member(*comparison->find("statistics"), "method") == "bootstrap_percentile");
+  REQUIRE(number_member(*comparison->find("statistics"), "metrics_tested") == 1.0);
+  REQUIRE(number_member(*comparison->find("significance"), "regressions") == 1.0);
+
+  const ConfigValue *duration = find_metric(*comparison->find("metrics"), "MET-01");
+  REQUIRE(duration != nullptr);
+  REQUIRE(string_member(*duration, "classification") == "regression");
+  REQUIRE(string_member(*duration, "polarity") == "lower_is_better");
+  REQUIRE(bool_member(*duration, "threshold_exceeded"));
+  const ConfigValue *significance = duration->find("significance");
+  REQUIRE(significance != nullptr);
+  REQUIRE(string_member(*significance, "status") == "applied");
+  REQUIRE(bool_member(*significance, "significant"));
+  REQUIRE(number_member(*significance, "interval_low") > 0.0);
+  REQUIRE(number_member(*duration, "baseline_mean") == Catch::Approx(0.100));
+  REQUIRE(number_member(*duration, "candidate_mean") == Catch::Approx(0.150));
+  REQUIRE(number_member(*duration, "aggregate_delta") == Catch::Approx(0.050));
+  REQUIRE(number_member(*duration, "aggregate_relative_change_percent") == Catch::Approx(50.0));
+  REQUIRE(duration->find("baseline_samples")->as_array()->size() == 5U);
+  REQUIRE(duration->find("candidate_samples")->as_array()->size() == 5U);
+}
+
+/**
+ * @brief Verify higher-is-better metrics classify favourable changes as improvements.
+ */
+TEST_CASE("P4.9 policy applies higher-is-better polarity", "[core][compare][p49]") {
+  ztick::ComparisonPolicy policy;
+  policy.bootstrap_iterations = 256U;
+  const ConfigValue baseline =
+      make_multi_run_document("base", "Alpha CPU", "MET-11", {100.0, 101.0, 99.0, 100.0, 100.0});
+  const ConfigValue candidate =
+      make_multi_run_document("cand", "Alpha CPU", "MET-11", {150.0, 151.0, 149.0, 150.0, 150.0});
+  const auto comparison = ztick::compare_result_documents_with_policy(
+      baseline, candidate, ztick::ComparisonReferences{"base.json", "cand.json"}, policy);
+
+  REQUIRE(comparison.has_value());
+  REQUIRE(string_member(*comparison, "classification") == "improvement");
+  const ConfigValue *throughput = find_metric(*comparison->find("metrics"), "MET-11");
+  REQUIRE(throughput != nullptr);
+  REQUIRE(string_member(*throughput, "polarity") == "higher_is_better");
+  REQUIRE(string_member(*throughput, "classification") == "improvement");
+  REQUIRE(number_member(*comparison->find("significance"), "improvements") == 1.0);
+}
+
+/**
+ * @brief Verify a one-sided interval detects an adverse throughput decrease.
+ */
+TEST_CASE("P4.9 policy applies one-sided significance to higher-is-better metrics",
+          "[core][compare][p49]") {
+  ztick::ComparisonPolicy policy;
+  policy.sidedness = ztick::SignificanceSidedness::one_sided;
+  policy.bootstrap_iterations = 256U;
+  const ConfigValue baseline =
+      make_multi_run_document("base", "Alpha CPU", "MET-11", {150.0, 151.0, 149.0, 150.0, 150.0});
+  const ConfigValue candidate =
+      make_multi_run_document("cand", "Alpha CPU", "MET-11", {100.0, 101.0, 99.0, 100.0, 100.0});
+
+  const auto comparison = ztick::compare_result_documents_with_policy(
+      baseline, candidate, ztick::ComparisonReferences{"base.json", "cand.json"}, policy);
+  REQUIRE(comparison.has_value());
+  REQUIRE(string_member(*comparison->find("statistics"), "sided") == "one");
+  REQUIRE(string_member(*comparison, "classification") == "regression");
+  const ConfigValue *throughput = find_metric(*comparison->find("metrics"), "MET-11");
+  REQUIRE(throughput != nullptr);
+  REQUIRE(string_member(*throughput, "classification") == "regression");
+  const ConfigValue *significance = throughput->find("significance");
+  REQUIRE(significance != nullptr);
+  REQUIRE(string_member(*significance, "sided") == "one");
+  REQUIRE(bool_member(*significance, "significant"));
+  REQUIRE(number_member(*significance, "interval_high") < 0.0);
+}
+
+/**
+ * @brief Verify significant sub-threshold changes are raw, not regressions.
+ */
+TEST_CASE("P4.9 policy keeps significant sub-threshold changes raw", "[core][compare][p49]") {
+  ztick::ComparisonPolicy policy;
+  policy.threshold_percent = 5.0;
+  policy.bootstrap_iterations = 256U;
+  const ConfigValue baseline =
+      make_multi_run_document("base", "Alpha CPU", "MET-01", {1.000, 1.001, 0.999, 1.000, 1.000});
+  const ConfigValue candidate =
+      make_multi_run_document("cand", "Alpha CPU", "MET-01", {1.010, 1.011, 1.009, 1.010, 1.010});
+
+  const auto comparison = ztick::compare_result_documents_with_policy(
+      baseline, candidate, ztick::ComparisonReferences{"base.json", "cand.json"}, policy);
+  REQUIRE(comparison.has_value());
+  const ConfigValue *duration = find_metric(*comparison->find("metrics"), "MET-01");
+  REQUIRE(duration != nullptr);
+  REQUIRE(number_member(*duration, "relative_change_percent") ==
+          Catch::Approx(1.0).epsilon(1.0e-9));
+  REQUIRE_FALSE(bool_member(*duration, "threshold_exceeded"));
+  REQUIRE(bool_member(*duration->find("significance"), "significant"));
+  REQUIRE(string_member(*duration, "classification") == "raw_difference");
+  REQUIRE(string_member(*comparison, "classification") == "raw_difference");
+}
+
+/**
+ * @brief Verify thresholded changes inside normal variability are not flagged.
+ */
+TEST_CASE("P4.9 policy withholds regressions inside normal variability", "[core][compare][p49]") {
+  ztick::ComparisonPolicy policy;
+  policy.threshold_percent = 5.0;
+  policy.bootstrap_iterations = 512U;
+  const ConfigValue baseline = make_multi_run_document("base", "Alpha CPU", "MET-01", {0.5, 1.5});
+  const ConfigValue candidate = make_multi_run_document("cand", "Alpha CPU", "MET-01", {0.6, 1.6});
+
+  const auto comparison = ztick::compare_result_documents_with_policy(
+      baseline, candidate, ztick::ComparisonReferences{"base.json", "cand.json"}, policy);
+  REQUIRE(comparison.has_value());
+  REQUIRE(number_member(*comparison->find("statistics"), "threshold_percent") == 5.0);
+  REQUIRE(string_member(*comparison->find("statistics"), "multiplicity") == "unadjusted");
+  const ConfigValue *duration = find_metric(*comparison->find("metrics"), "MET-01");
+  REQUIRE(duration != nullptr);
+  REQUIRE(number_member(*duration, "relative_change_percent") == Catch::Approx(20.0));
+  REQUIRE(number_member(*duration, "baseline_mean") == Catch::Approx(1.0));
+  REQUIRE(number_member(*duration, "candidate_mean") == Catch::Approx(1.1));
+  REQUIRE(number_member(*duration, "aggregate_relative_change_percent") == Catch::Approx(10.0));
+  REQUIRE(bool_member(*duration, "threshold_exceeded"));
+  REQUIRE_FALSE(bool_member(*duration->find("significance"), "significant"));
+  REQUIRE(string_member(*duration, "classification") == "within_variability");
+  REQUIRE(string_member(*comparison, "classification") == "within_variability");
+}
+
+/**
+ * @brief Verify insufficient samples and unknown metrics stay not-applicable.
+ */
+TEST_CASE("P4.9 policy reports not-applicable significance explicitly", "[core][compare][p49]") {
+  ztick::ComparisonPolicy policy;
+  policy.bootstrap_iterations = 64U;
+  const auto comparison = ztick::compare_result_documents_with_policy(
+      make_document("base", "Alpha CPU", 1.0), make_document("cand", "Alpha CPU", 2.0),
+      ztick::ComparisonReferences{"base.json", "cand.json"}, policy);
+
+  REQUIRE(comparison.has_value());
+  REQUIRE(string_member(*comparison, "classification") == "within_variability");
+  REQUIRE(string_member(*comparison->find("significance"), "status") == "not_applicable");
+  const ConfigValue *duration = find_metric(*comparison->find("metrics"), "MET-01");
+  REQUIRE(duration != nullptr);
+  REQUIRE(string_member(*duration->find("significance"), "reason").find("at least two") == 0U);
+  const ConfigValue *unavailable = find_metric(*comparison->find("metrics"), "MET-99");
+  REQUIRE(unavailable != nullptr);
+  REQUIRE(string_member(*unavailable, "classification") == "within_variability");
+}
+
+/**
+ * @brief Verify invalid comparison policies are rejected before analysis.
+ */
+TEST_CASE("P4.9 policy validates its numeric settings", "[core][compare][p49]") {
+  const ConfigValue baseline = make_multi_run_document("base", "Alpha CPU", "MET-01", {1.0, 1.1});
+  const ConfigValue candidate = make_multi_run_document("cand", "Alpha CPU", "MET-01", {2.0, 2.1});
+
+  ztick::ComparisonPolicy invalid_threshold;
+  invalid_threshold.threshold_percent = -1.0;
+  std::string error;
+  REQUIRE_FALSE(ztick::compare_result_documents_with_policy(baseline, candidate,
+                                                            ztick::ComparisonReferences{"a", "b"},
+                                                            invalid_threshold, &error)
+                    .has_value());
+  REQUIRE(error.find("threshold_percent") != std::string::npos);
+
+  ztick::ComparisonPolicy invalid_alpha;
+  invalid_alpha.alpha = 1.0;
+  error.clear();
+  REQUIRE_FALSE(ztick::compare_result_documents_with_policy(baseline, candidate,
+                                                            ztick::ComparisonReferences{"a", "b"},
+                                                            invalid_alpha, &error)
+                    .has_value());
+  REQUIRE(error.find("alpha") != std::string::npos);
+
+  ztick::ComparisonPolicy invalid_iterations;
+  invalid_iterations.bootstrap_iterations = 0U;
+  error.clear();
+  REQUIRE_FALSE(ztick::compare_result_documents_with_policy(baseline, candidate,
+                                                            ztick::ComparisonReferences{"a", "b"},
+                                                            invalid_iterations, &error)
+                    .has_value());
+  REQUIRE(error.find("bootstrap_iterations") != std::string::npos);
 }

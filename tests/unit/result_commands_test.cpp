@@ -154,6 +154,49 @@ ConfigValue make_document(std::string session_id, std::string cpu_model, double 
 }
 
 /**
+ * @brief Build a run record carrying one run-level metric sample.
+ * @param run_id Stable run identifier.
+ * @param metric_id Stable metric identifier.
+ * @param value Measured value of @p metric_id.
+ * @return Complete run record.
+ */
+ConfigValue make_metric_run(std::string run_id, std::string_view metric_id, double value) {
+  ConfigValue run = ConfigValue::object();
+  run.set("id", ConfigValue::string(std::move(run_id)));
+  run.set("status", ConfigValue::string("complete"));
+  ConfigValue point = ConfigValue::object();
+  point.set("block_size", ConfigValue::integer(128));
+  run.set("test_point", std::move(point));
+  ConfigValue metrics = ConfigValue::array();
+  ConfigValue metric = make_metric(std::string(metric_id), "Execution time", value);
+  metric.set("unit", ConfigValue::string(metric_id == "MET-11" ? "frames/s" : "s"));
+  metrics.push_back(std::move(metric));
+  run.set("metrics", std::move(metrics));
+  run.set("warnings", ConfigValue::array());
+  run.set("failures", ConfigValue::array());
+  return run;
+}
+
+/**
+ * @brief Build a result document with one repetition per metric sample.
+ * @param session_id Session identifier.
+ * @param cpu_model Recorded CPU model.
+ * @param metric_id Metric identifier to populate.
+ * @param values Run-level values in stored order.
+ * @return Complete v1 result document.
+ */
+ConfigValue make_multi_run_document(std::string session_id, std::string cpu_model,
+                                    std::string_view metric_id, const std::vector<double> &values) {
+  ConfigValue document = make_document(std::move(session_id), std::move(cpu_model), 0.0);
+  ConfigValue runs = ConfigValue::array();
+  for (std::size_t index = 0U; index < values.size(); ++index) {
+    runs.push_back(make_metric_run("run-" + std::to_string(index + 1U), metric_id, values[index]));
+  }
+  document.set("runs", std::move(runs));
+  return document;
+}
+
+/**
  * @brief Create a unique temporary path for a result-document file test.
  * @param suffix File name suffix.
  * @return Path inside the system temporary directory.
@@ -270,6 +313,71 @@ TEST_CASE("comparison rendering reports raw differences and warnings", "[cli][re
 }
 
 /**
+ * @brief Verify compare policy options parse in either syntax and any order.
+ */
+TEST_CASE("compare parses threshold policy options", "[cli][results][p49]") {
+  std::string error;
+  const auto invocation = ztick::cli::parse_compare_arguments(
+      {"--threshold", "2.5", "--alpha=0.01", "base.json", "--sided=one", "cand.json"}, &error);
+
+  REQUIRE(invocation.has_value());
+  REQUIRE(error.empty());
+  REQUIRE(invocation->baseline == std::filesystem::path("base.json"));
+  REQUIRE(invocation->candidate == std::filesystem::path("cand.json"));
+  REQUIRE(invocation->policy.threshold_percent == 2.5);
+  REQUIRE(invocation->policy.alpha == 0.01);
+  REQUIRE(invocation->policy.sidedness == ztick::SignificanceSidedness::one_sided);
+}
+
+/**
+ * @brief Verify malformed compare policy options are usage errors.
+ */
+TEST_CASE("compare rejects malformed policy options", "[cli][results][p49]") {
+  const auto check_invalid = [](std::vector<std::string_view> args, std::string_view fragment) {
+    std::string error;
+    REQUIRE_FALSE(ztick::cli::parse_compare_arguments(args, &error).has_value());
+    require_contains(error, fragment);
+  };
+
+  check_invalid({"--threshold", "2", "a.json"}, "requires a baseline and a candidate path");
+  check_invalid({"--threshold", "2", "--threshold=3", "a.json", "b.json"}, "more than once");
+  check_invalid({"--unknown", "a.json", "b.json"}, "unknown option");
+  check_invalid({"--threshold=-1", "a.json", "b.json"}, "non-negative percentage");
+  check_invalid({"--alpha=1", "a.json", "b.json"}, "greater than 0 and less than 1");
+  check_invalid({"--sided=both", "a.json", "b.json"}, "accepts 'one' or 'two'");
+  check_invalid({"--alpha", "a.json", "b.json"}, "finite number");
+}
+
+/**
+ * @brief Verify classified comparison records render threshold and significance detail.
+ */
+TEST_CASE("comparison rendering reports classified regressions", "[cli][results][p49]") {
+  ztick::ComparisonPolicy policy;
+  policy.bootstrap_iterations = 256U;
+  const ConfigValue baseline = make_multi_run_document("session-a", "Alpha CPU", "MET-01",
+                                                       {0.100, 0.101, 0.099, 0.100, 0.100});
+  const ConfigValue candidate = make_multi_run_document("session-b", "Alpha CPU", "MET-01",
+                                                        {0.150, 0.151, 0.149, 0.150, 0.150});
+  const auto record = ztick::compare_result_documents_with_policy(
+      baseline, candidate, ztick::ComparisonReferences{"base.json", "cand.json"}, policy);
+  REQUIRE(record.has_value());
+
+  const std::string text = ztick::cli::render_result_comparison(*record);
+  require_contains(text, "classification: regression\n");
+  require_contains(text, "threshold_percent: 1.0 (applied)\n");
+  require_contains(text, "statistics: applied (");
+  require_contains(text, "statistics_detail: method=bootstrap_percentile alpha=0.05 sided=two "
+                         "iterations=256 seed=1592594996 multiplicity=unadjusted "
+                         "metrics_compared=1 metrics_tested=1 outliers_removed=0\n");
+  require_contains(text, "significance: applied (");
+  require_contains(text, "significance_detail: method=bootstrap_percentile regressions=1 "
+                         "improvements=0 raw_differences=0 within_variability=0\n");
+  require_contains(text, "classification=regression polarity=lower_is_better "
+                         "significance=applied significant=true interval=[");
+  require_contains(text, "samples=5/5\n");
+}
+
+/**
  * @brief Verify compare argument, reader and comparison failures are deterministic.
  */
 TEST_CASE("compare rejects bad arguments and unreadable results", "[cli][results]") {
@@ -313,6 +421,36 @@ TEST_CASE("compare reads two stored result files", "[cli][results]") {
   require_contains(result.output, "baseline: " + baseline_path.string() + " session=session-a");
   require_contains(result.output, "candidate: " + candidate_path.string() + " session=session-b");
   require_contains(result.output, "level: run_to_run\n");
+  std::filesystem::remove(baseline_path);
+  std::filesystem::remove(candidate_path);
+}
+
+/**
+ * @brief Verify execute_compare forwards CLI policy options to the core classifier.
+ */
+TEST_CASE("compare applies command-line policy options", "[cli][results][p49]") {
+  const std::filesystem::path baseline_path = temporary_result_path("base_policy");
+  const std::filesystem::path candidate_path = temporary_result_path("cand_policy");
+  REQUIRE(write_result_document(baseline_path,
+                                make_multi_run_document("session-a", "Alpha CPU", "MET-01",
+                                                        {0.100, 0.101, 0.099, 0.100, 0.100}))
+              .ok);
+  REQUIRE(write_result_document(candidate_path,
+                                make_multi_run_document("session-b", "Alpha CPU", "MET-01",
+                                                        {0.150, 0.151, 0.149, 0.150, 0.150}))
+              .ok);
+
+  const auto result =
+      ztick::cli::execute_compare({baseline_path.string(), "--threshold=40", "--alpha=0.01",
+                                   "--sided=two", candidate_path.string()});
+  REQUIRE(result.code == ExitCode::success);
+  REQUIRE(result.error.empty());
+  require_contains(result.output, "classification: regression\n");
+  require_contains(result.output, "threshold_percent: 40.0 (applied)\n");
+  require_contains(result.output, "alpha=0.01");
+  require_contains(result.output, "sided=two");
+  require_contains(result.output, "classification=regression");
+
   std::filesystem::remove(baseline_path);
   std::filesystem::remove(candidate_path);
 }

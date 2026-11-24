@@ -158,13 +158,26 @@ field.
 validate documents through [RESULTS §3](RESULTS_FORMAT.md#3-result-document-structure) without
 rewriting them. `report` derives the displayed session status from run evidence
 on a copy and prints the stored token separately, so a stale `complete` token is
-visible rather than presented as success. `compare` asks the core for a raw
+visible rather than presented as success. `compare` asks the core for a
 comparison record ([ARCHITECTURE §8](ARCHITECTURE.md#8-comparison-and-reporting-placement))
-and renders it without regression classification; comparability warnings and
-metrics present on only one side are explicit. Extra or missing paths are
-`usage_error`; unreadable documents, invalid documents and comparison failures
-are `failure`. Machine-readable formats, thresholds and significance remain
-owned by later command tasks (BR §12.2).
+and renders it; comparability warnings and metrics present on only one side are
+explicit. Extra or missing paths are `usage_error`; unreadable documents, invalid
+documents and comparison failures are `failure`.
+
+**Derived design (P4.9).** `compare` additionally accepts `--threshold <percent>`,
+`--alpha <level>` and `--sided one|two`, each also accepted with `=` in the same
+argument. Defaults are `1`, `0.05` and `two` respectively. Options may appear
+before, between or after the two positional paths; an unknown, duplicate or
+malformed option is `usage_error`. The CLI passes the parsed policy to the core
+classifier and renders the returned record without recomputing statistics.
+Thresholding and significance use the method in
+[METRICS §6](METRICS_REFERENCE.md#6-comparison-and-regression-statistics), and
+the retained evidence is specified in
+[RESULTS §10](RESULTS_FORMAT.md#10-comparison-records). With one run per metric
+the significance check is explicitly `not_applicable`; the command still exits
+`0` because an unavailable statistical test is not a command failure.
+Machine-readable output, CI exit codes and plugin commands remain owned by P4.10
+(BR §12.2).
 
 ## 4. Document ownership map
 

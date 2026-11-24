@@ -325,13 +325,17 @@ and the persisted representation by [RESULTS_FORMAT](RESULTS_FORMAT.md). The
 [PROJECT_SPEC §3](PROJECT_SPEC.md#31-in-scope-for-v10) and
 [TESTING_STRATEGY](TESTING_STRATEGY.md).
 
-**P4.8 implementation (Derived design).** The core function
+**P4.8–P4.9 implementation (Derived design).** The core function
 `compare_result_documents` validates two stored results, reuses the metadata
-comparison owned by `ztick_results` and returns the persisted comparison shape
-without writing a file or classifying regressions. The CLI owns file reads,
-argument validation and text rendering, with an injectable reader so both success
-and failure paths are testable. P4.9 extends the record with thresholds and
-significance; P4.10 owns machine-readable output.
+comparison owned by `ztick_results` and returns the persisted raw comparison
+shape without writing a file. The P4.9 entry point
+`compare_result_documents_with_policy` reuses that record, collects run-level
+samples by metric identifier and applies the thresholded bootstrap classification
+owned by [METRICS §6](METRICS_REFERENCE.md#6-comparison-and-regression-statistics).
+The CLI owns file reads, argument and policy-option validation, and text
+rendering, with an injectable reader so both success and failure paths are
+testable. The core never writes a comparison file; P4.10 owns machine-readable
+output and CI exit codes.
 
 ## 9. Decision dependencies
 

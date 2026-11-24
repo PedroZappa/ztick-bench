@@ -184,6 +184,14 @@ the Phase 2 exit criterion is demonstrated across component boundaries.
 - Verify configurable thresholds and significance checks: differences below
   threshold or within normal variability must not be reported as regressions
   (BR §11.3, [METRICS](METRICS_REFERENCE.md#6-comparison-and-regression-statistics)).
+- P4.9 tests assert independently computed aggregate means and relative change,
+  polarity-aware regression and improvement classification, significant
+  sub-threshold raw differences, threshold-only within-variability outcomes,
+  insufficient-sample and unknown-polarity `not_applicable` states, one-sided and
+  two-sided interval decisions, and rejection of invalid policy values. CLI tests
+  cover policy-option parsing, classified rendering and option forwarding through
+  `execute_compare`; executable checks confirm the defaults render an applied
+  threshold and explicit unavailable significance. P4.10 output modes are excluded.
 - Verify build-to-build and machine-to-machine comparison paths, including
   comparability warnings when metadata differs (BR §11.2–§11.3).
 - Verify warning-not-reject behavior under simulated thermal/frequency/load

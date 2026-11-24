@@ -90,7 +90,10 @@ Commands:
   run <config.json> [options]  Run a benchmark configuration
     --output <path>      Write the result to <path> (default: <config>.result.json)
     --set key=value      Override a dotted config path; repeat for multiple values
-  compare <a.json> <b.json>  Compare two stored result documents
+  compare <a.json> <b.json> [options]  Compare two stored result documents
+    --threshold <percent>  Required relative change (default: 1)
+    --alpha <level>        Significance level (default: 0.05)
+    --sided one|two        Interval tail selection (default: two)
   report <run.json>      Render a stored result document
   plugin list            List discovered plugins
   plugin inspect <path>  Inspect plugin metadata without loading it
