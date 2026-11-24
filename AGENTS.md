@@ -125,10 +125,11 @@ If a topic belongs to another file, add a link instead of re-documenting it.
   `# Parameters`, `# Returns` and `# Errors`/`# Panics` sections as applicable;
   state units, preconditions, ownership/lifetime, status/error behavior and
   thread-safety where relevant. Comments are updated with the code they describe.
-- **Keep generated documentation buildable and uncommitted.** `make docs`
-  (Doxyfile → `build/doxygen`) is the single entry point; `make docs-open` views it
-  and `make clean-docs` removes it. Resolve Doxygen warnings for changed code before
-  finishing a change, and never commit generated output.
+- **Keep generated documentation buildable and uncommitted.** `make docs` is the
+  single entry point and generates both Doxygen output (`build/doxygen`) and Rust
+  rustdoc output (`build/cargo/tui/doc`); `make docs-open` views both and
+  `make clean-docs` removes both. Resolve Doxygen and rustdoc warnings for changed
+  code before finishing a change, and never commit generated output.
 
 ## Git operations (agent behavior)
 
