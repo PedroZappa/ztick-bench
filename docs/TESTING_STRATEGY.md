@@ -45,8 +45,14 @@ never linked into installed SDK, core, CLI or TUI targets.
 
 **Rust TUI tests (Derived design).** The Phase 5 TUI is Rust/ratatui (BR §21), so
 its unit and screen-state tests use `cargo test`, with rustdoc comments, rustfmt
-and clippy; C ABI FFI smoke tests cover the language boundary. They join CTest and
-`make verify` from Phase 5, with no Rust dependency for core/CLI-only builds.
+and clippy; the private C boundary from
+[SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design)
+has a standalone C11 caller test and a Rust FFI smoke test. P5.1 registers named
+CTest entries for both language-boundary tests and for `cargo test`, rustfmt and
+clippy so they join `make verify`. P5.8 adds the six principal workflow system
+tests from [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows). Every
+verification also configures `ZTICK_BUILD_TUI=OFF` and runs tests without Rust,
+proving that core/CLI-only users need no Rust toolchain.
 
 **Unit-test scope (Derived design).** Every function introduced or modified in
 ztick-bench has a deterministic unit test asserting its observable behavior,
@@ -353,6 +359,17 @@ covers structured `system`, `report` and `compare` data reaching the envelope, a
 defect found and fixed during this pass. The suite is registered with CTest
 through `ztick_tests` and joins the `make verify` gate.
 
+**P5.0–P5.1 front-end boundary coverage (Derived design).** The C11 caller test
+drives every function in [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design),
+asserting status/reason encoding, struct headers, copied strings/events, handle
+lifetimes and invalidation of borrowed views. The Rust smoke test calls the same
+symbols through FFI and checks that copied data remains valid after callbacks
+return. CTest registration proves the boundary is part of `make verify`, while a
+separate `ZTICK_BUILD_TUI=OFF` configuration proves core/CLI-only builds need no
+Rust. Screen-state tests then cover each of the six workflows in
+[TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows), including explicit
+consent denial, blocked cross-machine capabilities and incomplete-result status.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |
@@ -362,7 +379,7 @@ through `ztick_tests` and joins the `make verify` gate.
 | 3. Static and dynamic integrations | §3 apps A/B; §8 discovery/load tests |
 | 4. Initial metrics and workload levels | §4, §5, §6 tests across processor/chain/engine |
 | 5. CLI, JSON, comparisons, regressions | §9 tests; §6 comparison tests; Phase 4 end-to-end verification pass (P4.11) |
-| 6. TUI principal workflows | System tests through dashboard, config, execution monitoring and results screens ([TUI](TUI_SPECIFICATION.md)) |
+| 6. TUI principal workflows | P5.8 system tests for the six workflows in [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows): orientation, configuration, execution monitoring, results inspection, comparison/report and trust consent; P5.1 C11/Rust FFI smoke tests cover the private boundary |
 | 7. Automated correctness/overhead/repeatability/failure/isolation tests | §4–§8 |
 | 8. Third-party integration docs | [SDK_SPECIFICATION](SDK_SPECIFICATION.md) conformance checklist and build steps validated by the out-of-tree builds of both apps (P3.9) |
 

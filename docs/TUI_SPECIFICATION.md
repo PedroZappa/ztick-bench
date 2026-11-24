@@ -17,22 +17,30 @@ menus/configuration/detail screens where useful. *Source: BR §12.1.*
 **REQ-TUI-05 (Required).** The TUI is a Rust front end using ratatui 0.30.2 (MIT;
 Rust 1.88+, edition 2024, crossterm backend). It reaches core functionality only
 through the versioned `ztick_` C ABI via FFI, performs no DSP work of its own, and
-is built by an optional Cargo target driven from CMake. *Source: BR §21
-(TUI-technology confirmation, 2026-11-22); BR §15, §22.*
+is built by an optional Cargo target driven from CMake. The FFI surface is the
+private `ztick_frontend` C boundary in
+[SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design):
+it is not the installed adapter SDK and adds no installed public header. *Source:
+BR §21 (TUI-technology confirmation, 2026-11-22); BR §15, §22.*
 
 Derived design principles:
 
 - The dashboard is the entry point: current system state, available integrations,
   last results and active warnings are visible without navigating a menu tree.
 - Every action available in the TUI maps to a CLI capability; the TUI never
-  applies a setting the CLI cannot express or the config cannot record.
+  applies a setting the CLI cannot express or the config cannot record. For this
+  principle, CLI capability includes the documented config-file, JSON/CSV and
+  result-document operations behind `run`, `report` and `compare`; named profiles
+  and session export/import are persisted as those documents, not as new CLI
+  subcommands.
 - The TUI never silently changes workload or timing settings. Changes are visible
   in the run configuration before execution and are snapshotted into results.
 - The Cargo crate lives in `src/tui/`; an optional CMake target invokes Cargo only
   when the TUI is enabled. Core/CLI-only builds need no Rust toolchain (BR §15).
-- Rust bindings mirror the C ABI's opaque handles and fixed-width types; no C++
-  types or exceptions cross the boundary. Result documents are decoded from the
-  versioned [RESULTS schema](RESULTS_FORMAT.md), never redefined in the TUI.
+- Rust bindings mirror the private `ztick_frontend` opaque handles and fixed-width
+  types; no C++ types or exceptions cross the boundary. Result documents are
+  decoded from the versioned [RESULTS schema](RESULTS_FORMAT.md), never redefined
+  in the TUI.
 - TUI code uses rustdoc comments, rustfmt and clippy, with `cargo test` joined to
   the verification gate when Phase 5 lands.
 
@@ -104,10 +112,11 @@ The TUI is a front end over the core engine and result documents
 
 - Configuration screen edits produce the portable config document
   ([RESULTS §6](RESULTS_FORMAT.md#6-config-document)).
-- Execution monitoring reads progress events from the core; it does not implement
-  timing or validation itself.
-- Results, compare and report screens read result documents; they do not
-  recompute metrics except through the core's comparison functions.
+- Execution monitoring reads copied progress events from the private C boundary;
+  it does not implement timing or validation itself.
+- Results, compare and report screens read result documents through that
+  boundary; they do not recompute metrics except through the core's comparison
+  functions.
 
 ## 6. Out of scope for this document
 
@@ -117,3 +126,22 @@ The TUI is a front end over the core engine and result documents
   [PLATFORM_MONITORING](PLATFORM_MONITORING.md).
 - Dashboard-heavy implementation before the SDK and core engine are validated by
   working custom applications, per BR §16.
+
+## 7. Phase 5 principal workflows (Derived design)
+
+The BR §17.6 phrase "principal workflows" means these six end-to-end paths. They
+are the Phase 5 acceptance scope and map to the numbered tasks in
+[ROADMAP §2.5](ROADMAP.md#25-phase-5--tui):
+
+| Workflow | Path | Roadmap task |
+| --- | --- | --- |
+| Orientation | Open dashboard; inspect system inventory, integration count, recent runs, warnings and active run state | P5.2 |
+| Configuration | Edit workload, dimensions, measurement, validation, scheduling and named profile settings; save/reload a valid portable config or confirm a blocked unsupported capability | P5.3 |
+| Execution monitoring | Start a run; observe state, test-point progress, timing level, warnings and isolation mode; distinguish process-level from instrumented measurements | P5.4 |
+| Results inspection | Open a completed or incomplete result; review all four metric statuses, validation, warnings/failures, raw-data availability and retained overhead | P5.5 |
+| Comparison and report | Select stored results; view threshold/significance outcome, comparability warnings and report/export views; export/import a session bundle | P5.6 |
+| Trust consent | Inspect an untrusted plugin's identity, version, SDK compatibility and capabilities; grant or deny first-run consent before execution | P5.7 |
+
+P5.1 supplies the Rust crate and FFI gate for all six paths, and P5.8 verifies
+them. Screens in §2 that are not named in a workflow remain part of the owning
+screen's detail view; no separate roadmap task is required for each widget.
