@@ -34,6 +34,7 @@ endif()
 
 add_executable(ztick_tests
   integration/phase2_engine_test.cpp
+  integration/phase4_cli_results_test.cpp
   unit/atomic_writer_test.cpp
   unit/catch2_integration_test.cpp
   unit/cli_test.cpp

@@ -134,6 +134,21 @@ and P3.10 are complete.
 
 ### 2.4 Phase 4 — CLI and results
 
+**Progress (after P4.10).** The Phase 4 verification pass drives the documented
+commands together against real config and result files: `list`, `system`, `run`
+with dotted overrides, `report`, `compare`, both metadata-only `plugin` commands
+and the global `--format` option. Portable configs round-trip through the
+canonical writer, reject incompatible schema and SDK versions, and surface host
+differences as explicit comparability warnings rather than silently changing the
+benchmark (BR §13). Comparisons recompute aggregate values independently from the
+fixture samples, retain those samples, classify a significant regression, keep a
+sub-threshold change raw and flag cross-host metadata. The six-field CI envelope
+and stable exit codes hold for success, usage, failure and regression outcomes.
+Verification found and fixed a dispatch defect that discarded structured
+`system`, `report` and `compare` data before JSON encoding. P4.11 completes
+Phase 4 with a clean `make verify` gate
+([TESTING_STRATEGY §9](TESTING_STRATEGY.md#9-portability-comparison-and-ci-tests)).
+
 - [x] **P4.1 — Config document schema and parser.** Done when: Round-trip test passes; version field is present ([RESULTS §6](RESULTS_FORMAT.md#6-config-document)).
 - [x] **P4.2 — Result document schema and atomic writer.** Done when: Incomplete runs are marked; writes use temporary file plus rename.
 - [x] **P4.3 — CSV projection.** Done when: Shared fields agree between JSON and CSV.
@@ -144,7 +159,7 @@ and P3.10 are complete.
 - [x] **P4.8 — `report` and `compare` commands.** Done when: Stored results render through both commands.
 - [x] **P4.9 — Regression thresholds and significance checks.** Done when: Sub-threshold or normal-variability differences are not flagged.
 - [x] **P4.10 — `plugin list` / `plugin inspect`, CI exit codes, machine-readable output.** Done when: CI-oriented tests pass.
-- [ ] **P4.11 — Phase 4 verification pass.** Done when: CLI workflows, config portability, comparisons and CI support are verified.
+- [x] **P4.11 — Phase 4 verification pass.** Done when: CLI workflows, config portability, comparisons and CI support are verified.
 
 ### 2.5 Phase 5 — TUI
 

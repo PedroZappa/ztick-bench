@@ -335,6 +335,24 @@ two results with a large iteration gap and asserts exit code `4` under
 [RESULTS_FORMAT §12](RESULTS_FORMAT.md#12-machine-readable-output-envelope)
 (BR §12.2).
 
+**P4.11 verification coverage (Derived design).** One integration suite drives all
+four Phase 4 exit-criterion areas together through the documented surfaces, with
+expectations taken from the published contracts rather than the implementations.
+CLI workflows execute a real config with dotted overrides, then read and compare
+the written results and run both metadata-only plugin commands. Portability checks
+round-trip a versioned config through the canonical writer, reject incompatible
+schema and SDK versions, and verify that host differences produce explicit
+comparability warnings while matching explicit `unsupported` states stay
+comparable (BR §13). Comparison checks recompute means, absolute delta and
+relative change independently from the fixture samples, retain those samples,
+keep a sub-threshold change raw, and surface cross-host warnings. CI checks assert
+the stable exit-code tokens, both `--format` forms, the fixed six-field envelope
+for success, usage, failure and regression outcomes, and that `--fail-on-regression`
+gates only the exit code while detection is still reported. The verification also
+covers structured `system`, `report` and `compare` data reaching the envelope, a
+defect found and fixed during this pass. The suite is registered with CTest
+through `ztick_tests` and joins the `make verify` gate.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |
@@ -343,7 +361,7 @@ two results with a large iteration gap and asserts exit code `4` under
 | 2. Two independent SDK test apps | §3 App A built and run (P3.7); App B built and run in both runner modes (P3.8); Phase 3 end-to-end verification pass (P3.10) |
 | 3. Static and dynamic integrations | §3 apps A/B; §8 discovery/load tests |
 | 4. Initial metrics and workload levels | §4, §5, §6 tests across processor/chain/engine |
-| 5. CLI, JSON, comparisons, regressions | §9 tests; §6 comparison tests |
+| 5. CLI, JSON, comparisons, regressions | §9 tests; §6 comparison tests; Phase 4 end-to-end verification pass (P4.11) |
 | 6. TUI principal workflows | System tests through dashboard, config, execution monitoring and results screens ([TUI](TUI_SPECIFICATION.md)) |
 | 7. Automated correctness/overhead/repeatability/failure/isolation tests | §4–§8 |
 | 8. Third-party integration docs | [SDK_SPECIFICATION](SDK_SPECIFICATION.md) conformance checklist and build steps validated by the out-of-tree builds of both apps (P3.9) |
