@@ -12,11 +12,17 @@ use core::ffi::{c_char, c_void};
 
 /// Owned run-state model for the terminal application.
 pub mod app;
+/// Typed, read-only views over front-end JSON envelopes.
+pub mod data;
 /// Safe ownership of the private C11 front end.
 pub mod frontend;
-/// Stateless ratatui rendering for the application shell.
+/// Minimal JSON reader used by the typed envelope views.
+mod json;
+/// Stateless ratatui rendering for the dashboard and detail screens.
 pub mod ui;
 
+/// Layout version required in the header of every copied boundary struct.
+pub const ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION: u32 = 1;
 /// Maximum message bytes carried by one copied progress event.
 pub const ZTICK_FRONTEND_EVENT_MESSAGE_SIZE: usize = 256;
 /// No run is active.

@@ -187,7 +187,7 @@ prerequisite before the Rust crate and screens are implemented.
       `cargo test`/rustfmt/clippy and the P5.0 FFI smoke test join CTest and
       `make verify`, and core/CLI-only builds still need no Rust toolchain
       ([TUI §1](TUI_SPECIFICATION.md#1-principles), BR §21).
-- [ ] **P5.2 — Dashboard, system and integration screens.** Done when: The
+- [x] **P5.2 — Dashboard, system and integration screens.** Done when: The
       dashboard, system inventory and integration/plugin screens show the active
       run state, availability states, plugin identity/version/compatibility,
       declared capabilities and trust state, with no hidden `unsupported` or

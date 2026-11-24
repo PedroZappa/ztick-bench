@@ -119,7 +119,12 @@ If a topic belongs to another file, add a link instead of re-documenting it.
   preconditions, ownership/lifetime, status/error behavior and thread-safety where
   relevant. C ABI headers document the C11 surface and opaque handles; C++ wrappers
   name their C ABI counterpart. Comments are updated with the code they describe.
-  Rust TUI code uses `rustdoc` (`///`) comments with the same completeness standard.
+- **Document all Rust code with rustdoc comments.** Every Rust file, module, type,
+  function, method, enum, constant, macro and member gets a `///` or `//!` comment
+  at its declaration, including internal and test code. Use `# Safety`,
+  `# Parameters`, `# Returns` and `# Errors`/`# Panics` sections as applicable;
+  state units, preconditions, ownership/lifetime, status/error behavior and
+  thread-safety where relevant. Comments are updated with the code they describe.
 - **Keep generated documentation buildable and uncommitted.** `make docs`
   (Doxyfile → `build/doxygen`) is the single entry point; `make docs-open` views it
   and `make clean-docs` removes it. Resolve Doxygen warnings for changed code before
