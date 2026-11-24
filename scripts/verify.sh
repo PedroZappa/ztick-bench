@@ -16,7 +16,7 @@ ci_build_dir="${CI_BUILD_DIR:-build/ci}"
 no_tui_build_dir="${NO_TUI_BUILD_DIR:-build/ci-no-tui}"
 sanitize_build_dir="${SANITIZE_DIR:-build/sanitize}"
 ci_cmake_args="${CI_CMAKE_ARGS:--DZTICK_WERROR=ON}"
-rust_gate_tests=(tui.rust.format tui.rust.clippy tui.ffi.smoke unit.frontend.c11)
+rust_gate_tests=(tui.rust.test tui.rust.format tui.rust.clippy tui.ffi.smoke unit.frontend.c11)
 
 # Colors follow the Makefile convention: tput is silenced when TERM is unset
 # (for example in CI), leaving empty sequences rather than control characters.
@@ -171,4 +171,4 @@ run_step "Sanitizers (ASan + UBSan)" "ctest" make "SANITIZE_DIR=${sanitize_build
 run_step "Sanitizer gate inventory" "-" require_ctest_tests "${sanitize_build_dir}" \
   unit.frontend.c11
 run_step "Sanitizer Rust gate exclusion" "-" reject_ctest_tests "${sanitize_build_dir}" \
-  tui.rust.format tui.rust.clippy tui.ffi.smoke
+  tui.rust.test tui.rust.format tui.rust.clippy tui.ffi.smoke

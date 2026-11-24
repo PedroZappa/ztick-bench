@@ -117,9 +117,9 @@ Planned targets (Derived design — names are not ledger requirements):
 
 `ztick_frontend` is an internal C ABI target, not part of the installed SDK: it
 implements [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design)
-and is consumed only by the Rust `ztick_tui` crate. The current C++ `src/tui`
-placeholder is temporary; P5.1 replaces it with the Cargo crate. Core/CLI-only
-builds leave both targets disabled and require no Rust toolchain.
+and is consumed only by the Rust `ztick_tui` crate. P5.1 replaces the earlier
+C++ `src/tui` placeholder with the Cargo crate and its ratatui executable.
+Core/CLI-only builds leave both targets disabled and require no Rust toolchain.
 
 The Phase 3 example targets are `ztick_test_app_static`, which links the compiled
 runtime, and `ztick_test_app_dynamic`, which does not link `ztick_sdk` so the host owns

@@ -10,6 +10,13 @@
 
 use core::ffi::{c_char, c_void};
 
+/// Owned run-state model for the terminal application.
+pub mod app;
+/// Safe ownership of the private C11 front end.
+pub mod frontend;
+/// Stateless ratatui rendering for the application shell.
+pub mod ui;
+
 /// Maximum message bytes carried by one copied progress event.
 pub const ZTICK_FRONTEND_EVENT_MESSAGE_SIZE: usize = 256;
 /// No run is active.

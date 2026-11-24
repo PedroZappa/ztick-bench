@@ -181,7 +181,7 @@ prerequisite before the Rust crate and screens are implemented.
       standalone C11 caller exercises every function; and a Rust FFI smoke test
       calls the same boundary through `ztick_` symbols. No installed SDK header
       or ABI version changes.
-- [ ] **P5.1 — Rust/ratatui crate, C ABI FFI bindings and optional Cargo build.**
+- [x] **P5.1 — Rust/ratatui crate, C ABI FFI bindings and optional Cargo build.**
       Done when: `src/tui/` builds through the optional CMake target with ratatui
       0.30.2 pinned, the C++ placeholder target is replaced by the Cargo crate,
       `cargo test`/rustfmt/clippy and the P5.0 FFI smoke test join CTest and

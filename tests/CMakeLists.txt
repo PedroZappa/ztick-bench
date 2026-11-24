@@ -193,6 +193,10 @@ add_test(NAME unit.sdk.runtime.c11 COMMAND ztick_sdk_runtime_c11_test)
 if(ZTICK_BUILD_TUI)
   add_executable(ztick_frontend_c11_test frontend_c11_test.c)
   target_link_libraries(ztick_frontend_c11_test PRIVATE ztick_frontend)
+  # The source remains C11, but the private facade is implemented in C++. Clang's
+  # UBSan vptr checks leave C++ runtime symbols in the shared library, so the
+  # final link must use the C++ driver to resolve them in sanitizer builds.
+  set_target_properties(ztick_frontend_c11_test PROPERTIES LINKER_LANGUAGE CXX)
   add_test(NAME unit.frontend.c11 COMMAND ztick_frontend_c11_test)
 endif()
 
