@@ -516,9 +516,8 @@ ConfigValue timing_object(const ExecutionTrace &trace) {
   ConfigValue timing = ConfigValue::object();
   for (const TimingSamples &samples : trace.timing) {
     ConfigValue values = ConfigValue::array();
-    for (const double duration : samples.durations_seconds) {
-      values.push_back(ConfigValue::real(duration));
-    }
+    std::for_each(samples.durations_seconds.begin(), samples.durations_seconds.end(),
+                  [&values](double duration) { values.push_back(ConfigValue::real(duration)); });
     timing.set(std::string(timing_level_name(samples.level)), std::move(values));
   }
   const OverheadEstimate &overhead = trace.overhead;
@@ -530,9 +529,9 @@ ConfigValue timing_object(const ExecutionTrace &trace) {
                ConfigValue::integer(static_cast<std::int64_t>(overhead.interval_count)));
   estimate.set("method", ConfigValue::string(overhead.method));
   ConfigValue calibration = ConfigValue::array();
-  for (const double sample : overhead.calibration_samples_seconds) {
-    calibration.push_back(ConfigValue::real(sample));
-  }
+  std::for_each(
+      overhead.calibration_samples_seconds.begin(), overhead.calibration_samples_seconds.end(),
+      [&calibration](double sample) { calibration.push_back(ConfigValue::real(sample)); });
   estimate.set("calibration_samples_seconds", std::move(calibration));
   timing.set("overhead_estimate", std::move(estimate));
   return timing;
@@ -610,9 +609,10 @@ ConfigValue run_record(const RunPlan &plan, std::uint32_t repetition, const Exec
   point.set("workload_level",
             ConfigValue::string(std::string(workload_level_name(plan.workload.level))));
   ConfigValue processors = ConfigValue::array();
-  for (const std::string &processor : plan.workload.processors) {
-    processors.push_back(ConfigValue::string(processor));
-  }
+  std::for_each(plan.workload.processors.begin(), plan.workload.processors.end(),
+                [&processors](const std::string &processor) {
+                  processors.push_back(ConfigValue::string(processor));
+                });
   point.set("processors", std::move(processors));
   point.set("sample_rate_hz", ConfigValue::real(plan.sample_rate_hz));
   point.set("block_size", ConfigValue::integer(static_cast<std::int64_t>(plan.block_size)));
@@ -629,9 +629,9 @@ ConfigValue run_record(const RunPlan &plan, std::uint32_t repetition, const Exec
   metrics.push_back(metric_record("MET-01", "Execution time",
                                   MetricValue{ValueStatus::measured, processing_seconds, {}}, "s",
                                   "instrumented_dsp", statistics.percentile_method, duration_meta));
-  for (ConfigValue metric : duration_metrics(statistics)) {
-    metrics.push_back(std::move(metric));
-  }
+  std::vector<ConfigValue> duration = duration_metrics(statistics);
+  std::for_each(duration.begin(), duration.end(),
+                [&metrics](ConfigValue &metric) { metrics.push_back(std::move(metric)); });
   ConfigValue performance_meta = ConfigValue::object();
   performance_meta.set("frames", ConfigValue::integer(static_cast<std::int64_t>(plan.frames)));
   performance_meta.set("block_size",

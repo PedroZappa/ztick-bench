@@ -11,10 +11,12 @@
 #include "ztick/metadata.hpp"
 #include "ztick/result_document.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -146,14 +148,13 @@ std::vector<MetricView> collect_metrics(const ConfigValue &document) {
     if (metrics == nullptr || metrics->as_array() == nullptr) {
       continue;
     }
-    for (const ConfigValue &metric : *(metrics->as_array())) {
-      // Views retain pointers into the stored array; a transform would not
-      // simplify this nested traversal that skips runs without metrics.
-      // cppcheck-suppress useStlAlgorithm
-      views.push_back(MetricView{run_id, display_text(field_text(&metric, "id")),
-                                 display_text(field_text(&metric, "name")),
-                                 display_text(field_text(&metric, "unit")), &metric});
-    }
+    const auto *metric_array = metrics->as_array();
+    std::transform(metric_array->begin(), metric_array->end(), std::back_inserter(views),
+                   [&run_id](const ConfigValue &metric) {
+                     return MetricView{run_id, display_text(field_text(&metric, "id")),
+                                       display_text(field_text(&metric, "name")),
+                                       display_text(field_text(&metric, "unit")), &metric};
+                   });
   }
   return views;
 }
@@ -223,11 +224,13 @@ ConfigValue make_unmatched(const MetricView &view, std::string_view side) {
  */
 void append_unmatched(ConfigValue &metrics, const std::vector<MetricView> &views,
                       const std::vector<bool> &used, std::string_view side) {
-  for (std::size_t index = 0U; index < views.size(); ++index) {
+  std::size_t index = 0U;
+  std::for_each(views.begin(), views.end(), [&](const MetricView &view) {
     if (!used[index]) {
-      metrics.push_back(make_unmatched(views[index], side));
+      metrics.push_back(make_unmatched(view, side));
     }
-  }
+    ++index;
+  });
 }
 
 /**
@@ -383,19 +386,27 @@ std::optional<ConfigValue> compare_result_documents(const ConfigValue &baseline,
   std::vector<bool> candidate_used(candidate_metrics.size(), false);
 
   ConfigValue metrics = ConfigValue::array();
-  for (const MetricView &view : baseline_metrics) {
+  std::string metric_error;
+  std::for_each(baseline_metrics.begin(), baseline_metrics.end(), [&](const MetricView &view) {
+    if (!metric_error.empty()) {
+      return;
+    }
     const ConfigValue *match = find_metric(candidate_metrics, view, candidate_used);
     if (match == nullptr) {
       metrics.push_back(make_unmatched(view, "baseline"));
-      continue;
+      return;
     }
     const std::optional<ConfigValue> compared = compare_metric(view, match);
     if (!compared.has_value()) {
-      record_error(error, "comparison produced a non-finite metric delta for " + view.run_id +
-                              " / " + view.metric_id);
-      return std::nullopt;
+      metric_error = "comparison produced a non-finite metric delta for " + view.run_id + " / " +
+                     view.metric_id;
+      return;
     }
     metrics.push_back(*compared);
+  });
+  if (!metric_error.empty()) {
+    record_error(error, metric_error);
+    return std::nullopt;
   }
   append_unmatched(metrics, candidate_metrics, candidate_used, "candidate");
 
