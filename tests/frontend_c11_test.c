@@ -36,6 +36,22 @@ static const char kConfigJson[] =
     "\"validation\":{\"level\":\"Basic\",\"tolerances\":{},\"references\":[]},"
     "\"parallelism\":{\"workers\":\"auto\",\"affinity\":\"auto\"}}";
 
+/** @brief Result-document template with two run-level MET-01 samples. */
+static const char kResultTemplate[] =
+    "{\"schema_version\":\"1.0.0\",\"sdk_version\":\"1.0.0\","
+    "\"session\":{\"id\":\"%s\"},\"config_snapshot\":%s,"
+    "\"build\":{},\"machine\":{},\"environment\":{},"
+    "\"runs\":["
+    "{\"id\":\"run-1\",\"status\":\"complete\",\"failures\":[],\"metrics\":["
+    "{\"id\":\"MET-01\",\"name\":\"Execution time\",\"value\":%s,\"unit\":\"s\","
+    "\"status\":\"measured\",\"source\":\"instrumented_dsp\",\"method\":\"nearest_rank\","
+    "\"reason\":\"\",\"context\":{}}]},"
+    "{\"id\":\"run-2\",\"status\":\"complete\",\"failures\":[],\"metrics\":["
+    "{\"id\":\"MET-01\",\"name\":\"Execution time\",\"value\":%s,\"unit\":\"s\","
+    "\"status\":\"measured\",\"source\":\"instrumented_dsp\",\"method\":\"nearest_rank\","
+    "\"reason\":\"\",\"context\":{}}]}],"
+    "\"comparisons\":[],\"warnings\":[],\"failures\":[],\"status\":\"complete\"}";
+
 static const char kInvalidConfigJson[] =
     "{\"config_version\":\"1.0.0\",\"sdk_version\":\"1.0.0\","
     "\"integration\":{\"id\":\"app-a\",\"version\":\"1.2.3\"},"
@@ -86,6 +102,39 @@ static int temp_path(const char *label, char *buffer, size_t capacity) {
   const int written =
       snprintf(buffer, capacity, "/tmp/ztick_frontend_c11_%d_%s", (int)getpid(), label);
   return written > 0 && (size_t)written < capacity ? 0 : 1;
+}
+
+/**
+ * @brief Write one valid stored result document for comparison tests.
+ * @param label Artifact label used in the temporary path.
+ * @param session_id Session identifier stored in the document.
+ * @param value MET-01 value stored in both run records.
+ * @param path Destination path buffer.
+ * @param capacity Byte capacity of @p path.
+ * @return Zero on success, otherwise one for a path, format or write failure.
+ */
+static int write_result(const char *label, const char *session_id, const char *value, char *path,
+                        size_t capacity) {
+  char document[16384] = {0};
+  FILE *file = NULL;
+  int written = 0;
+  if (temp_path(label, path, capacity) != 0) {
+    return 1;
+  }
+  written = snprintf(document, sizeof(document), kResultTemplate, session_id, kConfigJson, value,
+                     value);
+  if (written <= 0 || (size_t)written >= sizeof(document)) {
+    return 1;
+  }
+  file = fopen(path, "wb");
+  if (file == NULL) {
+    return 1;
+  }
+  if (fwrite(document, 1U, (size_t)written, file) != (size_t)written) {
+    fclose(file);
+    return 1;
+  }
+  return fclose(file) == 0 ? 0 : 1;
 }
 
 /**
@@ -164,6 +213,11 @@ static int check_error_paths(void) {
       ztick_status_invalid_argument) {
     return 14;
   }
+  if (ztick_frontend_compare_with_policy(
+          NULL, "a.json", "b.json", "1", "0.05", ZTICK_FRONTEND_COMPARE_TWO_SIDED, 0, buffer,
+          sizeof(buffer), &length) != ztick_status_invalid_argument) {
+    return 234;
+  }
   if (ztick_frontend_result_read(NULL, "missing.json", buffer, sizeof(buffer), &length) !=
       ztick_status_invalid_argument) {
     return 15;
@@ -206,6 +260,8 @@ static int check_error_paths(void) {
 int main(void) {
   char config_path[256] = {0};
   char result_path[256] = {0};
+  char baseline_path[256] = {0};
+  char candidate_path[256] = {0};
   char trust_path[256] = {0};
   char missing_path[256] = {0};
   char output[131072] = {0};
@@ -244,8 +300,14 @@ int main(void) {
     return check;
   }
 
-  if ((check = require(version.major == 0U && version.minor == 2U && version.patch == 0U,
-                       240)) != 0) {
+  if ((check = require(version.major == 0U && version.minor == 3U && version.patch == 0U, 240)) !=
+      0) {
+    return check;
+  }
+
+  if ((check =
+           require(ZTICK_FRONTEND_COMPARE_TWO_SIDED == 0 && ZTICK_FRONTEND_COMPARE_ONE_SIDED == 1,
+                   251)) != 0) {
     return check;
   }
 
@@ -269,6 +331,73 @@ int main(void) {
     return check;
   }
 
+  if ((check = require(ztick_frontend_compare_with_policy(session, NULL, result_path, "1", "0.05",
+                                                          ZTICK_FRONTEND_COMPARE_TWO_SIDED, 0,
+                                                          output, sizeof(output),
+                                                          &length) == ztick_status_invalid_argument,
+                       252)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_compare_with_policy(session, result_path, NULL, "1", "0.05",
+                                                          ZTICK_FRONTEND_COMPARE_TWO_SIDED, 0,
+                                                          output, sizeof(output),
+                                                          &length) == ztick_status_invalid_argument,
+                       253)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_compare_with_policy(session, result_path, result_path, NULL,
+                                                          "0.05", ZTICK_FRONTEND_COMPARE_TWO_SIDED,
+                                                          0, output, sizeof(output),
+                                                          &length) == ztick_status_invalid_argument,
+                       254)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_compare_with_policy(session, result_path, result_path, "1",
+                                                          NULL, ZTICK_FRONTEND_COMPARE_TWO_SIDED, 0,
+                                                          output, sizeof(output),
+                                                          &length) == ztick_status_invalid_argument,
+                       255)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_compare_with_policy(session, result_path, result_path, "",
+                                                          "0.05", ZTICK_FRONTEND_COMPARE_TWO_SIDED,
+                                                          0, output, sizeof(output),
+                                                          &length) == ztick_status_invalid_argument,
+                       256)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_compare_with_policy(session, result_path, result_path, "1",
+                                                          "0.05", 2, 0, output, sizeof(output),
+                                                          &length) == ztick_status_invalid_argument,
+                       257)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_compare_with_policy(session, result_path, result_path, "1",
+                                                          "0.05", ZTICK_FRONTEND_COMPARE_ONE_SIDED,
+                                                          2, output, sizeof(output),
+                                                          &length) == ztick_status_invalid_argument,
+                       258)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_last_error(session, output, sizeof(output), &length) ==
+                               ztick_status_success &&
+                           length > 0U,
+                       259)) != 0) {
+    return check;
+  }
+  {
+    char short_output[16] = {0};
+    size_t required = 0U;
+    if ((check = require(ztick_frontend_compare_with_policy(
+                             session, missing_path, missing_path, "1", "0.05",
+                             ZTICK_FRONTEND_COMPARE_TWO_SIDED, 0, short_output,
+                             sizeof(short_output), &required) == ztick_status_invalid_argument &&
+                         required > sizeof(short_output),
+                         263)) != 0) {
+      return check;
+    }
+  }
+
   if ((check = require(ztick_frontend_config_parse(
                            session, kConfigJson, sizeof(kConfigJson) - 1U) == ztick_status_success,
                        6)) != 0) {
@@ -280,23 +409,21 @@ int main(void) {
   {
     char retained[sizeof(output)];
     size_t retained_length = 0U;
-    if ((check = require(
-             ztick_frontend_config_serialize(session, retained, sizeof(retained),
-                                             &retained_length) == ztick_status_success,
-             230)) != 0) {
+    if ((check = require(ztick_frontend_config_serialize(session, retained, sizeof(retained),
+                                                         &retained_length) == ztick_status_success,
+                         230)) != 0) {
       return check;
     }
     if ((check = require(ztick_frontend_config_parse(session, kInvalidConfigJson,
                                                      sizeof(kInvalidConfigJson) - 1U) ==
-                                 ztick_status_validation_failure,
+                             ztick_status_validation_failure,
                          231)) != 0) {
       return check;
     }
-    if ((check = require(
-             ztick_frontend_config_serialize(session, output, sizeof(output), &length) ==
-                 ztick_status_success &&
-             strcmp(output, retained) == 0,
-             232)) != 0) {
+    if ((check = require(ztick_frontend_config_serialize(session, output, sizeof(output),
+                                                         &length) == ztick_status_success &&
+                             strcmp(output, retained) == 0,
+                         232)) != 0) {
       return check;
     }
   }
@@ -313,20 +440,19 @@ int main(void) {
   {
     const char *invalid_override[] = {"dimensions.channels=0"};
     if ((check = require(ztick_frontend_config_override(session, invalid_override, 1U, output,
-                                                        sizeof(output), &length) ==
-                                 ztick_status_validation_failure,
-                             201)) != 0) {
+                                                        sizeof(output),
+                                                        &length) == ztick_status_validation_failure,
+                         201)) != 0) {
       return check;
     }
-    if ((check = require(ztick_frontend_config_validate(session) == ztick_status_success,
-                         202)) != 0) {
+    if ((check = require(ztick_frontend_config_validate(session) == ztick_status_success, 202)) !=
+        0) {
       return check;
     }
-    if ((check =
-             require(ztick_frontend_config_serialize(session, output, sizeof(output), &length) ==
-                             ztick_status_success &&
-                         strstr(output, "\"channels\":4") != NULL,
-                     203)) != 0) {
+    if ((check = require(ztick_frontend_config_serialize(session, output, sizeof(output),
+                                                         &length) == ztick_status_success &&
+                             strstr(output, "\"channels\":4") != NULL,
+                         203)) != 0) {
       return check;
     }
   }
@@ -372,7 +498,7 @@ int main(void) {
     }
     fclose(file);
     if ((check = require(ztick_frontend_config_load(session, invalid_path) ==
-                                 ztick_status_validation_failure,
+                             ztick_status_validation_failure,
                          233)) != 0) {
       return check;
     }
@@ -435,6 +561,52 @@ int main(void) {
   if ((check = require(ztick_frontend_compare(session, result_path, result_path, output,
                                               sizeof(output), &length) == ztick_status_success,
                        203)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_compare_with_policy(session, result_path, result_path, "1",
+                                                          "0.05", ZTICK_FRONTEND_COMPARE_TWO_SIDED,
+                                                          1, output, sizeof(output),
+                                                          &length) == ztick_status_success &&
+                           strstr(output, "\"command\":\"compare\"") != NULL &&
+                           strstr(output, "\"status\":\"success\"") != NULL &&
+                           strstr(output, "\"sided\":\"two\"") != NULL,
+                       260)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_compare_with_policy(session, result_path, result_path, "0.5",
+                                                          "0.05", ZTICK_FRONTEND_COMPARE_ONE_SIDED,
+                                                          0, output, sizeof(output),
+                                                          &length) == ztick_status_success &&
+                           strstr(output, "\"status\":\"success\"") != NULL &&
+                           strstr(output, "\"sided\":\"one\"") != NULL,
+                       261)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_compare_with_policy(session, missing_path, missing_path, "1",
+                                                          "0.05", ZTICK_FRONTEND_COMPARE_TWO_SIDED,
+                                                          1, output, sizeof(output),
+                                                          &length) != ztick_status_success &&
+                           strstr(output, "\"command\":\"compare\"") != NULL &&
+                           strstr(output, "\"status\":\"failure\"") != NULL,
+                       262)) != 0) {
+    return check;
+  }
+  if ((check = write_result("baseline.json", "s-baseline", "0.5", baseline_path,
+                            sizeof(baseline_path))) != 0) {
+    return 264 + check;
+  }
+  if ((check = write_result("candidate.json", "s-candidate", "0.6", candidate_path,
+                            sizeof(candidate_path))) != 0) {
+    return 266 + check;
+  }
+  if ((check = require(ztick_frontend_compare_with_policy(
+                           session, baseline_path, candidate_path, "1", "0.05",
+                           ZTICK_FRONTEND_COMPARE_TWO_SIDED, 1, output, sizeof(output),
+                           &length) == ztick_status_validation_failure &&
+                       strstr(output, "\"command\":\"compare\"") != NULL &&
+                       strstr(output, "\"status\":\"regression\"") != NULL &&
+                       strstr(output, "\"classification\":\"regression\"") != NULL,
+                       268)) != 0) {
     return check;
   }
   if ((check = require(ztick_frontend_result_read(session, result_path, output, sizeof(output),
@@ -504,19 +676,18 @@ int main(void) {
     return check;
   }
 
-  if ((check = require(ztick_frontend_run_start(session, NULL) ==
-                            ztick_status_invalid_argument,
-                        241)) != 0) {
+  if ((check = require(ztick_frontend_run_start(session, NULL) == ztick_status_invalid_argument,
+                       241)) != 0) {
     return check;
   }
   if ((check = require(ztick_frontend_run_result(session, output, sizeof(output), &length,
                                                  &available) == ztick_status_success &&
-                            available == 0,
-                        242)) != 0) {
+                           available == 0,
+                       242)) != 0) {
     return check;
   }
   if ((check = require(ztick_frontend_run_start(session, config_path) == ztick_status_success,
-                        243)) != 0) {
+                       243)) != 0) {
     return check;
   }
   for (int attempt = 0; attempt < 1000; ++attempt) {
@@ -532,8 +703,8 @@ int main(void) {
     (void)nanosleep(&delay, NULL);
   }
   if ((check = require(available == 1 && strstr(output, "\"command\":\"run\"") != NULL &&
-                            strstr(output, "\"status\":\"success\"") != NULL,
-                        245)) != 0) {
+                           strstr(output, "\"status\":\"success\"") != NULL,
+                       245)) != 0) {
     return check;
   }
   {
@@ -542,17 +713,16 @@ int main(void) {
       event.size = sizeof(event);
       event.version = ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION;
       if ((check = require(ztick_frontend_progress_poll(session, &event, &available) ==
-                                ztick_status_success,
+                               ztick_status_success,
                            246)) != 0) {
         return check;
       }
       if (available == 0) {
         break;
       }
-      saw_core_context |=
-          event.timing_level == ztick_frontend_timing_per_block &&
-          event.isolation_mode == ztick_frontend_isolation_in_process && event.test_point == 1U &&
-          event.message[0] != '\0';
+      saw_core_context |= event.timing_level == ztick_frontend_timing_per_block &&
+                          event.isolation_mode == ztick_frontend_isolation_in_process &&
+                          event.test_point == 1U && event.message[0] != '\0';
     }
     if ((check = require(saw_core_context, 247)) != 0) {
       return check;
@@ -565,19 +735,18 @@ int main(void) {
   }
   if ((check = require(ztick_frontend_run_result(transient, output, sizeof(output), &length,
                                                  &available) == ztick_status_success &&
-                            available == 0,
-                        249)) != 0) {
+                           available == 0,
+                       249)) != 0) {
     return check;
   }
   if ((check = require(ztick_frontend_run_start(transient, config_path) == ztick_status_success,
-                        250)) != 0) {
+                       250)) != 0) {
     return check;
   }
   ztick_frontend_session_destroy(transient);
 
   ztick_frontend_session_destroy(session);
-  if ((check = require(ztick_frontend_config_validate(session) ==
-                           ztick_status_invalid_argument,
+  if ((check = require(ztick_frontend_config_validate(session) == ztick_status_invalid_argument,
                        28)) != 0) {
     return check;
   }
@@ -590,13 +759,11 @@ int main(void) {
   if ((check = require(replacement != NULL && replacement != session, 29)) != 0) {
     return check;
   }
-  if ((check = require(ztick_frontend_config_validate(session) ==
-                           ztick_status_invalid_argument,
+  if ((check = require(ztick_frontend_config_validate(session) == ztick_status_invalid_argument,
                        30)) != 0) {
     return check;
   }
-  if ((check = require(ztick_frontend_config_validate(replacement) ==
-                           ztick_status_invalid_argument,
+  if ((check = require(ztick_frontend_config_validate(replacement) == ztick_status_invalid_argument,
                        31)) != 0) {
     return check;
   }

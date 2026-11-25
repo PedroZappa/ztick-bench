@@ -193,7 +193,7 @@ tui-build:	## Configure with the TUI enabled and build its binary
 	@$(CMAKE) --build $(BUILD_DIR) --target ztick_tui_binary --parallel
 	@echo "$(YEL)* $(_SUCCESS) TUI binary ready at $(TUI_BINARY)$(D)"
 
-tui: tui-build	## Open the TUI (0-9 screens, arrows edit fields, Ctrl-R runs, Ctrl-S saves, Ctrl-O loads, p confirms priority, r refreshes, q quits)
+tui: tui-build	## Open the TUI (0-9/c/e screens, arrows edit, Ctrl-R run, Ctrl-E execute/export, Ctrl-B/Ctrl-I bundle export/import, Ctrl-S save, Ctrl-O load, p priority, r refresh, q quit)
 	@if [ ! -x "$(TUI_BINARY)" ]; then \
 		echo "$(RED)$(TUI_BINARY) is not built$(D)"; \
 		exit 1; \

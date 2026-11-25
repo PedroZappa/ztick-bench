@@ -6,6 +6,7 @@
 //! documented fields; it never computes metrics, changes configuration or
 //! redefines a result schema.
 
+use std::borrow::Cow;
 use std::fmt;
 
 use crate::json::{self, Json};
@@ -43,6 +44,49 @@ impl fmt::Display for DataError {
 /// Mark envelope interpretation errors as standard errors.
 impl std::error::Error for DataError {}
 
+/// A decoded or textual source for one copied CLI envelope.
+///
+/// This trait lets the binary crate pass either an already decoded JSON value
+/// or copied envelope text without naming the private JSON type.
+pub trait EnvelopeSource {
+    /// Return the decoded envelope value, parsing text when necessary.
+    ///
+    /// # Returns
+    /// A borrowed value for decoded input or an owned value for text input.
+    fn envelope_json(&self) -> Result<Cow<'_, Json>, DataError>;
+}
+
+/// Treat an already decoded JSON value as an envelope source.
+impl EnvelopeSource for Json {
+    /// Return the borrowed decoded envelope value.
+    fn envelope_json(&self) -> Result<Cow<'_, Json>, DataError> {
+        Ok(Cow::Borrowed(self))
+    }
+}
+
+/// Parse borrowed text as an envelope source.
+impl EnvelopeSource for str {
+    /// Parse the text and return the owned decoded envelope value.
+    fn envelope_json(&self) -> Result<Cow<'_, Json>, DataError> {
+        let value = json::parse(self).map_err(|error| {
+            DataError::new(format!(
+                "invalid envelope JSON at byte {}: {}",
+                error.offset(),
+                error.message()
+            ))
+        })?;
+        Ok(Cow::Owned(value))
+    }
+}
+
+/// Parse an owned string as an envelope source.
+impl EnvelopeSource for String {
+    /// Parse the string contents and return the owned decoded envelope value.
+    fn envelope_json(&self) -> Result<Cow<'_, Json>, DataError> {
+        self.as_str().envelope_json()
+    }
+}
+
 /// The fixed CLI envelope wrapper around command-specific data.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Envelope {
@@ -68,7 +112,15 @@ impl Envelope {
                 error.message()
             ))
         })?;
-        let command = required_string(&root, "command", "envelope")?;
+        Self::from_json(&root, expected_command)
+    }
+
+    /// Validate one already-decoded envelope for the expected command.
+    fn from_json(root: &Json, expected_command: &str) -> Result<Self, DataError> {
+        if root.as_object().is_none() {
+            return Err(DataError::new("envelope root is not an object"));
+        }
+        let command = required_string(root, "command", "envelope")?;
         if command != expected_command {
             return Err(DataError::new(format!(
                 "expected '{expected_command}' envelope, received '{command}'"
@@ -85,8 +137,8 @@ impl Envelope {
                 "unsupported envelope schema_version {version}"
             )));
         }
-        let status = required_string(&root, "status", "envelope")?;
-        let error = required_string(&root, "error", "envelope")?;
+        let status = required_string(root, "status", "envelope")?;
+        let error = required_string(root, "error", "envelope")?;
         let data = root.get("data").cloned().unwrap_or(Json::Null);
         Ok(Self {
             command,
@@ -139,6 +191,25 @@ impl Envelope {
     }
 }
 
+/// Recover the explicit failure note from a copied CLI envelope.
+///
+/// A failed CLI command may carry `data: null` because it produced no command
+/// payload. Typed inspectors correctly refuse such a payload, but the envelope's
+/// status and error are still copyable evidence and must not be discarded.
+///
+/// # Parameters
+/// - `text`: Copied envelope JSON text.
+/// - `expected_command`: Command token the envelope is required to carry.
+///
+/// # Returns
+/// The stored `command reported status: error` note for a non-success envelope,
+/// or `None` when the text is not a valid envelope for that command.
+pub fn envelope_failure_note(text: &str, expected_command: &str) -> Option<String> {
+    let value = json::parse(text).ok()?;
+    let envelope = Envelope::from_json(&value, expected_command).ok()?;
+    envelope.failure_note()
+}
+
 /// Read one required string member.
 fn required_string(value: &Json, key: &str, context: &str) -> Result<String, DataError> {
     value
@@ -168,6 +239,15 @@ fn required_array<'a>(value: &'a Json, key: &str, context: &str) -> Result<&'a [
     value.get(key).and_then(Json::as_array).ok_or_else(|| {
         DataError::new(format!(
             "{context} member '{key}' is missing or not an array"
+        ))
+    })
+}
+
+/// Read one required boolean member.
+fn required_bool(value: &Json, key: &str, context: &str) -> Result<bool, DataError> {
+    value.get(key).and_then(Json::as_bool).ok_or_else(|| {
+        DataError::new(format!(
+            "{context} member '{key}' is missing or not a boolean"
         ))
     })
 }
@@ -928,6 +1008,20 @@ fn number_text(value: Option<&Json>) -> String {
     }
 }
 
+/// Render one stored JSON value as lossless display text.
+///
+/// Strings keep their decoded text, numbers keep their original token and a
+/// missing member becomes an empty string. A stored `null` is shown explicitly
+/// instead of being confused with a missing member.
+fn json_text(value: Option<&Json>) -> String {
+    match value {
+        None => String::new(),
+        Some(Json::Null) => "(null)".to_string(),
+        Some(Json::String(text)) => text.clone(),
+        Some(value) => value.compact(),
+    }
+}
+
 /// Append one semicolon-separated explanation to a status reason.
 fn append_reason(reason: &mut String, detail: &str) {
     if !reason.is_empty() {
@@ -1451,6 +1545,617 @@ impl RunInspection {
     }
 }
 
+/// One comparability warning copied from a stored comparison record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComparisonWarning {
+    /// Stable warning category such as `comparability`.
+    category: String,
+    /// Qualified metadata field that differs, such as `machine.cpu_model`.
+    field: String,
+    /// Human-readable explanation recorded by the core.
+    message: String,
+    /// Stored availability status of the baseline side.
+    left_status: String,
+    /// Stored value of the baseline side.
+    left_value: String,
+    /// Baseline status and value rendered as one display string.
+    left_text: String,
+    /// Stored availability status of the candidate side.
+    right_status: String,
+    /// Stored value of the candidate side.
+    right_value: String,
+    /// Candidate status and value rendered as one display string.
+    right_text: String,
+}
+
+/// Decode and expose one comparability warning without interpreting it.
+impl ComparisonWarning {
+    /// Decode one warning from a comparison's `comparability_warnings` array.
+    fn from_json(value: &Json) -> Result<Self, DataError> {
+        let left_status = optional_string(value, "left_status", "comparability warning")?;
+        let left_value = optional_string(value, "left_value", "comparability warning")?;
+        let right_status = optional_string(value, "right_status", "comparability warning")?;
+        let right_value = optional_string(value, "right_value", "comparability warning")?;
+        let left_text = format!(
+            "{}: {}",
+            value_or_placeholder(&left_status, "(unset)"),
+            value_or_placeholder(&left_value, "(unset)")
+        );
+        let right_text = format!(
+            "{}: {}",
+            value_or_placeholder(&right_status, "(unset)"),
+            value_or_placeholder(&right_value, "(unset)")
+        );
+        Ok(Self {
+            category: optional_string(value, "category", "comparability warning")?,
+            field: optional_string(value, "field", "comparability warning")?,
+            message: optional_string(value, "message", "comparability warning")?,
+            left_status,
+            left_value,
+            left_text,
+            right_status,
+            right_value,
+            right_text,
+        })
+    }
+
+    /// Return the stable warning category.
+    pub fn category(&self) -> &str {
+        &self.category
+    }
+
+    /// Return the qualified metadata field that differs.
+    pub fn field(&self) -> &str {
+        &self.field
+    }
+
+    /// Return the recorded human-readable explanation.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Return the baseline side as its stored status and value.
+    pub fn left(&self) -> &str {
+        &self.left_text
+    }
+
+    /// Return the candidate side as its stored status and value.
+    pub fn right(&self) -> &str {
+        &self.right_text
+    }
+
+    /// Return the stored baseline availability status.
+    pub fn left_status(&self) -> &str {
+        &self.left_status
+    }
+
+    /// Return the stored baseline value.
+    pub fn left_value(&self) -> &str {
+        &self.left_value
+    }
+
+    /// Return the stored candidate availability status.
+    pub fn right_status(&self) -> &str {
+        &self.right_status
+    }
+
+    /// Return the stored candidate value.
+    pub fn right_value(&self) -> &str {
+        &self.right_value
+    }
+}
+
+/// One metric entry copied from a stored comparison record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComparisonMetric {
+    /// Human-readable metric name as stored.
+    name: String,
+    /// Stable metric identifier such as `MET-01`.
+    metric_id: String,
+    /// Stored baseline metric status token.
+    baseline_status: String,
+    /// Stored candidate metric status token, including `<absent>`.
+    candidate_status: String,
+    /// Stored pairwise comparison status token.
+    comparison_status: String,
+    /// Stored per-metric classification token, empty in raw comparisons.
+    classification: String,
+    /// Original baseline value token, empty when stored as null.
+    baseline_value: String,
+    /// Original candidate value token, empty when stored as null.
+    candidate_value: String,
+    /// Original delta token, empty when stored as null.
+    delta: String,
+    /// Original relative-change token, empty when stored as null.
+    relative_change_percent: String,
+    /// Stored threshold decision token.
+    threshold_status: String,
+    /// Stored significance status token.
+    significance_status: String,
+    /// Stored significance explanation.
+    significance_reason: String,
+    /// Stored significance interval bounds.
+    interval: String,
+    /// Stored explanation for an unavailable or zero-baseline result.
+    reason: String,
+}
+
+/// Decode and expose one comparison metric without recomputing anything.
+impl ComparisonMetric {
+    /// Decode one entry from a comparison's `metrics` array.
+    fn from_json(value: &Json) -> Result<Self, DataError> {
+        let threshold = value.get("threshold_status");
+        let significance = value.get("significance");
+        let threshold_status = threshold
+            .map(|record| optional_string(record, "status", "comparison threshold status"))
+            .transpose()?
+            .unwrap_or_default();
+        let significance_status = significance
+            .map(|record| optional_string(record, "status", "comparison significance"))
+            .transpose()?
+            .unwrap_or_default();
+        let significance_reason = significance
+            .map(|record| optional_string(record, "reason", "comparison significance"))
+            .transpose()?
+            .unwrap_or_default();
+        let interval = significance
+            .map(|record| {
+                let low = json_text(record.get("interval_low"));
+                let high = json_text(record.get("interval_high"));
+                format!(
+                    "[{}, {}]",
+                    value_or_placeholder(&low, "(unset)"),
+                    value_or_placeholder(&high, "(unset)")
+                )
+            })
+            .unwrap_or_else(|| "[(unset), (unset)]".to_string());
+        Ok(Self {
+            name: optional_string(value, "name", "comparison metric")?,
+            metric_id: required_string(value, "metric_id", "comparison metric")?,
+            baseline_status: optional_string(value, "baseline_status", "comparison metric")?,
+            candidate_status: optional_string(value, "candidate_status", "comparison metric")?,
+            comparison_status: optional_string(value, "comparison_status", "comparison metric")?,
+            classification: optional_string(value, "classification", "comparison metric")?,
+            baseline_value: number_text(value.get("baseline_value")),
+            candidate_value: number_text(value.get("candidate_value")),
+            delta: number_text(value.get("delta")),
+            relative_change_percent: number_text(value.get("relative_change_percent")),
+            threshold_status,
+            significance_status,
+            significance_reason,
+            interval,
+            reason: optional_string(value, "reason", "comparison metric")?,
+        })
+    }
+
+    /// Return the stored metric name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Return the stored stable metric identifier.
+    pub fn metric_id(&self) -> &str {
+        &self.metric_id
+    }
+
+    /// Return the stored baseline metric status token.
+    pub fn baseline_status(&self) -> &str {
+        &self.baseline_status
+    }
+
+    /// Return the stored candidate metric status token.
+    pub fn candidate_status(&self) -> &str {
+        &self.candidate_status
+    }
+
+    /// Return the stored pairwise comparison status token.
+    pub fn comparison_status(&self) -> &str {
+        &self.comparison_status
+    }
+
+    /// Return the stored classification token, empty for raw comparisons.
+    pub fn classification(&self) -> &str {
+        &self.classification
+    }
+
+    /// Return the stored baseline value token, empty for a null value.
+    pub fn baseline_value(&self) -> &str {
+        &self.baseline_value
+    }
+
+    /// Return the stored candidate value token, empty for a null value.
+    pub fn candidate_value(&self) -> &str {
+        &self.candidate_value
+    }
+
+    /// Return the stored delta token, empty for a null delta.
+    pub fn delta(&self) -> &str {
+        &self.delta
+    }
+
+    /// Return the stored relative-change token, empty for a null value.
+    pub fn relative_change_percent(&self) -> &str {
+        &self.relative_change_percent
+    }
+
+    /// Return the stored threshold decision token.
+    pub fn threshold_status(&self) -> &str {
+        &self.threshold_status
+    }
+
+    /// Return the stored significance status token.
+    pub fn significance_status(&self) -> &str {
+        &self.significance_status
+    }
+
+    /// Return the stored significance explanation.
+    pub fn significance_reason(&self) -> &str {
+        &self.significance_reason
+    }
+
+    /// Return the stored significance interval bounds.
+    pub fn interval(&self) -> &str {
+        &self.interval
+    }
+
+    /// Return the stored explanation, including an explicit zero-baseline reason.
+    pub fn reason(&self) -> &str {
+        &self.reason
+    }
+}
+
+/// One stored core comparison record from RESULTS §10.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ComparisonRecord {
+    /// Human-readable baseline reference label.
+    baseline_reference: String,
+    /// Human-readable candidate reference label.
+    candidate_reference: String,
+    /// Stored baseline document status token.
+    baseline_status: String,
+    /// Stored candidate document status token.
+    candidate_status: String,
+    /// Stored comparison level token.
+    level: String,
+    /// Stored overall classification token.
+    classification: String,
+    /// Stored threshold percentage token, absent when null or missing.
+    threshold_percent: Option<String>,
+    /// Stored threshold status token.
+    threshold_status: String,
+    /// Stored threshold explanation.
+    threshold_reason: String,
+    /// Stored statistics object as ordered name/value text pairs.
+    statistics: Vec<(String, String)>,
+    /// Stored aggregate significance object as ordered name/value text pairs.
+    significance: Vec<(String, String)>,
+    /// Stored comparability warnings in source order.
+    warnings: Vec<ComparisonWarning>,
+    /// Stored metric comparisons in source order.
+    metrics: Vec<ComparisonMetric>,
+}
+
+/// Decode and expose one stored comparison record without recomputing metrics.
+impl ComparisonRecord {
+    /// Decode one RESULTS §10 comparison record.
+    ///
+    /// Every token is copied verbatim: a null or missing threshold remains absent,
+    /// an unknown token is not normalised and a per-metric null value keeps its
+    /// stored reason. No delta, threshold decision or significance is recomputed.
+    ///
+    /// # Parameters
+    /// - `value`: Decoded comparison object from a result document or CLI envelope.
+    ///
+    /// # Returns
+    /// The typed view, or an error naming the missing or invalid record member.
+    pub fn from_json(value: &Json) -> Result<Self, DataError> {
+        if value.as_object().is_none() {
+            return Err(DataError::new("comparison record is not an object"));
+        }
+        let baseline = value
+            .get("baseline")
+            .filter(|entry| entry.as_object().is_some())
+            .ok_or_else(|| {
+                DataError::new("comparison member 'baseline' is missing or not an object")
+            })?;
+        let candidate = value
+            .get("candidate")
+            .filter(|entry| entry.as_object().is_some())
+            .ok_or_else(|| {
+                DataError::new("comparison member 'candidate' is missing or not an object")
+            })?;
+        let threshold_status = value
+            .get("threshold_status")
+            .filter(|entry| entry.as_object().is_some())
+            .ok_or_else(|| {
+                DataError::new("comparison member 'threshold_status' is missing or not an object")
+            })?;
+        let threshold_percent = match value.get("threshold_percent") {
+            None | Some(Json::Null) => None,
+            Some(Json::Number(text)) | Some(Json::String(text)) => Some(text.clone()),
+            Some(_) => {
+                return Err(DataError::new(
+                    "comparison member 'threshold_percent' is not a number, string or null",
+                ));
+            }
+        };
+        let warnings = optional_array(value, "comparability_warnings", "comparison record")?
+            .iter()
+            .map(ComparisonWarning::from_json)
+            .collect::<Result<Vec<_>, _>>()?;
+        let metrics = required_array(value, "metrics", "comparison record")?
+            .iter()
+            .map(ComparisonMetric::from_json)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            baseline_reference: optional_string(baseline, "reference", "comparison baseline")?,
+            candidate_reference: optional_string(candidate, "reference", "comparison candidate")?,
+            baseline_status: optional_string(baseline, "status", "comparison baseline")?,
+            candidate_status: optional_string(candidate, "status", "comparison candidate")?,
+            level: required_string(value, "level", "comparison record")?,
+            classification: required_string(value, "classification", "comparison record")?,
+            threshold_percent,
+            threshold_status: required_string(
+                threshold_status,
+                "status",
+                "comparison threshold status",
+            )?,
+            threshold_reason: optional_string(
+                threshold_status,
+                "reason",
+                "comparison threshold status",
+            )?,
+            statistics: summary_pairs(value.get("statistics")),
+            significance: summary_pairs(value.get("significance")),
+            warnings,
+            metrics,
+        })
+    }
+
+    /// Return the stored baseline reference label.
+    pub fn baseline_reference(&self) -> &str {
+        &self.baseline_reference
+    }
+
+    /// Return the stored candidate reference label.
+    pub fn candidate_reference(&self) -> &str {
+        &self.candidate_reference
+    }
+
+    /// Return the stored baseline document status token.
+    pub fn baseline_status(&self) -> &str {
+        &self.baseline_status
+    }
+
+    /// Return the stored candidate document status token.
+    pub fn candidate_status(&self) -> &str {
+        &self.candidate_status
+    }
+
+    /// Return the stored comparison level token.
+    pub fn level(&self) -> &str {
+        &self.level
+    }
+
+    /// Return the stored overall classification token.
+    pub fn classification(&self) -> &str {
+        &self.classification
+    }
+
+    /// Return the stored threshold percentage token when present.
+    pub fn threshold_percent(&self) -> Option<&str> {
+        self.threshold_percent.as_deref()
+    }
+
+    /// Return the stored threshold status token.
+    pub fn threshold_status(&self) -> &str {
+        &self.threshold_status
+    }
+
+    /// Return the stored threshold explanation.
+    pub fn threshold_reason(&self) -> &str {
+        &self.threshold_reason
+    }
+
+    /// Return the stored statistics object as ordered name/value pairs.
+    pub fn statistics_summary(&self) -> Vec<(String, String)> {
+        self.statistics.clone()
+    }
+
+    /// Return the stored aggregate significance object as ordered name/value pairs.
+    pub fn significance_summary(&self) -> Vec<(String, String)> {
+        self.significance.clone()
+    }
+
+    /// Return every stored comparability warning in source order.
+    pub fn comparability_warnings(&self) -> &[ComparisonWarning] {
+        &self.warnings
+    }
+
+    /// Return every stored metric comparison in source order.
+    pub fn metrics(&self) -> &[ComparisonMetric] {
+        &self.metrics
+    }
+}
+
+/// Copy one stored comparison statistics or significance object into display pairs.
+fn summary_pairs(value: Option<&Json>) -> Vec<(String, String)> {
+    value
+        .and_then(Json::as_object)
+        .map(|entries| {
+            entries
+                .iter()
+                .map(|(name, member)| (name.clone(), json_text(Some(member))))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A typed view of the `compare` CLI envelope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComparisonInspection {
+    /// Decoded core comparison record.
+    record: ComparisonRecord,
+    /// Verbatim comparison value copied from the envelope.
+    record_json: Json,
+    /// Stored regression flag from the envelope.
+    regression_detected: bool,
+    /// Envelope command status token.
+    envelope_status: String,
+    /// Envelope command error text.
+    envelope_error: String,
+}
+
+/// Decode and inspect one `compare` envelope without recomputing comparisons.
+impl ComparisonInspection {
+    /// Decode one `compare` CLI envelope into its record and regression flag.
+    ///
+    /// A failed command still exposes its stored status, error and comparison
+    /// record whenever the envelope carries an object data payload.
+    ///
+    /// # Parameters
+    /// - `envelope`: Decoded JSON value, borrowed text or owned string holding a
+    ///   versioned CLI envelope.
+    ///
+    /// # Returns
+    /// The typed view, or an error naming the missing or invalid member.
+    pub fn from_envelope<S: EnvelopeSource + ?Sized>(envelope: &S) -> Result<Self, DataError> {
+        let envelope = envelope.envelope_json()?;
+        let parsed = Envelope::from_json(&envelope, "compare")?;
+        let data = parsed.data()?;
+        let record = data
+            .get("comparison")
+            .ok_or_else(|| DataError::new("compare data member 'comparison' is missing"))?;
+        Ok(Self {
+            record: ComparisonRecord::from_json(record)?,
+            record_json: record.clone(),
+            regression_detected: required_bool(data, "regression_detected", "compare data")?,
+            envelope_status: parsed.status().to_string(),
+            envelope_error: parsed.error().to_string(),
+        })
+    }
+
+    /// Return the decoded core comparison record.
+    pub fn record(&self) -> &ComparisonRecord {
+        &self.record
+    }
+
+    /// Return the stored comparison record as compact JSON text.
+    ///
+    /// The output preserves the envelope's member order and stored tokens, so a
+    /// caller that only needs to persist the record never has to name the JSON type.
+    pub fn record_json_text(&self) -> String {
+        self.record_json.compact()
+    }
+
+    /// Return the stored regression flag.
+    pub fn regression_detected(&self) -> bool {
+        self.regression_detected
+    }
+
+    /// Return the envelope command status token.
+    pub fn envelope_status(&self) -> &str {
+        &self.envelope_status
+    }
+
+    /// Return the envelope command error text.
+    pub fn envelope_error(&self) -> &str {
+        &self.envelope_error
+    }
+}
+
+/// A typed view of the `report` CLI envelope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReportInspection {
+    /// Verbatim full envelope value copied from the front end.
+    envelope: Json,
+    /// Decoded result document embedded in the report.
+    result: ResultInspection,
+    /// Status stored in the result document as reported by the CLI.
+    stored_status: String,
+    /// Status derived from stored failure evidence by the CLI.
+    derived_status: String,
+    /// CLI explanation for a derived incomplete status.
+    status_reason: String,
+    /// Envelope command status token.
+    envelope_status: String,
+    /// Envelope command error text.
+    envelope_error: String,
+}
+
+/// Decode and inspect one `report` envelope without recomputing metrics.
+impl ReportInspection {
+    /// Decode one `report` CLI envelope and its embedded result document.
+    ///
+    /// The embedded document is handed to [`ResultInspection::from_json`] so the
+    /// report view cannot disagree with the results screen about stored evidence.
+    ///
+    /// # Parameters
+    /// - `envelope`: Decoded JSON value, borrowed text or owned string holding a
+    ///   versioned CLI envelope.
+    ///
+    /// # Returns
+    /// The typed view, or an error naming the missing or invalid member.
+    pub fn from_envelope<S: EnvelopeSource + ?Sized>(envelope: &S) -> Result<Self, DataError> {
+        let envelope = envelope.envelope_json()?;
+        let parsed = Envelope::from_json(&envelope, "report")?;
+        let data = parsed.data()?;
+        let document = data
+            .get("document")
+            .filter(|entry| entry.as_object().is_some())
+            .ok_or_else(|| {
+                DataError::new("report data member 'document' is missing or not an object")
+            })?;
+        Ok(Self {
+            envelope: envelope.as_ref().clone(),
+            result: ResultInspection::from_json(&document.compact())?,
+            stored_status: required_string(data, "stored_status", "report data")?,
+            derived_status: required_string(data, "derived_status", "report data")?,
+            status_reason: required_string(data, "status_reason", "report data")?,
+            envelope_status: parsed.status().to_string(),
+            envelope_error: parsed.error().to_string(),
+        })
+    }
+
+    /// Return the decoded embedded result document.
+    pub fn result(&self) -> &ResultInspection {
+        &self.result
+    }
+
+    /// Return the full copied report envelope as compact JSON text.
+    ///
+    /// All envelope members, including command status, error and data payload,
+    /// are preserved with their original order and stored tokens.
+    pub fn envelope_json_text(&self) -> String {
+        self.envelope.compact()
+    }
+
+    /// Return the status stored in the result document.
+    pub fn stored_status(&self) -> &str {
+        &self.stored_status
+    }
+
+    /// Return the status derived from stored evidence.
+    pub fn derived_status(&self) -> &str {
+        &self.derived_status
+    }
+
+    /// Return the CLI explanation for a derived incomplete status.
+    pub fn status_reason(&self) -> &str {
+        &self.status_reason
+    }
+
+    /// Return the envelope command status token.
+    pub fn envelope_status(&self) -> &str {
+        &self.envelope_status
+    }
+
+    /// Return the envelope command error text.
+    pub fn envelope_error(&self) -> &str {
+        &self.envelope_error
+    }
+}
+
 /// A typed, read-only view of one stored result document.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ResultInspection {
@@ -1470,6 +2175,8 @@ pub struct ResultInspection {
     warnings: Vec<ResultIssue>,
     /// Session-level classified failures.
     failures: Vec<ResultIssue>,
+    /// Stored comparison records in source order.
+    comparisons: Vec<ComparisonRecord>,
 }
 
 /// Decode and inspect one stored result document without recomputing metrics.
@@ -1516,6 +2223,10 @@ impl ResultInspection {
             .iter()
             .map(ResultIssue::from_json)
             .collect::<Result<Vec<_>, _>>()?;
+        let comparisons = optional_array(&root, "comparisons", "result document")?
+            .iter()
+            .map(ComparisonRecord::from_json)
+            .collect::<Result<Vec<_>, _>>()?;
 
         let mut status_reason = String::new();
         let mut incomplete = stored_status != "complete";
@@ -1554,6 +2265,7 @@ impl ResultInspection {
             runs,
             warnings,
             failures,
+            comparisons,
         })
     }
 
@@ -1600,6 +2312,11 @@ impl ResultInspection {
     /// Return every session-level failure.
     pub fn failures(&self) -> &[ResultIssue] {
         &self.failures
+    }
+
+    /// Return every stored comparison in source order.
+    pub fn comparisons(&self) -> &[ComparisonRecord] {
+        &self.comparisons
     }
 }
 
@@ -2340,9 +3057,10 @@ fn parse_capability_mask(text: &str) -> Option<u64> {
 mod tests {
     use super::fixtures::RESULT_JSON;
     use super::{
-        AvailabilityField, AvailabilityStatus, DashboardData, DataError, Envelope,
-        PluginInspection, PluginList, PortabilityReport, PortableConfig, ProfileList,
-        SystemInventory,
+        AvailabilityField, AvailabilityStatus, ComparisonInspection, ComparisonRecord,
+        DashboardData, DataError, Envelope, PluginInspection, PluginList, PortabilityReport,
+        PortableConfig, ProfileList, ReportInspection, ResultInspection, SystemInventory,
+        envelope_failure_note,
     };
     use crate::config::DEFAULT_CONFIG_JSON;
     use crate::json::{Json, parse};
@@ -2355,6 +3073,38 @@ mod tests {
     const PLUGIN_JSON: &str = r#"{"schema_version":1,"command":"plugin list","status":"success","exit_code":0,"data":{"directories":[{"path":"/plugins","status":"unavailable","reason":"missing"}],"trust":{"status":"available","reason":"","entries":[]},"plugins":[{"path":"/plugins/app.so","source":"explicit_path","status":"success","reason":"","identifier":"app-a","name":"App A","version":"1.2.3","sdk_version":"1.0.0","capabilities":"0x7c","trust":"untrusted"}]},"error":""}"#;
     /// A plugin inspection envelope with core compatibility.
     const INSPECT_JSON: &str = r#"{"schema_version":1,"command":"plugin inspect","status":"success","exit_code":0,"data":{"path":"/plugins/app.so","status":"success","reason":"no reason recorded","metadata":{"identifier":"app-a","name":"App A","version":"1.2.3","sdk_version":"1.0.0","capabilities":"0x7c","metadata":"test adapter"},"compatibility":{"status":"success","reason":"no reason recorded"},"trust":{"status":"available","reason":"","entries":[],"state":"untrusted"}},"error":""}"#;
+
+    /// A raw core comparison with null threshold and unavailable/unmatched metrics.
+    const RAW_COMPARISON_JSON: &str = r#"{"baseline":{"reference":"baseline.json","session_id":"s-1","status":"complete","run_count":1,"metric_count":2},"candidate":{"reference":"candidate.json","session_id":"s-2","status":"incomplete","run_count":1,"metric_count":1},"level":"build_to_build","threshold_percent":null,"threshold_status":{"status":"not_applicable","reason":"threshold checks were not requested"},"statistics":{"status":"not_applicable","reason":"variability statistics were not requested"},"significance":{"status":"not_applicable","reason":"significance tests were not requested"},"classification":"raw_difference","comparability_warnings":[{"category":"comparability","field":"machine.cpu_model","left_status":"value","left_value":"Old CPU","right_status":"value","right_value":"New CPU","message":"machine.cpu_model differs between documents"}],"metrics":[{"run_id":"run-1","metric_id":"MET-08","name":"P90","unit":"s","baseline_status":"unavailable","candidate_status":"unavailable","baseline_reason":"no samples","candidate_reason":"no samples","baseline_value":null,"candidate_value":null,"delta":null,"relative_change_percent":null,"comparison_status":"unavailable","reason":"baseline value is not a finite number; candidate value is not a finite number"},{"run_id":"run-1","metric_id":"MET-99","name":"Unmatched","unit":"s","baseline_status":"measured","candidate_status":"<absent>","baseline_value":1.5,"candidate_value":null,"delta":null,"relative_change_percent":null,"comparison_status":"unmatched","side":"baseline","reason":"no corresponding metric in the candidate document"}],"context":{}}"#;
+    /// A classified comparison with significance, a regression and a zero baseline.
+    const POLICY_COMPARISON_JSON: &str = r#"{"baseline":{"reference":"baseline.json","session_id":"s-1","status":"complete","run_count":1,"metric_count":2},"candidate":{"reference":"candidate.json","session_id":"s-2","status":"complete","run_count":1,"metric_count":2},"level":"run_to_run","threshold_percent":5.0,"threshold_status":{"status":"applied","reason":"configured percentage threshold applied to absolute relative change"},"statistics":{"status":"applied","reason":"threshold and bootstrap checks applied once per distinct metric identifier","method":"bootstrap_percentile","threshold_percent":5.0,"alpha":0.05,"sided":"two","iterations":1000,"seed":7,"multiplicity":"unadjusted","metrics_compared":2,"metrics_tested":1,"outliers_removed":0},"significance":{"status":"applied","reason":"bootstrap percentile intervals over distinct run-level metric values","method":"bootstrap_percentile","regressions":1,"improvements":0,"raw_differences":0,"within_variability":1},"classification":"regression","comparability_warnings":[],"metrics":[{"run_id":"run-1","metric_id":"MET-01","name":"Execution time","unit":"s","baseline_status":"measured","candidate_status":"measured","baseline_reason":"","candidate_reason":"","baseline_value":0.5,"candidate_value":0.6,"delta":0.1,"relative_change_percent":20.0,"comparison_status":"raw_difference","reason":"","baseline_samples":[0.5],"candidate_samples":[0.6],"baseline_sample_count":1,"candidate_sample_count":1,"baseline_mean":0.5,"candidate_mean":0.6,"aggregate_delta":0.1,"aggregate_relative_change_percent":20.0,"polarity":"lower_is_better","threshold_status":{"status":"applied","reason":"absolute relative change of run-level sample means compared with the configured percentage threshold"},"threshold_exceeded":true,"significance":{"status":"applied","reason":"interval excludes zero","method":"bootstrap_percentile","alpha":0.05,"sided":"two","significant":true,"interval_low":0.08,"interval_high":0.12},"classification":"regression"},{"run_id":"run-1","metric_id":"MET-11","name":"Throughput","unit":"frames/s","baseline_status":"measured","candidate_status":"measured","baseline_reason":"","candidate_reason":"","baseline_value":0,"candidate_value":10,"delta":10,"relative_change_percent":null,"comparison_status":"raw_difference","reason":"baseline value is zero","baseline_samples":[0],"candidate_samples":[10],"baseline_sample_count":1,"candidate_sample_count":1,"baseline_mean":0,"candidate_mean":10,"aggregate_delta":10,"aggregate_relative_change_percent":null,"polarity":"higher_is_better","threshold_status":{"status":"not_applicable","reason":"baseline sample mean is zero or the relative change is not finite"},"threshold_exceeded":false,"significance":{"status":"not_applicable","reason":"bootstrap interval is unavailable"},"classification":"within_variability"}],"context":{}}"#;
+
+    /// Build one compare envelope around a stored comparison record.
+    fn compare_envelope(comparison: &str, status: &str, error: &str) -> String {
+        format!(
+            r#"{{"schema_version":1,"command":"compare","status":"{status}","exit_code":0,"data":{{"comparison":{comparison},"regression_detected":true}},"error":"{error}"}}"#
+        )
+    }
+
+    /// Build one report envelope around a stored result document.
+    fn report_envelope(document: &str, status: &str, error: &str) -> String {
+        format!(
+            r#"{{"schema_version":1,"command":"report","status":"{status}","exit_code":0,"data":{{"document":{document},"derived_status":"complete","stored_status":"complete","status_reason":""}},"error":"{error}"}}"#
+        )
+    }
+
+    /// Replace the empty comparison array in the shared result fixture.
+    fn result_with_comparison(comparison: &str) -> String {
+        let mut root = parse(RESULT_JSON).expect("result fixture parses");
+        let records = Json::Array(vec![parse(comparison).expect("comparison fixture parses")]);
+        if let Json::Object(ref mut entries) = root {
+            match entries.iter_mut().find(|(name, _)| name == "comparisons") {
+                Some((_, value)) => *value = records,
+                None => entries.push(("comparisons".to_string(), records)),
+            }
+        }
+        root.compact()
+    }
 
     /// Build one availability field from explicit record parts.
     fn field(name: &str, status: &str, value: &str, reason: &str) -> AvailabilityField {
@@ -2940,5 +3690,282 @@ mod tests {
         let message = parse(r#"{"category":"","message":"reason"}"#).expect("issue JSON parses");
         let issue = super::ResultIssue::from_json(&message).expect("issue decodes");
         assert_eq!(issue.display(), "reason");
+    }
+
+    /// Verify a raw comparison keeps absent thresholds, null values and status evidence.
+    #[test]
+    fn comparison_record_preserves_raw_tokens_and_absences() {
+        let record = ComparisonRecord::from_json(&parse(RAW_COMPARISON_JSON).expect("raw parses"))
+            .expect("raw comparison decodes");
+        assert_eq!(record.baseline_reference(), "baseline.json");
+        assert_eq!(record.candidate_reference(), "candidate.json");
+        assert_eq!(record.baseline_status(), "complete");
+        assert_eq!(record.candidate_status(), "incomplete");
+        assert_eq!(record.level(), "build_to_build");
+        assert_eq!(record.classification(), "raw_difference");
+        assert_eq!(record.threshold_percent(), None);
+        assert_eq!(record.threshold_status(), "not_applicable");
+        assert!(record.threshold_reason().contains("not requested"));
+        assert_eq!(
+            record.statistics_summary()[0],
+            ("status".to_string(), "not_applicable".to_string())
+        );
+        assert_eq!(
+            record.significance_summary()[0],
+            ("status".to_string(), "not_applicable".to_string())
+        );
+
+        let warning = &record.comparability_warnings()[0];
+        assert_eq!(warning.category(), "comparability");
+        assert_eq!(warning.field(), "machine.cpu_model");
+        assert!(warning.message().contains("differs"));
+        assert!(warning.left().contains("Old CPU"));
+        assert!(warning.right().contains("New CPU"));
+        assert_eq!(warning.left_status(), "value");
+        assert_eq!(warning.left_value(), "Old CPU");
+        assert_eq!(warning.right_status(), "value");
+        assert_eq!(warning.right_value(), "New CPU");
+
+        let unavailable = &record.metrics()[0];
+        assert_eq!(unavailable.name(), "P90");
+        assert_eq!(unavailable.metric_id(), "MET-08");
+        assert_eq!(unavailable.baseline_status(), "unavailable");
+        assert_eq!(unavailable.candidate_status(), "unavailable");
+        assert_eq!(unavailable.comparison_status(), "unavailable");
+        assert_eq!(unavailable.baseline_value(), "");
+        assert_eq!(unavailable.candidate_value(), "");
+        assert_eq!(unavailable.delta(), "");
+        assert_eq!(unavailable.relative_change_percent(), "");
+        assert_eq!(unavailable.classification(), "");
+        assert_eq!(unavailable.threshold_status(), "");
+        assert_eq!(unavailable.significance_status(), "");
+        assert_eq!(unavailable.interval(), "[(unset), (unset)]");
+        assert_eq!(
+            unavailable.reason(),
+            "baseline value is not a finite number; candidate value is not a finite number"
+        );
+        let unmatched = &record.metrics()[1];
+        assert_eq!(unmatched.baseline_status(), "measured");
+        assert_eq!(unmatched.candidate_status(), "<absent>");
+        assert_eq!(unmatched.comparison_status(), "unmatched");
+        assert_eq!(unmatched.baseline_value(), "1.5");
+    }
+
+    /// Verify policy evidence is copied without recomputing decisions.
+    #[test]
+    fn comparison_record_preserves_policy_evidence() {
+        let record =
+            ComparisonRecord::from_json(&parse(POLICY_COMPARISON_JSON).expect("policy parses"))
+                .expect("policy comparison decodes");
+        assert_eq!(record.threshold_percent(), Some("5.0"));
+        assert_eq!(record.threshold_status(), "applied");
+        assert_eq!(record.classification(), "regression");
+        let statistics = record.statistics_summary();
+        assert!(statistics.contains(&("alpha".to_string(), "0.05".to_string())));
+        assert!(statistics.contains(&("sided".to_string(), "two".to_string())));
+        assert!(statistics.contains(&("multiplicity".to_string(), "unadjusted".to_string())));
+        let significance = record.significance_summary();
+        assert!(significance.contains(&("regressions".to_string(), "1".to_string())));
+
+        let regression = &record.metrics()[0];
+        assert_eq!(regression.delta(), "0.1");
+        assert_eq!(regression.relative_change_percent(), "20.0");
+        assert_eq!(regression.comparison_status(), "raw_difference");
+        assert_eq!(regression.classification(), "regression");
+        assert_eq!(regression.threshold_status(), "applied");
+        assert_eq!(regression.significance_status(), "applied");
+        assert_eq!(regression.significance_reason(), "interval excludes zero");
+        assert_eq!(regression.interval(), "[0.08, 0.12]");
+    }
+
+    /// Verify a zero baseline keeps its explicit reason and null relative change.
+    #[test]
+    fn zero_baseline_keeps_explicit_reason_without_recomputation() {
+        let record =
+            ComparisonRecord::from_json(&parse(POLICY_COMPARISON_JSON).expect("policy parses"))
+                .expect("policy comparison decodes");
+        let metric = &record.metrics()[1];
+        assert_eq!(metric.metric_id(), "MET-11");
+        assert_eq!(metric.baseline_value(), "0");
+        assert_eq!(metric.delta(), "10");
+        assert_eq!(metric.relative_change_percent(), "");
+        assert_eq!(metric.reason(), "baseline value is zero");
+        assert_eq!(metric.threshold_status(), "not_applicable");
+        assert!(metric.threshold_status().contains("not_applicable"));
+        assert_eq!(metric.significance_status(), "not_applicable");
+        assert_eq!(metric.interval(), "[(unset), (unset)]");
+    }
+
+    /// Verify unrecognised stored tokens are preserved verbatim.
+    #[test]
+    fn unknown_comparison_tokens_are_never_normalised() {
+        let future = RAW_COMPARISON_JSON
+            .replace("\"level\":\"build_to_build\"", "\"level\":\"future_level\"")
+            .replace(
+                "\"classification\":\"raw_difference\"",
+                "\"classification\":\"future_class\"",
+            )
+            .replace(
+                "\"comparison_status\":\"unavailable\"",
+                "\"comparison_status\":\"future_metric\"",
+            );
+        let record = ComparisonRecord::from_json(&parse(&future).expect("future JSON parses"))
+            .expect("future tokens decode");
+        assert_eq!(record.level(), "future_level");
+        assert_eq!(record.classification(), "future_class");
+        assert_eq!(record.metrics()[0].comparison_status(), "future_metric");
+        assert_eq!(record.threshold_status(), "not_applicable");
+    }
+
+    /// Verify malformed comparison records report explicit errors.
+    #[test]
+    fn comparison_record_rejects_malformed_records() {
+        assert!(ComparisonRecord::from_json(&parse("[]").expect("array parses")).is_err());
+        let no_baseline = RAW_COMPARISON_JSON.replace("\"baseline\":{", "\"missing_baseline\":{");
+        assert!(ComparisonRecord::from_json(&parse(&no_baseline).expect("JSON parses")).is_err());
+        let no_metrics = RAW_COMPARISON_JSON.replace("\"metrics\":[", "\"other\":[");
+        assert!(ComparisonRecord::from_json(&parse(&no_metrics).expect("JSON parses")).is_err());
+        let bad_threshold =
+            RAW_COMPARISON_JSON.replace("\"threshold_percent\":null", "\"threshold_percent\":[]");
+        assert!(ComparisonRecord::from_json(&parse(&bad_threshold).expect("JSON parses")).is_err());
+        let no_status = RAW_COMPARISON_JSON.replace(
+            "\"threshold_status\":{\"status\"",
+            "\"threshold_status\":{\"other\"",
+        );
+        assert!(ComparisonRecord::from_json(&parse(&no_status).expect("JSON parses")).is_err());
+    }
+
+    /// Verify a failed compare envelope keeps its record, flag and error text.
+    #[test]
+    fn comparison_inspection_preserves_failed_envelope_evidence() {
+        let text = compare_envelope(RAW_COMPARISON_JSON, "failure", "compare source unavailable");
+        let parsed = parse(&text).expect("compare envelope parses");
+        let inspection =
+            ComparisonInspection::from_envelope(&parsed).expect("compare envelope decodes");
+        assert!(inspection.regression_detected());
+        assert_eq!(inspection.envelope_status(), "failure");
+        assert_eq!(inspection.envelope_error(), "compare source unavailable");
+        assert_eq!(inspection.record().threshold_percent(), None);
+        assert_eq!(
+            inspection.record().metrics()[0].comparison_status(),
+            "unavailable"
+        );
+        assert_eq!(
+            inspection.record_json_text(),
+            parse(RAW_COMPARISON_JSON)
+                .expect("raw comparison parses")
+                .compact()
+        );
+        assert_eq!(
+            ComparisonInspection::from_envelope(&text).expect("compare text decodes"),
+            inspection
+        );
+        assert!(ComparisonInspection::from_envelope("not json").is_err());
+
+        let wrong = text.replace("\"command\":\"compare\"", "\"command\":\"report\"");
+        assert!(ComparisonInspection::from_envelope(&parse(&wrong).expect("JSON parses")).is_err());
+        let no_record = compare_envelope(r#"{}"#, "success", "");
+        assert!(
+            ComparisonInspection::from_envelope(&parse(&no_record).expect("JSON parses")).is_err()
+        );
+        let no_flag = text.replace(
+            "\"regression_detected\":true",
+            "\"regression_detected\":\"yes\"",
+        );
+        assert!(
+            ComparisonInspection::from_envelope(&parse(&no_flag).expect("JSON parses")).is_err()
+        );
+        let no_data = r#"{"schema_version":1,"command":"compare","status":"success","exit_code":0,"data":null,"error":""}"#;
+        assert!(
+            ComparisonInspection::from_envelope(&parse(no_data).expect("JSON parses")).is_err()
+        );
+    }
+
+    /// Verify a report envelope decodes its embedded document and stored statuses.
+    #[test]
+    fn report_inspection_reuses_result_inspection_and_preserves_status() {
+        let document = result_with_comparison(RAW_COMPARISON_JSON);
+        let text = report_envelope(&document, "success", "");
+        let parsed = parse(&text).expect("report envelope parses");
+        let inspection = ReportInspection::from_envelope(&parsed).expect("report envelope decodes");
+        assert_eq!(inspection.stored_status(), "complete");
+        assert_eq!(inspection.derived_status(), "complete");
+        assert_eq!(inspection.status_reason(), "");
+        assert_eq!(inspection.envelope_status(), "success");
+        assert_eq!(inspection.envelope_error(), "");
+        assert_eq!(inspection.result().schema_version(), "1.0.0");
+        assert_eq!(inspection.result().comparisons().len(), 1);
+        assert_eq!(
+            inspection.result().comparisons()[0].classification(),
+            "raw_difference"
+        );
+        assert_eq!(inspection.envelope_json_text(), parsed.compact());
+        assert_eq!(
+            ReportInspection::from_envelope(&text).expect("report text decodes"),
+            inspection
+        );
+        assert!(ReportInspection::from_envelope("not json").is_err());
+
+        let failed = report_envelope(&document, "failure", "report unavailable");
+        let failed = parse(&failed).expect("failed envelope parses");
+        let inspection =
+            ReportInspection::from_envelope(&failed).expect("failed report envelope decodes");
+        assert_eq!(inspection.envelope_status(), "failure");
+        assert_eq!(inspection.envelope_error(), "report unavailable");
+        assert!(
+            inspection.result().comparisons()[0]
+                .threshold_percent()
+                .is_none()
+        );
+
+        let wrong = text.replace("\"command\":\"report\"", "\"command\":\"compare\"");
+        assert!(ReportInspection::from_envelope(&parse(&wrong).expect("JSON parses")).is_err());
+        let no_document = report_envelope(r#"[]"#, "success", "");
+        assert!(
+            ReportInspection::from_envelope(&parse(&no_document).expect("JSON parses")).is_err()
+        );
+        let broken = report_envelope(r#"{"schema_version":"1.0.0"}"#, "success", "");
+        assert!(ReportInspection::from_envelope(&parse(&broken).expect("JSON parses")).is_err());
+    }
+
+    /// Verify a failed envelope with null data still exposes its stored error.
+    #[test]
+    fn failure_note_survives_a_null_data_envelope() {
+        let compare = r#"{"schema_version":1,"command":"compare","status":"failure","exit_code":1,"data":null,"error":"cannot read baseline result"}"#;
+        assert_eq!(
+            envelope_failure_note(compare, "compare"),
+            Some("compare reported failure: cannot read baseline result".to_string())
+        );
+        assert!(
+            ComparisonInspection::from_envelope(&parse(compare).expect("JSON parses")).is_err()
+        );
+        assert_eq!(envelope_failure_note(compare, "report"), None);
+        assert_eq!(envelope_failure_note("not json", "compare"), None);
+        assert_eq!(
+            envelope_failure_note(
+                r#"{"schema_version":1,"command":"report","status":"success","exit_code":0,"data":{},"error":""}"#,
+                "report"
+            ),
+            None
+        );
+    }
+
+    /// Verify stored comparisons are decoded from a result document without changes.
+    #[test]
+    fn result_inspection_keeps_stored_comparisons() {
+        let document = result_with_comparison(POLICY_COMPARISON_JSON);
+        let result = ResultInspection::from_json(&document).expect("result decodes");
+        assert_eq!(result.comparisons().len(), 1);
+        let comparison = &result.comparisons()[0];
+        assert_eq!(comparison.level(), "run_to_run");
+        assert_eq!(comparison.threshold_percent(), Some("5.0"));
+        assert_eq!(comparison.metrics()[0].classification(), "regression");
+        assert_eq!(comparison.metrics()[1].reason(), "baseline value is zero");
+        assert!(result.comparisons()[0].significance_summary().len() > 1);
+
+        let minimal =
+            r#"{"schema_version":"1.0.0","sdk_version":"1.0.0","status":"complete","runs":[]}"#;
+        let result = ResultInspection::from_json(minimal).expect("minimal result decodes");
+        assert!(result.comparisons().is_empty());
     }
 }

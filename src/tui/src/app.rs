@@ -4,13 +4,15 @@
 //! P5.2 added the three read-only screens. P5.3 adds the editable config
 //! screens, typed input state, named-profile selection and the portability gate.
 //! P5.4 carries live run progress; P5.5 retains the completed run's result path
-//! and typed inspection. No metric computation belongs here.
+//! and typed inspection. P5.6 retains comparison, report and bundle evidence
+//! without recomputing metrics.
 
 use std::path::PathBuf;
 
 use crate::config::EditableField;
 use crate::data::{
-    DashboardData, PluginCandidate, PluginInspection, PortabilityReport, ResultInspection,
+    ComparisonInspection, DashboardData, PluginCandidate, PluginInspection, PortabilityReport,
+    ReportInspection, ResultInspection,
 };
 use crate::profile::SavedProfile;
 use crate::{
@@ -167,7 +169,7 @@ pub struct ExecutionProgress {
     pub result_status: String,
 }
 
-/// Screens available after Phase 5.5.
+/// Screens available after Phase 5.6.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Screen {
     /// Orientation summary and active run state.
@@ -191,6 +193,10 @@ pub enum Screen {
     Profiles,
     /// Detailed inspection of one stored result document.
     Results,
+    /// Core comparison records with threshold and significance evidence.
+    Compare,
+    /// Report envelopes, CSV projections and session bundle operations.
+    Report,
 }
 
 /// Provide screen titles and cyclic navigation.
@@ -208,11 +214,13 @@ impl Screen {
             Self::Execution => "Execution monitoring",
             Self::Profiles => "Profiles & settings",
             Self::Results => "Results inspection",
+            Self::Compare => "Compare",
+            Self::Report => "Report / Export",
         }
     }
 
     /// Return all screens in navigation order.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::Dashboard,
         Self::System,
         Self::Integrations,
@@ -223,6 +231,8 @@ impl Screen {
         Self::Execution,
         Self::Profiles,
         Self::Results,
+        Self::Compare,
+        Self::Report,
     ];
 
     /// Return the screen reached by moving forward once.
@@ -244,11 +254,36 @@ impl Screen {
     }
 }
 
-/// One active text edit started from an editable config field.
+/// Destination for one active text edit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputTarget {
+    /// A portable config field receiving a dotted override.
+    Config(EditableField),
+    /// Baseline result document path for a comparison.
+    BaselinePath,
+    /// Candidate result document path for a comparison.
+    CandidatePath,
+    /// Comparison threshold percentage as CLI text.
+    ThresholdPercent,
+    /// Comparison significance level as CLI text.
+    Alpha,
+    /// Stored result document path for the report screen.
+    ReportPath,
+    /// Destination path for the copied report JSON envelope.
+    JsonExportPath,
+    /// Destination path for the copied CSV projection.
+    CsvExportPath,
+    /// Destination path for a session bundle.
+    BundlePath,
+    /// Directory used when importing a session bundle.
+    BundleTargetDir,
+}
+
+/// One active text edit started from a config field or a P5.6 operation field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextInput {
-    /// The config field that receives the committed value.
-    target: EditableField,
+    /// The destination that receives the committed value.
+    target: InputTarget,
     /// The editable text buffer.
     buffer: String,
     /// The prompt shown while the editor is active.
@@ -257,17 +292,13 @@ pub struct TextInput {
 
 /// Construct and inspect one active text edit.
 impl TextInput {
-    /// Start one text edit for a config field.
+    /// Start one text edit for a config field or P5.6 operation field.
     ///
     /// # Parameters
-    /// - `target`: Config field that receives the committed value.
+    /// - `target`: Destination that receives the committed value.
     /// - `buffer`: Initial editor contents; empty for replacement edits.
     /// - `prompt`: Prompt shown above the editor while it is active.
-    pub fn new(
-        target: EditableField,
-        buffer: impl Into<String>,
-        prompt: impl Into<String>,
-    ) -> Self {
+    pub fn new(target: InputTarget, buffer: impl Into<String>, prompt: impl Into<String>) -> Self {
         Self {
             target,
             buffer: buffer.into(),
@@ -275,8 +306,8 @@ impl TextInput {
         }
     }
 
-    /// Return the field that receives the committed value.
-    pub fn target(&self) -> EditableField {
+    /// Return the destination that receives the committed value.
+    pub fn target(&self) -> InputTarget {
         self.target
     }
 
@@ -322,6 +353,38 @@ pub struct App {
     result_path: Option<PathBuf>,
     /// Typed inspection of the stored result document, when one was loaded.
     result_inspection: Option<ResultInspection>,
+    /// Baseline result path used by the comparison screen.
+    baseline_path: Option<PathBuf>,
+    /// Candidate result path used by the comparison screen.
+    candidate_path: Option<PathBuf>,
+    /// Comparison policy threshold as CLI text.
+    threshold_percent: String,
+    /// Comparison policy significance level as CLI text.
+    alpha: String,
+    /// Whether comparison significance uses the one-sided tail.
+    one_sided: bool,
+    /// Whether a classified regression maps to the CLI regression exit code.
+    fail_on_regression: bool,
+    /// Typed core comparison record copied from the private boundary.
+    comparison: Option<ComparisonInspection>,
+    /// Stored result path used by the report screen.
+    report_path: Option<PathBuf>,
+    /// Typed report envelope copied from the private boundary.
+    report: Option<ReportInspection>,
+    /// Core CSV row mode selected for projection.
+    csv_row_mode: String,
+    /// Copied CSV projection text for the report screen.
+    csv_export: String,
+    /// Destination path for copied report JSON text.
+    json_export_path: Option<PathBuf>,
+    /// Destination path for copied CSV text.
+    csv_export_path: Option<PathBuf>,
+    /// Destination path for session bundle export/import.
+    bundle_path: Option<PathBuf>,
+    /// Target directory used when reconstructing a session bundle.
+    bundle_target_dir: PathBuf,
+    /// Visible status of the most recent bundle operation.
+    bundle_status: String,
     /// The most recent status message shown on the dashboard.
     status: String,
     /// The decoded portable config retained by the front-end session.
@@ -360,6 +423,22 @@ impl Default for App {
             progress: ExecutionProgress::default(),
             result_path: None,
             result_inspection: None,
+            baseline_path: None,
+            candidate_path: None,
+            threshold_percent: "1.0".to_string(),
+            alpha: "0.05".to_string(),
+            one_sided: false,
+            fail_on_regression: false,
+            comparison: None,
+            report_path: None,
+            report: None,
+            csv_row_mode: "per_test_point".to_string(),
+            csv_export: String::new(),
+            json_export_path: None,
+            csv_export_path: None,
+            bundle_path: None,
+            bundle_target_dir: PathBuf::from("."),
+            bundle_status: "no bundle operation".to_string(),
             status: "Ready".to_string(),
             config: None,
             config_error: String::new(),
@@ -518,18 +597,34 @@ impl App {
         self.warnings.clear();
         self.result_path = None;
         self.result_inspection = None;
+        self.baseline_path = None;
+        self.candidate_path = None;
+        self.comparison = None;
+        self.report_path = None;
+        self.report = None;
+        self.csv_export.clear();
+        self.bundle_status = "no bundle operation".to_string();
         self.set_state_code(crate::ZTICK_FRONTEND_STATE_VALIDATING);
         self.set_status("run started");
     }
 
     /// Record the copied result envelope for the active run.
     ///
-    /// A usable `output_path` is retained for the results screen. Unknown or
-    /// malformed envelopes are reported explicitly rather than being presented
-    /// as a successful completed result, and any earlier inspection is discarded.
+    /// A usable `output_path` is retained for the results and report screens and
+    /// seeded as the comparison baseline. The candidate stays unset so an
+    /// accidental self-comparison cannot be presented as a two-result decision.
+    /// Unknown or malformed envelopes are reported explicitly rather than being
+    /// presented as a successful completed result, and any earlier inspection is
+    /// discarded.
     pub fn set_run_result(&mut self, json: &str) {
         self.result_path = None;
         self.result_inspection = None;
+        self.baseline_path = None;
+        self.candidate_path = None;
+        self.comparison = None;
+        self.report_path = None;
+        self.report = None;
+        self.csv_export.clear();
         let parsed = crate::json::parse(json);
         self.progress.result_status = match parsed {
             Ok(envelope) => {
@@ -543,7 +638,10 @@ impl App {
                     .and_then(crate::json::Json::as_str)
                     .unwrap_or("unavailable");
                 if !output.is_empty() && output != "unavailable" {
-                    self.result_path = Some(PathBuf::from(output));
+                    let path = PathBuf::from(output);
+                    self.result_path = Some(path.clone());
+                    self.baseline_path = Some(path.clone());
+                    self.report_path = Some(path);
                 }
                 format!("{status}; output={output}")
             }
@@ -564,6 +662,173 @@ impl App {
     /// Replace the typed inspection for the stored result document.
     pub fn set_result_inspection(&mut self, inspection: Option<ResultInspection>) {
         self.result_inspection = inspection;
+    }
+
+    /// Return the selected comparison baseline path.
+    pub fn baseline_path(&self) -> Option<&std::path::Path> {
+        self.baseline_path.as_deref()
+    }
+
+    /// Replace the selected comparison baseline path.
+    pub fn set_baseline_path(&mut self, path: Option<PathBuf>) {
+        self.baseline_path = path;
+    }
+
+    /// Return the selected comparison candidate path.
+    pub fn candidate_path(&self) -> Option<&std::path::Path> {
+        self.candidate_path.as_deref()
+    }
+
+    /// Replace the selected comparison candidate path.
+    pub fn set_candidate_path(&mut self, path: Option<PathBuf>) {
+        self.candidate_path = path;
+    }
+
+    /// Return the comparison threshold percentage as CLI text.
+    pub fn threshold_percent(&self) -> &str {
+        &self.threshold_percent
+    }
+
+    /// Replace the comparison threshold percentage after local validation.
+    pub fn set_threshold_percent(&mut self, value: impl Into<String>) {
+        self.threshold_percent = value.into();
+    }
+
+    /// Return the comparison significance level as CLI text.
+    pub fn alpha(&self) -> &str {
+        &self.alpha
+    }
+
+    /// Replace the comparison significance level after local validation.
+    pub fn set_alpha(&mut self, value: impl Into<String>) {
+        self.alpha = value.into();
+    }
+
+    /// Return whether comparison significance uses the one-sided tail.
+    pub fn one_sided(&self) -> bool {
+        self.one_sided
+    }
+
+    /// Toggle the comparison sidedness and return the new value.
+    pub fn toggle_one_sided(&mut self) -> bool {
+        self.one_sided = !self.one_sided;
+        self.one_sided
+    }
+
+    /// Return whether a regression maps to the CLI regression exit code.
+    pub fn fail_on_regression(&self) -> bool {
+        self.fail_on_regression
+    }
+
+    /// Toggle regression exit-code mapping and return the new value.
+    pub fn toggle_fail_on_regression(&mut self) -> bool {
+        self.fail_on_regression = !self.fail_on_regression;
+        self.fail_on_regression
+    }
+
+    /// Return the copied comparison inspection, when one was loaded.
+    pub fn comparison(&self) -> Option<&ComparisonInspection> {
+        self.comparison.as_ref()
+    }
+
+    /// Replace the copied comparison inspection.
+    pub fn set_comparison(&mut self, inspection: Option<ComparisonInspection>) {
+        self.comparison = inspection;
+    }
+
+    /// Return the selected report result path.
+    pub fn report_path(&self) -> Option<&std::path::Path> {
+        self.report_path.as_deref()
+    }
+
+    /// Replace the selected report result path.
+    pub fn set_report_path(&mut self, path: Option<PathBuf>) {
+        self.report_path = path;
+    }
+
+    /// Return the copied report inspection, when one was loaded.
+    pub fn report(&self) -> Option<&ReportInspection> {
+        self.report.as_ref()
+    }
+
+    /// Replace the copied report inspection.
+    pub fn set_report(&mut self, inspection: Option<ReportInspection>) {
+        self.report = inspection;
+    }
+
+    /// Return the selected core CSV row mode.
+    pub fn csv_row_mode(&self) -> &str {
+        &self.csv_row_mode
+    }
+
+    /// Cycle the CSV row mode between the two documented projections.
+    pub fn cycle_csv_row_mode(&mut self) -> &str {
+        self.csv_row_mode = if self.csv_row_mode == "per_test_point" {
+            "per_metric_sample".to_string()
+        } else {
+            "per_test_point".to_string()
+        };
+        &self.csv_row_mode
+    }
+
+    /// Return the copied CSV projection text.
+    pub fn csv_export(&self) -> &str {
+        &self.csv_export
+    }
+
+    /// Replace the copied CSV projection text.
+    pub fn set_csv_export(&mut self, text: impl Into<String>) {
+        self.csv_export = text.into();
+    }
+
+    /// Return the destination path for copied report JSON text.
+    pub fn json_export_path(&self) -> Option<&std::path::Path> {
+        self.json_export_path.as_deref()
+    }
+
+    /// Replace the destination path for copied report JSON text.
+    pub fn set_json_export_path(&mut self, path: Option<PathBuf>) {
+        self.json_export_path = path;
+    }
+
+    /// Return the destination path for copied CSV text.
+    pub fn csv_export_path(&self) -> Option<&std::path::Path> {
+        self.csv_export_path.as_deref()
+    }
+
+    /// Replace the destination path for copied CSV text.
+    pub fn set_csv_export_path(&mut self, path: Option<PathBuf>) {
+        self.csv_export_path = path;
+    }
+
+    /// Return the destination path for session bundle operations.
+    pub fn bundle_path(&self) -> Option<&std::path::Path> {
+        self.bundle_path.as_deref()
+    }
+
+    /// Replace the destination path for session bundle operations.
+    pub fn set_bundle_path(&mut self, path: Option<PathBuf>) {
+        self.bundle_path = path;
+    }
+
+    /// Return the target directory used when importing a session bundle.
+    pub fn bundle_target_dir(&self) -> &std::path::Path {
+        &self.bundle_target_dir
+    }
+
+    /// Replace the target directory used when importing a session bundle.
+    pub fn set_bundle_target_dir(&mut self, path: PathBuf) {
+        self.bundle_target_dir = path;
+    }
+
+    /// Return the visible status of the most recent bundle operation.
+    pub fn bundle_status(&self) -> &str {
+        &self.bundle_status
+    }
+
+    /// Replace the visible status of the most recent bundle operation.
+    pub fn set_bundle_status(&mut self, status: impl Into<String>) {
+        self.bundle_status = status.into();
     }
 
     /// Return the most recent status message.
@@ -672,8 +937,30 @@ impl App {
         };
         let current = field.current_value(config);
         let prompt = format!("{} [{}] = ", field.label(), current);
-        self.input = Some(TextInput::new(field, "", prompt));
+        self.input = Some(TextInput::new(InputTarget::Config(field), "", prompt));
         true
+    }
+
+    /// Open a replacement editor for one P5.6 operation field.
+    ///
+    /// # Parameters
+    /// - `target`: Destination that receives the committed value.
+    /// - `current`: Value shown as the editor's initial prompt context.
+    /// - `prompt`: Label shown above the editor while it is active.
+    pub fn begin_input(
+        &mut self,
+        target: InputTarget,
+        current: impl Into<String>,
+        prompt: impl Into<String>,
+    ) {
+        let current = current.into();
+        let label = prompt.into();
+        let prompt = if current.is_empty() {
+            format!("{label} = ")
+        } else {
+            format!("{label} [{current}] = ")
+        };
+        self.input = Some(TextInput::new(target, "", prompt));
     }
 
     /// Return the active text editor, when one is open.
@@ -864,7 +1151,7 @@ fn event_message(event: &ZtickFrontendEvent) -> String {
 mod tests {
     use std::ffi::c_char;
 
-    use super::{App, IsolationMode, RunState, Screen, TimingLevel, event_message};
+    use super::{App, InputTarget, IsolationMode, RunState, Screen, TimingLevel, event_message};
     use crate::config::DEFAULT_CONFIG_JSON;
     use crate::data::{DashboardData, PluginInspection, PortabilityReport};
     use crate::profile::SavedProfile;
@@ -974,8 +1261,10 @@ mod tests {
     /// Verify screen cycles forward and backward through every registered screen.
     #[test]
     fn screen_cycles_forward_and_backward() {
-        assert_eq!(Screen::ALL.len(), 10);
+        assert_eq!(Screen::ALL.len(), 12);
         assert_eq!(Screen::Results.title(), "Results inspection");
+        assert_eq!(Screen::Compare.title(), "Compare");
+        assert_eq!(Screen::Report.title(), "Report / Export");
         for (index, screen) in Screen::ALL.iter().enumerate() {
             let next = Screen::ALL[(index + 1) % Screen::ALL.len()];
             let previous = Screen::ALL[(index + Screen::ALL.len() - 1) % Screen::ALL.len()];
@@ -1250,11 +1539,22 @@ mod tests {
         let result = crate::data::ResultInspection::from_json(crate::data::fixtures::RESULT_JSON)
             .expect("result fixture decodes");
         app.set_result_inspection(Some(result));
+        app.set_comparison(None);
+        app.set_report(None);
+        app.set_csv_export("stale csv");
+        app.set_bundle_status("stale bundle");
         app.begin_run("/tmp/next.json");
         assert!(app.warnings().is_empty());
         assert!(app.progress().result_status.is_empty());
         assert!(app.result_path().is_none());
         assert!(app.result_inspection().is_none());
+        assert!(app.baseline_path().is_none());
+        assert!(app.candidate_path().is_none());
+        assert!(app.comparison().is_none());
+        assert!(app.report_path().is_none());
+        assert!(app.report().is_none());
+        assert!(app.csv_export().is_empty());
+        assert_eq!(app.bundle_status(), "no bundle operation");
         assert_eq!(app.progress().test_point, 0);
         assert_eq!(app.progress().timing_level, TimingLevel::Unknown);
         assert_eq!(app.progress().isolation_mode, IsolationMode::Unknown);
@@ -1275,6 +1575,15 @@ mod tests {
             app.result_path().map(|path| path.display().to_string()),
             Some("/tmp/result.json".to_string())
         );
+        assert_eq!(
+            app.baseline_path().map(|path| path.display().to_string()),
+            Some("/tmp/result.json".to_string())
+        );
+        assert!(app.candidate_path().is_none());
+        assert_eq!(
+            app.report_path().map(|path| path.display().to_string()),
+            Some("/tmp/result.json".to_string())
+        );
         let inspection =
             crate::data::ResultInspection::from_json(crate::data::fixtures::RESULT_JSON)
                 .expect("result fixture decodes");
@@ -1283,6 +1592,40 @@ mod tests {
         assert_eq!(app.progress().result_status, "undecodable result envelope");
         assert!(app.result_path().is_none());
         assert!(app.result_inspection().is_none());
+        assert!(app.baseline_path().is_none());
+        assert!(app.comparison().is_none());
+        assert!(app.report_path().is_none());
+        assert!(app.report().is_none());
+        assert!(app.csv_export().is_empty());
+    }
+
+    /// Verify comparison policy defaults and toggles stay visible and explicit.
+    #[test]
+    fn comparison_policy_state_is_explicit() {
+        let mut app = App::new();
+        assert_eq!(app.threshold_percent(), "1.0");
+        assert_eq!(app.alpha(), "0.05");
+        assert!(!app.one_sided());
+        assert!(!app.fail_on_regression());
+        app.set_threshold_percent("2.5");
+        app.set_alpha("0.01");
+        assert!(app.toggle_one_sided());
+        assert!(app.toggle_fail_on_regression());
+        assert_eq!(app.threshold_percent(), "2.5");
+        assert_eq!(app.alpha(), "0.01");
+        assert!(app.one_sided());
+        assert!(app.fail_on_regression());
+    }
+
+    /// Verify an operation-field editor carries its destination and prompt.
+    #[test]
+    fn begin_input_opens_an_operation_field_editor() {
+        let mut app = App::new();
+        app.begin_input(InputTarget::BaselinePath, "old.json", "baseline");
+        let input = app.input().expect("operation editor is open");
+        assert_eq!(input.target(), InputTarget::BaselinePath);
+        assert_eq!(input.prompt(), "baseline [old.json] = ");
+        assert!(input.buffer().is_empty());
     }
 
     /// Verify config replacement exposes typed values and rejects malformed text.
@@ -1345,7 +1688,10 @@ mod tests {
         app.pop_input_char();
         assert_eq!(app.input().expect("input is open").buffer(), "A");
         let taken = app.take_input().expect("input is returned");
-        assert_eq!(taken.target(), crate::config::EditableField::ProfileName);
+        assert_eq!(
+            taken.target(),
+            crate::app::InputTarget::Config(crate::config::EditableField::ProfileName)
+        );
         assert!(app.input().is_none());
     }
 

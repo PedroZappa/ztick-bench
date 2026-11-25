@@ -208,7 +208,7 @@ prerequisite before the Rust crate and screens are implemented.
       raw-data availability and retained overhead estimates are visible, and
       incomplete runs are never rendered as complete
       ([TUI §4](TUI_SPECIFICATION.md#4-interaction-rules)).
-- [ ] **P5.6 — Comparison and report screens.** Done when: Stored comparisons,
+- [x] **P5.6 — Comparison and report screens.** Done when: Stored comparisons,
       thresholds, significance outcomes, comparability warnings, report/export
       views and session export/import are read from or persisted to result
       documents and core comparison records without recomputing metrics in the

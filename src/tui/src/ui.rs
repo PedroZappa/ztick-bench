@@ -33,9 +33,20 @@ fn footer_lines(app: &App) -> Vec<Line<'static>> {
             "type value  Backspace delete  Enter apply  Esc cancel  q quit",
         )];
     }
-    vec![Line::from(
-        "0-9 screens  Tab cycle  Up/Down select  Left/Right cycle  Enter edit  +/- adjust  p priority  Ctrl+R run  Ctrl+S save  Ctrl+O reload  r refresh  q quit",
-    )]
+    vec![
+        Line::from(
+            "0-9 screens  c compare  e report  Tab cycle  Up/Down select  Left/Right cycle  Enter edit  +/- adjust  p priority  Ctrl+R run  Ctrl+E execute/export  Ctrl+B bundle export  Ctrl+I bundle import  Ctrl+S save  Ctrl+O reload  r refresh  q quit",
+        ),
+        Line::from(match app.screen() {
+            Screen::Compare => {
+                "Compare: b baseline  n candidate  t threshold  a alpha  s sided  f fail-on-regression  Ctrl+E compare"
+            }
+            Screen::Report => {
+                "Report: f result  m CSV mode  g JSON path  y CSV path  u bundle path  d import dir  Ctrl+E export"
+            }
+            _ => "Compare and report screens expose their own local keys in their headers",
+        }),
+    ]
 }
 
 /// Build the orientation summary for the dashboard screen.
@@ -644,12 +655,224 @@ fn issue_lines(label: &str, issues: &[ResultIssue]) -> Vec<Line<'static>> {
     lines
 }
 
+/// Build the comparison view from one copied core comparison record.
+///
+/// Threshold, significance and classification text comes from that record; the
+/// TUI never recomputes a difference or promotes a raw difference to regression.
+fn comparison_lines(app: &App) -> Vec<Line<'static>> {
+    let baseline = app
+        .baseline_path()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "(none selected)".to_string());
+    let candidate = app
+        .candidate_path()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "(none selected)".to_string());
+    let mut lines = vec![
+        Line::from("Comparison evidence is read from a core record; no metric is recomputed here"),
+        Line::from(format!("Baseline: {baseline}")),
+        Line::from(format!("Candidate: {candidate}")),
+        Line::from(format!(
+            "Policy: threshold={} alpha={} sided={} fail_on_regression={}",
+            value_or_placeholder(app.threshold_percent(), "(unset)"),
+            value_or_placeholder(app.alpha(), "(unset)"),
+            if app.one_sided() { "one" } else { "two" },
+            app.fail_on_regression()
+        )),
+    ];
+    let Some(inspection) = app.comparison() else {
+        lines.push(Line::from(
+            "Comparison: unavailable; select both paths then press Ctrl+E",
+        ));
+        if !app.status().is_empty() {
+            lines.push(Line::from(format!("Status: {}", app.status())));
+        }
+        return lines;
+    };
+    let record = inspection.record();
+    lines.push(Line::from(format!(
+        "Envelope: status={} regression_detected={}",
+        value_or_placeholder(inspection.envelope_status(), "(unreported)"),
+        inspection.regression_detected()
+    )));
+    if !inspection.envelope_error().is_empty() {
+        lines.push(Line::from(format!(
+            "Envelope error: {}",
+            inspection.envelope_error()
+        )));
+    }
+    lines.push(Line::from(format!(
+        "Level: {}  Classification: {}",
+        value_or_placeholder(record.level(), "(unreported)"),
+        value_or_placeholder(record.classification(), "(unreported)")
+    )));
+    lines.push(Line::from(format!(
+        "Baseline evidence: {} status={}",
+        value_or_placeholder(record.baseline_reference(), "(unreported)"),
+        value_or_placeholder(record.baseline_status(), "(unreported)")
+    )));
+    lines.push(Line::from(format!(
+        "Candidate evidence: {} status={}",
+        value_or_placeholder(record.candidate_reference(), "(unreported)"),
+        value_or_placeholder(record.candidate_status(), "(unreported)")
+    )));
+    lines.push(Line::from(format!(
+        "Threshold: {} status={} reason={}",
+        record.threshold_percent().unwrap_or("null"),
+        value_or_placeholder(record.threshold_status(), "(unreported)"),
+        value_or_placeholder(record.threshold_reason(), "(none recorded)")
+    )));
+    for (name, value) in record.statistics_summary() {
+        lines.push(Line::from(format!("Statistics {name}: {value}")));
+    }
+    for (name, value) in record.significance_summary() {
+        lines.push(Line::from(format!("Significance {name}: {value}")));
+    }
+    if record.comparability_warnings().is_empty() {
+        lines.push(Line::from("Comparability warnings: none recorded"));
+    } else {
+        lines.push(Line::from("Comparability warnings:"));
+        for warning in record.comparability_warnings() {
+            lines.push(Line::from(format!(
+                "  - {}: {} left={} ({}) right={} ({})",
+                value_or_placeholder(warning.category(), "warning"),
+                value_or_placeholder(warning.message(), "(no message)"),
+                value_or_placeholder(warning.left(), "(unavailable)"),
+                value_or_placeholder(warning.field(), "(unknown field)"),
+                value_or_placeholder(warning.right(), "(unavailable)"),
+                value_or_placeholder(warning.field(), "(unknown field)")
+            )));
+        }
+    }
+    if record.metrics().is_empty() {
+        lines.push(Line::from("Metrics: none recorded"));
+    } else {
+        lines.push(Line::from("Metrics (stored decisions):"));
+        for metric in record.metrics() {
+            lines.push(Line::from(format!(
+                "  - {} [{}] comparison={} classification={}",
+                value_or_placeholder(metric.name(), "(unnamed)"),
+                value_or_placeholder(metric.metric_id(), "(unknown id)"),
+                value_or_placeholder(metric.comparison_status(), "(unreported)"),
+                value_or_placeholder(metric.classification(), "(unreported)")
+            )));
+            lines.push(Line::from(format!(
+                "    baseline={} candidate={} delta={} relative={}%",
+                value_or_placeholder(metric.baseline_value(), "null"),
+                value_or_placeholder(metric.candidate_value(), "null"),
+                value_or_placeholder(metric.delta(), "null"),
+                value_or_placeholder(metric.relative_change_percent(), "null")
+            )));
+            lines.push(Line::from(format!(
+                "    threshold={} significance={} reason={} interval={}",
+                value_or_placeholder(metric.threshold_status(), "(unreported)"),
+                value_or_placeholder(metric.significance_status(), "(unreported)"),
+                value_or_placeholder(metric.significance_reason(), "(none recorded)"),
+                value_or_placeholder(metric.interval(), "null")
+            )));
+            if !metric.reason().is_empty() {
+                lines.push(Line::from(format!("    note: {}", metric.reason())));
+            }
+        }
+    }
+    lines
+}
+
+/// Build the report, export and session-bundle view from copied envelopes.
+fn report_lines(app: &App) -> Vec<Line<'static>> {
+    let path = app
+        .report_path()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "(none selected)".to_string());
+    let mut lines = vec![
+        Line::from(
+            "Report and CSV text are copied projections; no metric is recomputed in the TUI",
+        ),
+        Line::from(format!("Report document: {path}")),
+        Line::from(format!("CSV row mode: {}", app.csv_row_mode())),
+    ];
+    if let Some(inspection) = app.report() {
+        lines.extend(result_summary_lines(inspection.result()));
+        lines.push(Line::from(format!(
+            "Report envelope: status={} error={}",
+            value_or_placeholder(inspection.envelope_status(), "(unreported)"),
+            value_or_placeholder(inspection.envelope_error(), "(none)")
+        )));
+        lines.push(Line::from(format!(
+            "Report stored status: {}",
+            value_or_placeholder(inspection.stored_status(), "(unreported)")
+        )));
+        lines.push(Line::from(format!(
+            "Report derived status: {}",
+            value_or_placeholder(inspection.derived_status(), "(unreported)")
+        )));
+        lines.push(Line::from(format!(
+            "Status reason: {}",
+            value_or_placeholder(inspection.status_reason(), "(none recorded)")
+        )));
+        if inspection.result().comparisons().is_empty() {
+            lines.push(Line::from("Stored comparisons: none"));
+        } else {
+            lines.push(Line::from(format!(
+                "Stored comparisons: {} record(s) decoded from the result document",
+                inspection.result().comparisons().len()
+            )));
+        }
+    } else {
+        lines.push(Line::from(
+            "Report: unavailable; select a result path then press r",
+        ));
+        if !app.status().is_empty() {
+            lines.push(Line::from(format!("Status: {}", app.status())));
+        }
+    }
+    lines.push(Line::from(format!(
+        "JSON export path: {}",
+        app.json_export_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "(unset; press g)".to_string())
+    )));
+    lines.push(Line::from(format!(
+        "CSV export path: {}",
+        app.csv_export_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "(unset; press y)".to_string())
+    )));
+    lines.push(Line::from(format!(
+        "CSV preview: {}",
+        if app.csv_export().is_empty() {
+            "(no copied projection)".to_string()
+        } else {
+            app.csv_export()
+                .lines()
+                .take(3)
+                .collect::<Vec<_>>()
+                .join(" | ")
+        }
+    )));
+    lines.push(Line::from(format!(
+        "Session bundle path: {}",
+        app.bundle_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "(unset; press u)".to_string())
+    )));
+    lines.push(Line::from(format!(
+        "Bundle import directory: {}",
+        app.bundle_target_dir().display()
+    )));
+    lines.push(Line::from(format!(
+        "Bundle status: {}",
+        value_or_placeholder(app.bundle_status(), "(none)")
+    )));
+    lines
+}
+
 /// Render one complete application frame.
 pub fn render(frame: &mut Frame<'_>, app: &App) {
     let [header_area, main_area, keys_area] = Layout::vertical([
         Constraint::Length(3),
         Constraint::Min(0),
-        Constraint::Length(3),
+        Constraint::Length(4),
     ])
     .areas(frame.area());
     frame.render_widget(
@@ -668,6 +891,8 @@ pub fn render(frame: &mut Frame<'_>, app: &App) {
         Screen::Execution => execution_lines(app),
         Screen::Profiles => profiles_lines(app),
         Screen::Results => results_lines(app),
+        Screen::Compare => comparison_lines(app),
+        Screen::Report => report_lines(app),
     };
     frame.render_widget(
         Paragraph::new(body).block(Block::bordered().title(app.screen().title())),
@@ -689,13 +914,17 @@ mod tests {
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::{
-        config_gate_lines, dashboard_lines, editable_field_lines, execution_lines, field_line,
-        integration_lines, matching_inspection, profiles_lines, render, results_lines,
-        scheduling_lines, system_lines, system_summary, value_or_placeholder,
+        comparison_lines, config_gate_lines, dashboard_lines, editable_field_lines,
+        execution_lines, field_line, integration_lines, matching_inspection, profiles_lines,
+        render, report_lines, results_lines, scheduling_lines, system_lines, system_summary,
+        value_or_placeholder,
     };
     use crate::app::{App, Screen};
     use crate::config::DEFAULT_CONFIG_JSON;
-    use crate::data::{DashboardData, PluginInspection, PortabilityReport, ResultInspection};
+    use crate::data::{
+        ComparisonInspection, DashboardData, PluginInspection, PortabilityReport, ReportInspection,
+        ResultInspection,
+    };
     use crate::profile::SavedProfile;
     use crate::{
         ZTICK_FRONTEND_EVENT_MESSAGE_SIZE, ZTICK_FRONTEND_EVENT_PROGRESS,
@@ -1056,5 +1285,62 @@ mod tests {
         assert!(text.contains("Inspection: unavailable"));
         assert!(text.contains("Completeness: unavailable"));
         assert!(!text.contains("Completeness: complete"));
+    }
+
+    /// Verify comparison rendering shows stored decisions without recomputing them.
+    #[test]
+    fn comparison_lines_render_stored_policy_significance_and_warnings() {
+        const COMPARISON: &str = r#"{"baseline":{"reference":"a.json","status":"complete"},"candidate":{"reference":"b.json","status":"complete"},"level":"run_to_run","threshold_percent":7.5,"threshold_status":{"status":"applied","reason":"configured threshold applied"},"statistics":{"alpha":0.05,"sided":"two"},"significance":{"status":"applied","reason":"bootstrap interval excludes zero"},"classification":"regression","comparability_warnings":[{"category":"comparability","field":"machine.cpu_model","message":"cpu model differs","left_status":"value","left_value":"old","right_status":"value","right_value":"new"}],"metrics":[{"metric_id":"MET-01","name":"Execution time","baseline_status":"measured","candidate_status":"measured","baseline_value":0.5,"candidate_value":0.6,"delta":0.1,"relative_change_percent":20.0,"comparison_status":"raw_difference","classification":"regression","threshold_status":{"status":"applied"},"significance":{"status":"applied","reason":"interval excludes zero","interval_low":0.08,"interval_high":0.12},"reason":""}]}"#;
+        let envelope = format!(
+            r#"{{"schema_version":1,"command":"compare","status":"success","exit_code":0,"data":{{"comparison":{COMPARISON},"regression_detected":true}},"error":""}}"#
+        );
+        let inspection =
+            ComparisonInspection::from_envelope(&envelope).expect("compare envelope decodes");
+        let mut app = App::new();
+        app.set_baseline_path(Some(std::path::PathBuf::from("a.json")));
+        app.set_candidate_path(Some(std::path::PathBuf::from("b.json")));
+        app.set_threshold_percent("7.5");
+        app.set_alpha("0.05");
+        app.set_comparison(Some(inspection));
+        let text = lines_text(&comparison_lines(&app));
+        assert!(text.contains("no metric is recomputed"));
+        assert!(text.contains("threshold=7.5 alpha=0.05 sided=two"));
+        assert!(text.contains("regression_detected=true"));
+        assert!(text.contains("Classification: regression"));
+        assert!(text.contains("Threshold: 7.5 status=applied reason=configured threshold applied"));
+        assert!(text.contains("Significance status: applied"));
+        assert!(text.contains("cpu model differs"));
+        assert!(text.contains("comparison=raw_difference classification=regression"));
+        assert!(text.contains("interval=[0.08, 0.12]"));
+
+        let empty = App::new();
+        let text = lines_text(&comparison_lines(&empty));
+        assert!(text.contains("Comparison: unavailable"));
+    }
+
+    /// Verify report rendering keeps stored and derived status distinct.
+    #[test]
+    fn report_lines_keep_stored_and_derived_status_distinct() {
+        let envelope = format!(
+            r#"{{"schema_version":1,"command":"report","status":"success","exit_code":0,"data":{{"document":{},"stored_status":"complete","derived_status":"incomplete","status_reason":"recorded failures"}},"error":""}}"#,
+            crate::data::fixtures::RESULT_JSON
+        );
+        let inspection = ReportInspection::from_envelope(&envelope).expect("report decodes");
+        let mut app = App::new();
+        app.set_report(Some(inspection));
+        app.set_csv_export("session_id,run_id\ns-1,run-1");
+        app.set_json_export_path(Some(std::path::PathBuf::from("out/report.json")));
+        app.set_csv_export_path(Some(std::path::PathBuf::from("out/report.csv")));
+        let text = lines_text(&report_lines(&app));
+        assert!(text.contains("Report stored status: complete"));
+        assert!(text.contains("Report derived status: incomplete"));
+        assert!(text.contains("Status reason: recorded failures"));
+        assert!(text.contains("CSV preview: session_id,run_id | s-1,run-1"));
+        assert!(text.contains("JSON export path: out/report.json"));
+        assert!(text.contains("CSV export path: out/report.csv"));
+
+        let empty = App::new();
+        let text = lines_text(&report_lines(&empty));
+        assert!(text.contains("Report: unavailable"));
     }
 }

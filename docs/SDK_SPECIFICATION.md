@@ -392,7 +392,7 @@ Required operation groups (Derived design):
 | --- | --- | --- |
 | Session lifecycle | create/destroy/version query | One opaque session per active front end; destroy is idempotent and invalidates all borrowed views. |
 | Configuration | parse/validate/serialize/override/load/save | Accepts the versioned [RESULTS §6](RESULTS_FORMAT.md#6-config-document) JSON; rejects future schema or SDK minor versions with a reason. |
-| Command view | `list`/`system`/`run`/`report`/`compare`; additive `run_start`/`run_result` | Mirrors the documented CLI capabilities ([PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)); the TUI applies no setting the CLI cannot express. The additive operations execute a config on a session-owned worker and publish a copied envelope. |
+| Command view | `list`/`system`/`run`/`report`/`compare`; additive `run_start`/`run_result` and policy-driven compare | Mirrors the documented CLI capabilities ([PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)); the TUI applies no setting the CLI cannot express. The additive run operations execute a config on a session-owned worker and publish a copied envelope; policy-driven compare forwards threshold, alpha, sidedness and optional regression failure through the same JSON envelope without changing plain `compare` semantics. |
 | Progress | subscribe/poll/drain events | Stable event identifiers for the [TUI §3](TUI_SPECIFICATION.md#3-run-state-model) states, including test point, timing level, isolation mode and warnings; events are copied across the boundary. |
 | Results | read report/compare/export JSON or CSV | Returns borrowed views valid until the next call on the same session, or caller-copied output; never recomputes metrics in the front end. |
 | Integrations and consent | list/inspect/query trust/record consent | Explicit consent is required before first execution of an untrusted plugin ([TUI §4](TUI_SPECIFICATION.md#4-interaction-rules), BR §6.2). |
@@ -419,12 +419,14 @@ events and cannot overwrite an active run state.
 
 **Versioning (Derived design).** The private boundary has its own additive
 interface version, distinct from `ZTICK_SDK_VERSION_*`, exposed through a
-version query. The current interface is `0.2.0`: minor version 2 adds
-`ztick_frontend_run_start` and `ztick_frontend_run_result` without changing the
-struct layout version or existing operation semantics. Unknown event kinds and
-capability bits are treated as `unsupported`; a newer minor version remains
-readable by an older front end. A breaking layout change requires a major-version
-bump of this private boundary, not of the installed SDK ABI.
+version query. The current interface is `0.3.0`: minor version 2 added
+`ztick_frontend_run_start` and `ztick_frontend_run_result`, and minor version 3
+adds policy-driven comparison through `ztick_frontend_compare_with_policy`,
+without changing the struct layout version or existing `compare` semantics.
+Unknown event kinds and capability bits are treated as `unsupported`; a newer
+minor version remains readable by an older front end. A breaking layout change
+requires a major-version bump of this private boundary, not of the installed SDK
+ABI.
 
 **Verification gate (Derived design).** A standalone C11 caller exercises every
 function and checks status, reason and ownership behavior; a Rust FFI smoke test

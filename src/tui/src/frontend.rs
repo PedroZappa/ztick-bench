@@ -12,12 +12,14 @@ use std::ptr;
 
 use crate::data::{DashboardData, PluginInspection};
 use crate::{
+    ZTICK_FRONTEND_COMPARE_ONE_SIDED, ZTICK_FRONTEND_COMPARE_TWO_SIDED,
     ZTICK_FRONTEND_EVENT_MESSAGE_SIZE, ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION, ZtickFrontendEvent,
-    ZtickFrontendSession, ZtickFrontendSessionOptions, ztick_frontend_config_load,
-    ztick_frontend_config_override, ztick_frontend_config_parse, ztick_frontend_config_save,
-    ztick_frontend_config_serialize, ztick_frontend_config_validate, ztick_frontend_last_error,
-    ztick_frontend_list, ztick_frontend_plugin_inspect, ztick_frontend_plugin_list,
-    ztick_frontend_progress_poll, ztick_frontend_result_read, ztick_frontend_run_result,
+    ZtickFrontendSession, ZtickFrontendSessionOptions, ztick_frontend_compare_with_policy,
+    ztick_frontend_config_load, ztick_frontend_config_override, ztick_frontend_config_parse,
+    ztick_frontend_config_save, ztick_frontend_config_serialize, ztick_frontend_config_validate,
+    ztick_frontend_last_error, ztick_frontend_list, ztick_frontend_plugin_inspect,
+    ztick_frontend_plugin_list, ztick_frontend_progress_poll, ztick_frontend_report,
+    ztick_frontend_result_export_csv, ztick_frontend_result_read, ztick_frontend_run_result,
     ztick_frontend_run_start, ztick_frontend_session_create, ztick_frontend_session_destroy,
     ztick_frontend_system,
 };
@@ -30,6 +32,8 @@ const STATUS_DATA_ERROR: i32 = -2;
 const JSON_CAPACITY: usize = 64 * 1024;
 /// Capacity used for copied session error messages.
 const ERROR_CAPACITY: usize = 1024;
+/// Maximum number of copy attempts before a growing payload is rejected.
+const MAX_COPY_ATTEMPTS: usize = 4;
 
 /// An owned error produced by one private-boundary call.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -354,6 +358,102 @@ impl Session {
         })
     }
 
+    /// Run `report` for one stored result and copy its JSON envelope.
+    ///
+    /// A command failure still copies a versioned envelope carrying the explicit
+    /// error record, so the caller can display it as unavailable evidence.
+    ///
+    /// # Parameters
+    /// - `path`: Filesystem path of a stored result document.
+    ///
+    /// # Returns
+    /// The copied report envelope, or a boundary/copy error with no payload.
+    pub fn report(&self, path: &str) -> Result<String, FrontendError> {
+        let path = CString::new(path)
+            .map_err(|_| FrontendError::new(-1, "report path contains an interior NUL byte"))?;
+        self.call_json(|session, buffer, capacity, length| unsafe {
+            ztick_frontend_report(session, path.as_ptr(), buffer, capacity, length)
+        })
+    }
+
+    /// Run a policy-driven comparison for two stored results.
+    ///
+    /// # Parameters
+    /// - `baseline`: Filesystem path of the baseline result document.
+    /// - `candidate`: Filesystem path of the candidate result document.
+    /// - `threshold_percent`: Non-negative percentage threshold as CLI text.
+    /// - `alpha`: Significance level as CLI text, strictly between 0 and 1.
+    /// - `one_sided`: Select one-sided when true, two-sided otherwise.
+    /// - `fail_on_regression`: Ask the CLI to map a regression to its exit code.
+    ///
+    /// # Returns
+    /// The copied compare envelope. A regression status is still returned as a
+    /// payload; only a boundary failure with no copied envelope becomes an error.
+    pub fn compare_with_policy(
+        &self,
+        baseline: &str,
+        candidate: &str,
+        threshold_percent: &str,
+        alpha: &str,
+        one_sided: bool,
+        fail_on_regression: bool,
+    ) -> Result<String, FrontendError> {
+        let baseline = CString::new(baseline)
+            .map_err(|_| FrontendError::new(-1, "baseline path contains an interior NUL byte"))?;
+        let candidate = CString::new(candidate)
+            .map_err(|_| FrontendError::new(-1, "candidate path contains an interior NUL byte"))?;
+        let threshold = CString::new(threshold_percent).map_err(|_| {
+            FrontendError::new(-1, "threshold percent contains an interior NUL byte")
+        })?;
+        let alpha = CString::new(alpha)
+            .map_err(|_| FrontendError::new(-1, "alpha contains an interior NUL byte"))?;
+        let sided = if one_sided {
+            ZTICK_FRONTEND_COMPARE_ONE_SIDED
+        } else {
+            ZTICK_FRONTEND_COMPARE_TWO_SIDED
+        };
+        self.call_json(|session, buffer, capacity, length| unsafe {
+            ztick_frontend_compare_with_policy(
+                session,
+                baseline.as_ptr(),
+                candidate.as_ptr(),
+                threshold.as_ptr(),
+                alpha.as_ptr(),
+                sided,
+                i32::from(fail_on_regression),
+                buffer,
+                capacity,
+                length,
+            )
+        })
+    }
+
+    /// Project one stored result document as CSV text through the boundary.
+    ///
+    /// # Parameters
+    /// - `path`: Filesystem path of a stored result document.
+    /// - `row_mode`: `per_test_point` or `per_metric_sample`.
+    ///
+    /// # Returns
+    /// The copied CSV text, or a boundary error when the document or row mode is
+    /// unavailable.
+    pub fn result_export_csv(&self, path: &str, row_mode: &str) -> Result<String, FrontendError> {
+        let path = CString::new(path)
+            .map_err(|_| FrontendError::new(-1, "result path contains an interior NUL byte"))?;
+        let row_mode = CString::new(row_mode)
+            .map_err(|_| FrontendError::new(-1, "CSV row mode contains an interior NUL byte"))?;
+        self.call_string("CSV", |session, buffer, capacity, length| unsafe {
+            ztick_frontend_result_export_csv(
+                session,
+                path.as_ptr(),
+                row_mode.as_ptr(),
+                buffer,
+                capacity,
+                length,
+            )
+        })
+    }
+
     /// Copy the dashboard's read-only envelopes from the front end.
     ///
     /// # Returns
@@ -459,30 +559,62 @@ impl Session {
     /// non-zero status carries no usable payload and is reported immediately.
     fn call_config_string<F>(&self, call: F) -> Result<String, FrontendError>
     where
-        F: FnOnce(*mut ZtickFrontendSession, *mut c_char, usize, *mut usize) -> i32,
+        F: Fn(*mut ZtickFrontendSession, *mut c_char, usize, *mut usize) -> i32,
     {
-        let mut buffer: Vec<c_char> = vec![0; JSON_CAPACITY];
-        let mut length = 0_usize;
-        let status = call(self.handle, buffer.as_mut_ptr(), buffer.len(), &mut length);
-        if status != STATUS_SUCCESS {
-            return Err(FrontendError::new(status, self.last_error()));
+        self.call_string("config", call)
+    }
+
+    /// Call one string-returning boundary operation that requires success.
+    ///
+    /// The private boundary reports the required byte count when a buffer is too
+    /// small. This wrapper retries with that capacity so a legitimate large
+    /// document is copied instead of being mistaken for a command failure.
+    ///
+    /// # Parameters
+    /// - `label`: Human-readable output kind used in local copy errors.
+    /// - `call`: Boundary operation receiving the session and copy buffer.
+    ///
+    /// # Returns
+    /// The copied text, or the boundary error when no usable output was copied.
+    fn call_string<F>(&self, label: &str, call: F) -> Result<String, FrontendError>
+    where
+        F: Fn(*mut ZtickFrontendSession, *mut c_char, usize, *mut usize) -> i32,
+    {
+        let mut capacity = JSON_CAPACITY;
+        let mut status = STATUS_SUCCESS;
+        for _ in 0..MAX_COPY_ATTEMPTS {
+            let mut buffer: Vec<c_char> = vec![0; capacity];
+            let mut length = 0_usize;
+            status = call(self.handle, buffer.as_mut_ptr(), buffer.len(), &mut length);
+            if length >= buffer.len() {
+                capacity = length.checked_add(1).ok_or_else(|| {
+                    FrontendError::new(
+                        status,
+                        format!("front-end {label} output length is too large"),
+                    )
+                })?;
+                continue;
+            }
+            if status != STATUS_SUCCESS {
+                return Err(FrontendError::new(status, self.last_error()));
+            }
+            let text = unsafe { CStr::from_ptr(buffer.as_ptr()) }
+                .to_string_lossy()
+                .into_owned();
+            if text.is_empty() {
+                return Err(FrontendError::new(
+                    status,
+                    format!("front-end returned an empty {label}"),
+                ));
+            }
+            return Ok(text);
         }
-        if length >= buffer.len() {
-            return Err(FrontendError::new(
-                status,
-                "front-end config output exceeded the copy buffer",
-            ));
-        }
-        let text = unsafe { CStr::from_ptr(buffer.as_ptr()) }
-            .to_string_lossy()
-            .into_owned();
-        if text.is_empty() {
-            return Err(FrontendError::new(
-                status,
-                "front-end returned an empty config",
-            ));
-        }
-        Ok(text)
+        Err(FrontendError::new(
+            status,
+            format!(
+                "front-end {label} output could not be copied after {MAX_COPY_ATTEMPTS} attempts"
+            ),
+        ))
     }
 
     /// Call one string-returning boundary operation and copy its output.
@@ -490,27 +622,35 @@ impl Session {
     /// A failed CLI command still copies a versioned JSON envelope that carries
     /// explicit availability records. Such an envelope is returned despite the
     /// non-zero status; only a boundary failure with no copied envelope becomes
-    /// [`FrontendError`].
+    /// [`FrontendError`]. A short buffer is retried with the reported capacity.
     fn call_json<F>(&self, call: F) -> Result<String, FrontendError>
     where
-        F: FnOnce(*mut ZtickFrontendSession, *mut c_char, usize, *mut usize) -> i32,
+        F: Fn(*mut ZtickFrontendSession, *mut c_char, usize, *mut usize) -> i32,
     {
-        let mut buffer: Vec<c_char> = vec![0; JSON_CAPACITY];
-        let mut length = 0_usize;
-        let status = call(self.handle, buffer.as_mut_ptr(), buffer.len(), &mut length);
-        if length >= buffer.len() {
-            return Err(FrontendError::new(
-                status,
-                "front-end output exceeded the copy buffer",
-            ));
+        let mut capacity = JSON_CAPACITY;
+        let mut status = STATUS_SUCCESS;
+        for _ in 0..MAX_COPY_ATTEMPTS {
+            let mut buffer: Vec<c_char> = vec![0; capacity];
+            let mut length = 0_usize;
+            status = call(self.handle, buffer.as_mut_ptr(), buffer.len(), &mut length);
+            if length >= buffer.len() {
+                capacity = length.checked_add(1).ok_or_else(|| {
+                    FrontendError::new(status, "front-end output length is too large")
+                })?;
+                continue;
+            }
+            let text = unsafe { CStr::from_ptr(buffer.as_ptr()) }
+                .to_string_lossy()
+                .into_owned();
+            if text.is_empty() {
+                return Err(FrontendError::new(status, self.last_error()));
+            }
+            return Ok(text);
         }
-        let text = unsafe { CStr::from_ptr(buffer.as_ptr()) }
-            .to_string_lossy()
-            .into_owned();
-        if text.is_empty() {
-            return Err(FrontendError::new(status, self.last_error()));
-        }
-        Ok(text)
+        Err(FrontendError::new(
+            status,
+            format!("front-end output could not be copied after {MAX_COPY_ATTEMPTS} attempts"),
+        ))
     }
 
     /// Copy the session's most recent error into an owned Rust string.
@@ -549,9 +689,11 @@ impl Drop for Session {
 #[cfg(test)]
 mod tests {
     use std::ffi::CString;
+    use std::fs;
     use std::time::Duration;
 
     use super::{FrontendError, Session, Snapshot};
+    use crate::data::fixtures::RESULT_JSON;
     use crate::profile;
     use crate::{ztick_frontend_config_parse, ztick_frontend_session_destroy};
 
@@ -834,6 +976,92 @@ mod tests {
         assert!(error.message().contains("interior NUL"));
     }
 
+    /// Verify a report path with an interior NUL is rejected locally.
+    #[test]
+    fn session_report_rejects_an_interior_nul_path() {
+        let session = Session::new().expect("session creation succeeds");
+        let error = session
+            .report("bad\0path")
+            .expect_err("an interior NUL cannot be passed to C");
+        assert!(error.message().contains("interior NUL"));
+    }
+
+    /// Verify compare policy arguments with interior NULs are rejected locally.
+    #[test]
+    fn session_compare_with_policy_rejects_interior_nul_arguments() {
+        let session = Session::new().expect("session creation succeeds");
+        let error = session
+            .compare_with_policy("bad\0path", "candidate.json", "1.0", "0.05", false, false)
+            .expect_err("an interior NUL cannot be passed to C");
+        assert!(error.message().contains("interior NUL"));
+    }
+
+    /// Verify a failed report still returns its JSON envelope as evidence.
+    #[test]
+    fn session_report_returns_a_failed_command_envelope() {
+        let session = Session::new().expect("session creation succeeds");
+        let json = session
+            .report("missing-result.json")
+            .expect("a command failure still copies an envelope");
+        assert!(json.contains("\"command\":\"report\""));
+        assert!(json.contains("\"error\""));
+    }
+
+    /// Verify a missing comparison document returns a copied failure envelope.
+    #[test]
+    fn session_compare_with_policy_returns_a_failed_command_envelope() {
+        let session = Session::new().expect("session creation succeeds");
+        let json = session
+            .compare_with_policy(
+                "missing-baseline.json",
+                "missing-candidate.json",
+                "1.0",
+                "0.05",
+                false,
+                false,
+            )
+            .expect("a command failure still copies an envelope");
+        assert!(json.contains("\"command\":\"compare\""));
+        assert!(json.contains("\"error\""));
+    }
+
+    /// Verify a valid large document is copied after a short-buffer retry.
+    #[test]
+    fn session_result_read_retries_a_larger_copy_buffer() {
+        let session = Session::new().expect("session creation succeeds");
+        let directory = std::env::temp_dir().join(format!(
+            "ztick-tui-large-result-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        fs::create_dir_all(&directory).expect("temporary result directory is created");
+        let path = directory.join("large.json");
+        let warning = "x".repeat(80 * 1024);
+        let document =
+            RESULT_JSON.replace("\"warnings\":[]", &format!("\"warnings\":[\"{warning}\"]"));
+        assert!(document.len() > 64 * 1024);
+        fs::write(&path, document).expect("large result document is written");
+
+        let copied = session
+            .result_read(&path.to_string_lossy())
+            .expect("a large valid result is retried and copied");
+        assert!(copied.len() > 64 * 1024);
+        assert!(copied.contains(&warning));
+
+        fs::remove_dir_all(&directory).expect("temporary result directory is removed");
+    }
+
+    /// Verify CSV export rejects an unknown row mode at the boundary.
+    #[test]
+    fn session_result_export_csv_rejects_an_unknown_row_mode() {
+        let session = Session::new().expect("session creation succeeds");
+        let error = session
+            .result_export_csv("missing-result.json", "unknown_mode")
+            .expect_err("an unknown row mode is invalid");
+        assert_ne!(error.status(), 0);
+        assert!(error.message().contains("unknown CSV row mode"));
+    }
+
     /// Verify an async run delivers copied progress events and a JSON envelope.
     #[test]
     fn session_async_run_delivers_progress_and_result() {
@@ -882,5 +1110,18 @@ mod tests {
             .expect("the stored result document is read through the safe wrapper");
         assert!(document.contains("\"schema_version\":\"1.0.0\""));
         assert!(document.contains("\"runs\""));
+
+        let report = session
+            .report(output_path)
+            .expect("the report wrapper copies its envelope");
+        assert!(report.contains("\"command\":\"report\""));
+        let comparison = session
+            .compare_with_policy(output_path, output_path, "1.0", "0.05", false, false)
+            .expect("the compare wrapper copies its envelope");
+        assert!(comparison.contains("\"command\":\"compare\""));
+        let csv = session
+            .result_export_csv(output_path, "per_test_point")
+            .expect("the CSV wrapper copies its projection");
+        assert!(csv.contains("session_id,run_id,test_point,metric_id"));
     }
 }

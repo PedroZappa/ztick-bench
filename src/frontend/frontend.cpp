@@ -1035,6 +1035,39 @@ int32_t ztick_frontend_compare(ztick_frontend_session *session, const char *base
       });
 }
 
+int32_t ztick_frontend_compare_with_policy(ztick_frontend_session *session,
+                                           const char *baseline_path, const char *candidate_path,
+                                           const char *threshold_percent, const char *alpha,
+                                           int32_t sided, int32_t fail_on_regression,
+                                           char *out_json, size_t capacity, size_t *out_length) {
+  return ztick::frontend::guard_session(
+      session, [&](ztick::frontend::SessionState *state) -> std::int32_t {
+        if (session == nullptr || baseline_path == nullptr || *baseline_path == '\0' ||
+            candidate_path == nullptr || *candidate_path == '\0' || threshold_percent == nullptr ||
+            *threshold_percent == '\0' || alpha == nullptr || *alpha == '\0' ||
+            (sided != ZTICK_FRONTEND_COMPARE_TWO_SIDED &&
+             sided != ZTICK_FRONTEND_COMPARE_ONE_SIDED) ||
+            (fail_on_regression != 0 && fail_on_regression != 1)) {
+          ztick::frontend::set_error(state, "invalid policy comparison arguments");
+          return ztick_status_invalid_argument;
+        }
+        std::vector<std::string_view> args{
+            "compare",
+            baseline_path,
+            candidate_path,
+            "--threshold",
+            threshold_percent,
+            "--alpha",
+            alpha,
+            "--sided",
+            sided == ZTICK_FRONTEND_COMPARE_ONE_SIDED ? "one" : "two"};
+        if (fail_on_regression == 1) {
+          args.emplace_back("--fail-on-regression");
+        }
+        return ztick::frontend::dispatch_command(state, args, out_json, capacity, out_length);
+      });
+}
+
 int32_t ztick_frontend_result_read(ztick_frontend_session *session, const char *result_path,
                                    char *out_json, size_t capacity, size_t *out_length) {
   return ztick::frontend::guard_session(

@@ -22,6 +22,8 @@ pub mod frontend;
 mod json;
 /// Named profile persistence as portable config documents.
 pub mod profile;
+/// Versioned JSON session bundles holding results, comparisons and configs.
+pub mod session_bundle;
 /// Stateless ratatui rendering for the dashboard and configuration screens.
 pub mod ui;
 
@@ -91,6 +93,10 @@ pub const ZTICK_FRONTEND_TIMING_PER_BLOCK: i32 = 1;
 pub const ZTICK_FRONTEND_TIMING_WHOLE_RUN: i32 = 2;
 /// Explicitly enabled end-to-end timing is active.
 pub const ZTICK_FRONTEND_TIMING_END_TO_END: i32 = 3;
+/// Use a two-sided significance interval for a policy comparison.
+pub const ZTICK_FRONTEND_COMPARE_TWO_SIDED: i32 = 0;
+/// Use a one-sided significance interval for a policy comparison.
+pub const ZTICK_FRONTEND_COMPARE_ONE_SIDED: i32 = 1;
 /// No isolation mode is active.
 pub const ZTICK_FRONTEND_ISOLATION_UNKNOWN: i32 = 0;
 /// The integration runs in the host process.
@@ -283,6 +289,20 @@ unsafe extern "C" {
         session: *mut ZtickFrontendSession,
         baseline_path: *const c_char,
         candidate_path: *const c_char,
+        out_json: *mut c_char,
+        capacity: usize,
+        out_length: *mut usize,
+    ) -> i32;
+
+    /// Run `compare` with a threshold and significance policy for two stored results.
+    pub fn ztick_frontend_compare_with_policy(
+        session: *mut ZtickFrontendSession,
+        baseline_path: *const c_char,
+        candidate_path: *const c_char,
+        threshold_percent: *const c_char,
+        alpha: *const c_char,
+        sided: i32,
+        fail_on_regression: i32,
         out_json: *mut c_char,
         capacity: usize,
         out_length: *mut usize,

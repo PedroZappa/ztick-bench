@@ -403,6 +403,33 @@ dominating. Command behavior is owned by
 - SQLite storage is deferred (REQ-RES-02) and must not appear as a v1.0 dependency
   in build configuration.
 
+**Derived design (P5.6).** A session bundle is one versioned JSON document with
+the following fixed fields. `results` and `configs` entries carry the original
+document verbatim under `document` and a safe reconstruction file stem under
+`name`; import appends `.json` to that stem. `comparisons` entries carry complete
+core comparison records. No metric
+is recomputed, derived or subtracted during export or import.
+
+```json
+{
+  "schema_version": "1.0.0",
+  "results": [{ "name": "result", "document": { } }],
+  "comparisons": [{ }],
+  "configs": [{ "name": "config", "document": { } }]
+}
+```
+
+Writes are atomic: the exporter writes a unique temporary file in the destination
+directory and renames it over the target only after a successful write and close.
+Copied JSON/CSV report exports use the same replacement helper for each file, but
+the two exports are not a single transaction. Import rejects absolute paths, path
+separators and `..` in reconstruction names,
+and writes each result/config document into the selected target directory.
+Duplicate stems across results and configs are rejected before any write so one
+document cannot silently overwrite another. A comparison record is persisted as
+received from the core; the TUI never edits its measurements, statuses, threshold
+decision or significance outcome.
+
 ## 12. Machine-readable output envelope
 
 **Derived design (P4.10).** The global `--format text|json` option selects one

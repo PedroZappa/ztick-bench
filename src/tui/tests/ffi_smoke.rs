@@ -8,6 +8,7 @@
 #![deny(missing_docs)]
 
 use std::ffi::{CStr, CString, c_char, c_void};
+use std::fs;
 use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -80,12 +81,22 @@ fn temp_path(label: &str) -> String {
     format!("/tmp/ztick_frontend_rust_{}_{}", process::id(), label)
 }
 
+/// Build one valid stored result document with two run-level MET-01 samples.
+fn result_document(session_id: &str, value: f64) -> String {
+    format!(
+        r#"{{"schema_version":"1.0.0","sdk_version":"1.0.0","session":{{"id":"{session_id}"}},"config_snapshot":{config},"build":{{}},"machine":{{}},"environment":{{}},"runs":[{{"id":"run-1","status":"complete","failures":[],"metrics":[{{"id":"MET-01","name":"Execution time","value":{value},"unit":"s","status":"measured","source":"instrumented_dsp","method":"nearest_rank","reason":"","context":{{}}}}]}},{{"id":"run-2","status":"complete","failures":[],"metrics":[{{"id":"MET-01","name":"Execution time","value":{value},"unit":"s","status":"measured","source":"instrumented_dsp","method":"nearest_rank","reason":"","context":{{}}}}]}}],"comparisons":[],"warnings":[],"failures":[],"status":"complete"}}"#,
+        config = CONFIG_JSON
+    )
+}
+
 /// Exercise every private front-end symbol through Rust FFI.
 #[test]
 fn rust_ffi_calls_every_private_boundary_symbol() {
     CALLBACK_COUNT.store(0, Ordering::SeqCst);
     let config_path = temp_path("config.json");
     let result_path = temp_path("config.result.json");
+    let baseline_path = temp_path("baseline.regression.json");
+    let candidate_path = temp_path("candidate.regression.json");
     let trust_path = temp_path("trust.list");
     let missing_path = temp_path("missing.json");
 
@@ -98,7 +109,7 @@ fn rust_ffi_calls_every_private_boundary_symbol() {
             patch: 0,
         };
         assert_eq!(ztick_frontend_get_version(&mut version), 0);
-        assert_eq!((version.major, version.minor, version.patch), (0, 2, 0));
+        assert_eq!((version.major, version.minor, version.patch), (0, 3, 0));
         expect_token(ztick_frontend_status_message(3), "invalid argument");
 
         let trust = c_string(&trust_path);
@@ -176,6 +187,20 @@ fn rust_ffi_calls_every_private_boundary_symbol() {
                 out_length,
             )
         });
+        let (bad_policy_status, _) = collect(|buffer, capacity, out_length| {
+            ztick_frontend_compare_with_policy(
+                session,
+                std::ptr::null(),
+                missing.as_ptr(),
+                c"1.0".as_ptr(),
+                c"0.05".as_ptr(),
+                ZTICK_FRONTEND_COMPARE_TWO_SIDED,
+                0,
+                buffer,
+                capacity,
+                out_length,
+            )
+        });
         let (result_status, _) = collect(|buffer, capacity, out_length| {
             ztick_frontend_result_read(session, missing.as_ptr(), buffer, capacity, out_length)
         });
@@ -185,6 +210,7 @@ fn rust_ffi_calls_every_private_boundary_symbol() {
         assert_ne!(run_status, 0);
         assert_ne!(report_status, 0);
         assert_ne!(compare_status, 0);
+        assert_eq!(bad_policy_status, ZTICK_STATUS_INVALID_ARGUMENT);
         assert_ne!(result_status, 0);
         assert_ne!(inspect_status, 0);
 
@@ -205,6 +231,61 @@ fn rust_ffi_calls_every_private_boundary_symbol() {
                 out_length,
             )
         });
+        let (policy_compare_status, policy_json) = collect(|buffer, capacity, out_length| {
+            ztick_frontend_compare_with_policy(
+                session,
+                result_file.as_ptr(),
+                result_file.as_ptr(),
+                c"1.0".as_ptr(),
+                c"0.05".as_ptr(),
+                ZTICK_FRONTEND_COMPARE_TWO_SIDED,
+                0,
+                buffer,
+                capacity,
+                out_length,
+            )
+        });
+        fs::write(&baseline_path, result_document("s-baseline", 0.5))
+            .expect("baseline regression result is written");
+        fs::write(&candidate_path, result_document("s-candidate", 0.6))
+            .expect("candidate regression result is written");
+        let baseline_file = c_string(&baseline_path);
+        let candidate_file = c_string(&candidate_path);
+        let (regression_status, regression_json) = collect(|buffer, capacity, out_length| {
+            ztick_frontend_compare_with_policy(
+                session,
+                baseline_file.as_ptr(),
+                candidate_file.as_ptr(),
+                c"1".as_ptr(),
+                c"0.05".as_ptr(),
+                ZTICK_FRONTEND_COMPARE_TWO_SIDED,
+                1,
+                buffer,
+                capacity,
+                out_length,
+            )
+        });
+        assert_eq!(regression_status, ZTICK_STATUS_VALIDATION_FAILURE);
+        assert!(regression_json.contains("\"status\":\"regression\""));
+        assert!(regression_json.contains("\"classification\":\"regression\""));
+        let mut short_buffer = [0_i8; 16];
+        let mut required = 0_usize;
+        assert_eq!(
+            ztick_frontend_compare_with_policy(
+                session,
+                missing.as_ptr(),
+                missing.as_ptr(),
+                c"1".as_ptr(),
+                c"0.05".as_ptr(),
+                ZTICK_FRONTEND_COMPARE_TWO_SIDED,
+                0,
+                short_buffer.as_mut_ptr(),
+                short_buffer.len(),
+                &mut required,
+            ),
+            ZTICK_STATUS_INVALID_ARGUMENT
+        );
+        assert!(required > short_buffer.len());
         let (good_result_status, result_json) = collect(|buffer, capacity, out_length| {
             ztick_frontend_result_read(session, result_file.as_ptr(), buffer, capacity, out_length)
         });
@@ -233,6 +314,9 @@ fn rust_ffi_calls_every_private_boundary_symbol() {
         assert_eq!(good_report_status, 0);
         assert!(report_json.contains("data"));
         assert_eq!(good_compare_status, 0);
+        assert_eq!(policy_compare_status, 0);
+        assert!(policy_json.contains("\"command\":\"compare\""));
+        assert!(policy_json.contains("\"comparison\""));
         assert_eq!(good_result_status, 0);
         assert!(result_json.contains("config_version"));
         assert_eq!(csv_status, 0);
@@ -342,4 +426,6 @@ fn rust_ffi_calls_every_private_boundary_symbol() {
     let _ = std::fs::remove_file(config_path);
     let _ = std::fs::remove_file(result_path);
     let _ = std::fs::remove_file(trust_path);
+    let _ = fs::remove_file(baseline_path);
+    let _ = fs::remove_file(candidate_path);
 }

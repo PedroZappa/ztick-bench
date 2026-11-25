@@ -134,6 +134,21 @@ The TUI is a front end over the core engine and result documents
   read-only view that retains metric status/value/source pairs, validation
   outcomes, classified warnings/failures, retained raw sample counts and the
   separately stored overhead estimate (Derived design).
+- The compare screen selects two stored results and asks the private boundary
+  for one core comparison record under explicit threshold, alpha, sidedness and
+  optional regression-failure settings. It renders the stored threshold status,
+  significance status and interval, comparability warnings and per-metric
+  classifications without recomputing them. The additive boundary operation is
+  described in
+  [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design)
+  (Derived design; BR §11.3).
+- The report/export screen decodes the `report` envelope with its stored and
+  derived status tokens kept separate, previews CSV projected by the core, and
+  writes JSON/CSV exports only from copied text. Session bundles persist result
+  documents, config snapshots and core comparison records verbatim in the
+  [RESULTS §11](RESULTS_FORMAT.md#11-session-exportimport-and-storage) schema;
+  import reconstructs documents without recomputing or rewriting measurements
+  (Derived design; BR §12.3).
 
 ## 6. Out of scope for this document
 

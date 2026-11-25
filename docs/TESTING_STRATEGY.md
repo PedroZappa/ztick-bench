@@ -408,6 +408,24 @@ without showing a completed result. The C11 and Rust boundary suites already
 cover `ztick_frontend_result_read`; the safe wrapper adds an owned-path error
 test and reads a real run document in the async run test.
 
+**P5.6 comparison/report coverage (Derived design).** Rust data tests decode
+core comparison records with applied and not-applicable thresholds, significance
+intervals, comparability warnings, unmatched metrics, zero baselines and unknown
+tokens, and assert that report envelopes keep stored and derived status separate.
+They also round-trip versioned session bundles, reject unsafe and duplicate
+reconstruction names before writing, verify atomic import, and keep failed CLI
+envelopes with null data visible as explicit error notes. UI tests render
+threshold, significance, comparability and per-metric classification evidence
+with explicit placeholders, and keep report stored/derived status distinct.
+Key-flow tests map `c` and `e` to the new screens, drive a real policy comparison,
+JSON/CSV report exports and session bundle round-trips, toggle sidedness and
+regression failure, keep control shortcuts inert while editing, and report
+unreadable documents without inventing results. The C11 and Rust FFI suites cover
+the additive policy comparison boundary, invalid arguments, short output buffers
+and both successful and regression-classified copied envelopes; the safe wrappers
+add interior-NUL and large-buffer retry tests and read real run documents in the
+async run test.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |

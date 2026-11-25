@@ -31,13 +31,21 @@
 /** @brief Major version of the private front-end interface. */
 #define ZTICK_FRONTEND_VERSION_MAJOR 0
 /** @brief Minor version of the private front-end interface. */
-#define ZTICK_FRONTEND_VERSION_MINOR 2
+#define ZTICK_FRONTEND_VERSION_MINOR 3
 /** @brief Patch version of the private front-end interface. */
 #define ZTICK_FRONTEND_VERSION_PATCH 0
 /** @brief Layout version required in every public struct header. */
 #define ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION 1
 /** @brief Maximum message bytes carried by one copied progress event. */
 #define ZTICK_FRONTEND_EVENT_MESSAGE_SIZE 256
+/** @brief Select a two-sided significance interval for policy comparison.
+ * @note Stable value 0; forwarded to the CLI as `--sided two`.
+ */
+#define ZTICK_FRONTEND_COMPARE_TWO_SIDED 0
+/** @brief Select a one-sided significance interval for policy comparison.
+ * @note Stable value 1; forwarded to the CLI as `--sided one`.
+ */
+#define ZTICK_FRONTEND_COMPARE_ONE_SIDED 1
 
 /** @brief Mark a private boundary symbol for export from the built library. */
 #if defined(_WIN32) && defined(ZTICK_BUILDING_FRONTEND)
@@ -384,6 +392,37 @@ ZTICK_FRONTEND_API int32_t ztick_frontend_run_result(ztick_frontend_session *ses
 ZTICK_FRONTEND_API int32_t ztick_frontend_report(ztick_frontend_session *session,
                                                  const char *result_path, char *out_json,
                                                  size_t capacity, size_t *out_length);
+
+/**
+ * @brief Run policy-driven `compare` for two stored results and copy its JSON envelope.
+ * @param session Session to use; must not be NULL and must refer to a live session.
+ * @param baseline_path NUL-terminated baseline path; must not be NULL or empty.
+ * @param candidate_path NUL-terminated candidate path; must not be NULL or empty.
+ * @param threshold_percent NUL-terminated percentage text; must not be NULL or empty.
+ * @param alpha NUL-terminated significance-level text; must not be NULL or empty.
+ * @param sided Significance interval, either @ref ZTICK_FRONTEND_COMPARE_TWO_SIDED or
+ *        @ref ZTICK_FRONTEND_COMPARE_ONE_SIDED; no other value is accepted.
+ * @param fail_on_regression One to pass `--fail-on-regression`, zero to omit it; no other
+ *        value is accepted.
+ * @param out_json Destination buffer for the JSON envelope; must not be NULL when
+ *        @p capacity is non-zero.
+ * @param capacity Byte capacity of @p out_json.
+ * @param out_length Optional receiver for the JSON length excluding the NUL.
+ * @return Mapped `ztick_status` from the CLI exit code: success, invalid argument for
+ *         usage errors, unsupported for an unavailable command, processing failure for
+ *         runtime failures, or validation failure for a regression. Malformed arguments
+ *         and a short output buffer also return `ztick_status_invalid_argument`.
+ * @note Invalid arguments that reach a live session record a human-readable session
+ *       error; a NULL or destroyed session has no state in which to record one. The
+ *       envelope is NUL-terminated and copied into @p out_json even when the mapped
+ *       status is non-zero. When the buffer is too small, @p out_length receives the
+ *       required byte count and no partial copy is made. This additive operation
+ *       leaves @ref ztick_frontend_compare semantics and every struct layout unchanged.
+ */
+ZTICK_FRONTEND_API int32_t ztick_frontend_compare_with_policy(
+    ztick_frontend_session *session, const char *baseline_path, const char *candidate_path,
+    const char *threshold_percent, const char *alpha, int32_t sided, int32_t fail_on_regression,
+    char *out_json, size_t capacity, size_t *out_length);
 
 /**
  * @brief Run `compare` for two stored results and copy its JSON envelope.

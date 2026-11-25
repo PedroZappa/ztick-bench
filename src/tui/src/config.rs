@@ -134,7 +134,9 @@ impl EditableField {
             | Screen::System
             | Screen::Integrations
             | Screen::Execution
-            | Screen::Results => &[],
+            | Screen::Results
+            | Screen::Compare
+            | Screen::Report => &[],
         }
     }
 
