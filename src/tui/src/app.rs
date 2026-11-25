@@ -78,7 +78,94 @@ impl RunState {
     }
 }
 
-/// Screens available after Phase 5.3.
+/// Timing level reported by a copied core progress event.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TimingLevel {
+    /// No timing level was reported.
+    #[default]
+    Unknown,
+    /// One raw duration per processed block.
+    PerBlock,
+    /// One raw duration spanning the primary DSP interval.
+    WholeRun,
+    /// One raw duration spanning generation through the primary interval.
+    EndToEnd,
+}
+
+/// Map private-boundary timing codes to stable display values.
+impl TimingLevel {
+    /// Map one private-boundary timing code to a display level.
+    pub fn from_code(code: i32) -> Self {
+        match code {
+            crate::ZTICK_FRONTEND_TIMING_PER_BLOCK => Self::PerBlock,
+            crate::ZTICK_FRONTEND_TIMING_WHOLE_RUN => Self::WholeRun,
+            crate::ZTICK_FRONTEND_TIMING_END_TO_END => Self::EndToEnd,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Return the stable short label rendered for this timing level.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "unsupported",
+            Self::PerBlock => "per_block",
+            Self::WholeRun => "whole_run",
+            Self::EndToEnd => "end_to_end",
+        }
+    }
+}
+
+/// Isolation mode reported by a copied core progress event.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum IsolationMode {
+    /// No isolation mode was reported.
+    #[default]
+    Unknown,
+    /// The integration runs in the host process.
+    InProcess,
+    /// The integration runs in a child process.
+    OutOfProcess,
+}
+
+/// Map private-boundary isolation codes to stable display values.
+impl IsolationMode {
+    /// Map one private-boundary isolation code to a display mode.
+    pub fn from_code(code: i32) -> Self {
+        match code {
+            crate::ZTICK_FRONTEND_ISOLATION_IN_PROCESS => Self::InProcess,
+            crate::ZTICK_FRONTEND_ISOLATION_OUT_OF_PROCESS => Self::OutOfProcess,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Return the stable short label rendered for this isolation mode.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "unsupported",
+            Self::InProcess => "in_process",
+            Self::OutOfProcess => "out_of_process",
+        }
+    }
+}
+
+/// Live execution context copied from core progress events.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ExecutionProgress {
+    /// Filesystem path of the config started by the current run.
+    pub config_path: String,
+    /// One-based test point reported by the latest progress event.
+    pub test_point: u32,
+    /// Most recent human-readable progress message.
+    pub message: String,
+    /// Timing level reported by the latest event with a known code.
+    pub timing_level: TimingLevel,
+    /// Isolation mode reported by the latest event with a known code.
+    pub isolation_mode: IsolationMode,
+    /// Copied result envelope status and destination path, when available.
+    pub result_status: String,
+}
+
+/// Screens available after Phase 5.4.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Screen {
     /// Orientation summary and active run state.
@@ -96,6 +183,8 @@ pub enum Screen {
     Measurement,
     /// Parallelism, affinity, isolation and explicit priority opt-in.
     Scheduling,
+    /// Live run state and context copied from core progress events.
+    Execution,
     /// Built-in and saved named config profiles.
     Profiles,
 }
@@ -112,12 +201,13 @@ impl Screen {
             Self::Configuration => "Configuration",
             Self::Measurement => "Measurement & validation",
             Self::Scheduling => "Parallelism & scheduling",
+            Self::Execution => "Execution monitoring",
             Self::Profiles => "Profiles & settings",
         }
     }
 
     /// Return all screens in navigation order.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Dashboard,
         Self::System,
         Self::Integrations,
@@ -125,6 +215,7 @@ impl Screen {
         Self::Configuration,
         Self::Measurement,
         Self::Scheduling,
+        Self::Execution,
         Self::Profiles,
     ];
 
@@ -219,6 +310,8 @@ pub struct App {
     inspection: Option<PluginInspection>,
     /// The warning messages retained in arrival order.
     warnings: Vec<String>,
+    /// Live execution context copied from core progress events.
+    progress: ExecutionProgress,
     /// The most recent status message shown on the dashboard.
     status: String,
     /// The decoded portable config retained by the front-end session.
@@ -254,6 +347,7 @@ impl Default for App {
             selected_plugin: 0,
             inspection: None,
             warnings: Vec::new(),
+            progress: ExecutionProgress::default(),
             status: "Ready".to_string(),
             config: None,
             config_error: String::new(),
@@ -390,6 +484,48 @@ impl App {
     /// Append one warning in arrival order.
     pub fn push_warning(&mut self, warning: impl Into<String>) {
         self.warnings.push(warning.into());
+    }
+
+    /// Return the live execution context copied from progress events.
+    pub fn progress(&self) -> &ExecutionProgress {
+        &self.progress
+    }
+
+    /// Reset execution state when a new asynchronous run is started.
+    ///
+    /// # Parameters
+    /// - `config_path`: Config document path passed to the private boundary.
+    pub fn begin_run(&mut self, config_path: impl Into<String>) {
+        self.progress = ExecutionProgress {
+            config_path: config_path.into(),
+            ..ExecutionProgress::default()
+        };
+        self.warnings.clear();
+        self.set_state_code(crate::ZTICK_FRONTEND_STATE_VALIDATING);
+        self.set_status("run started");
+    }
+
+    /// Record the copied result envelope for the active run.
+    ///
+    /// Unknown or malformed envelopes are reported explicitly rather than being
+    /// presented as a successful completed result.
+    pub fn set_run_result(&mut self, json: &str) {
+        let parsed = crate::json::parse(json);
+        self.progress.result_status = match parsed {
+            Ok(envelope) => {
+                let status = envelope
+                    .get("status")
+                    .and_then(crate::json::Json::as_str)
+                    .unwrap_or("unknown");
+                let output = envelope
+                    .get("data")
+                    .and_then(|data| data.get("output_path"))
+                    .and_then(crate::json::Json::as_str)
+                    .unwrap_or("unavailable");
+                format!("{status}; output={output}")
+            }
+            Err(_) => "undecodable result envelope".to_string(),
+        };
     }
 
     /// Return the most recent status message.
@@ -638,10 +774,24 @@ impl App {
 
     /// Apply one copied boundary event to the application state.
     ///
-    /// State changes update the displayed state, every non-empty event message
-    /// updates the status line, and warning events are retained for the dashboard.
+    /// State changes update the displayed state. Known timing, isolation and
+    /// test-point values are retained for the execution screen; unknown codes
+    /// never overwrite a value already reported by the core. Every non-empty
+    /// message updates the status line, and warning events are also retained in
+    /// arrival order.
     pub fn observe_event(&mut self, event: &ZtickFrontendEvent) {
         self.set_state_code(event.state);
+        let timing = TimingLevel::from_code(event.timing_level);
+        if timing != TimingLevel::Unknown {
+            self.progress.timing_level = timing;
+        }
+        let isolation = IsolationMode::from_code(event.isolation_mode);
+        if isolation != IsolationMode::Unknown {
+            self.progress.isolation_mode = isolation;
+        }
+        if event.test_point > 0u32 {
+            self.progress.test_point = event.test_point;
+        }
         let message = event_message(event);
         if message.is_empty() {
             if event.kind == ZTICK_FRONTEND_EVENT_WARNING {
@@ -649,6 +799,7 @@ impl App {
             }
             return;
         }
+        self.progress.message = message.clone();
         self.set_status(message.clone());
         if event.kind == ZTICK_FRONTEND_EVENT_WARNING {
             self.push_warning(message);
@@ -675,17 +826,21 @@ fn event_message(event: &ZtickFrontendEvent) -> String {
 mod tests {
     use std::ffi::c_char;
 
-    use super::{App, RunState, Screen, event_message};
+    use super::{App, IsolationMode, RunState, Screen, TimingLevel, event_message};
     use crate::config::DEFAULT_CONFIG_JSON;
     use crate::data::{DashboardData, PluginInspection, PortabilityReport};
     use crate::profile::SavedProfile;
     use crate::{
         ZTICK_FRONTEND_EVENT_COMPLETION, ZTICK_FRONTEND_EVENT_MESSAGE_SIZE,
-        ZTICK_FRONTEND_EVENT_STATE_CHANGE, ZTICK_FRONTEND_EVENT_WARNING,
+        ZTICK_FRONTEND_EVENT_PROGRESS, ZTICK_FRONTEND_EVENT_STATE_CHANGE,
+        ZTICK_FRONTEND_EVENT_WARNING, ZTICK_FRONTEND_ISOLATION_IN_PROCESS,
+        ZTICK_FRONTEND_ISOLATION_OUT_OF_PROCESS, ZTICK_FRONTEND_ISOLATION_UNKNOWN,
         ZTICK_FRONTEND_STATE_COMPLETE, ZTICK_FRONTEND_STATE_CONFIGURING,
         ZTICK_FRONTEND_STATE_FAILED, ZTICK_FRONTEND_STATE_IDLE, ZTICK_FRONTEND_STATE_INCOMPLETE,
         ZTICK_FRONTEND_STATE_RUNNING, ZTICK_FRONTEND_STATE_VALIDATING,
-        ZTICK_FRONTEND_STATE_WARNING, ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION, ZtickFrontendEvent,
+        ZTICK_FRONTEND_STATE_WARNING, ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION,
+        ZTICK_FRONTEND_TIMING_END_TO_END, ZTICK_FRONTEND_TIMING_PER_BLOCK,
+        ZTICK_FRONTEND_TIMING_UNKNOWN, ZTICK_FRONTEND_TIMING_WHOLE_RUN, ZtickFrontendEvent,
     };
 
     /// Build one boundary event with a copied context message.
@@ -704,6 +859,22 @@ mod tests {
             isolation_mode: 0,
             message: bytes,
         }
+    }
+
+    /// Build one boundary event with copied execution context fields.
+    fn event_with_context(
+        kind: i32,
+        state: i32,
+        test_point: u32,
+        timing_level: i32,
+        isolation_mode: i32,
+        message: &str,
+    ) -> ZtickFrontendEvent {
+        let mut built = event(kind, state, message);
+        built.test_point = test_point;
+        built.timing_level = timing_level;
+        built.isolation_mode = isolation_mode;
+        built
     }
 
     /// Build dashboard data with the requested number of plugin candidates.
@@ -765,7 +936,7 @@ mod tests {
     /// Verify screen cycles forward and backward through every registered screen.
     #[test]
     fn screen_cycles_forward_and_backward() {
-        assert_eq!(Screen::ALL.len(), 8);
+        assert_eq!(Screen::ALL.len(), 9);
         for (index, screen) in Screen::ALL.iter().enumerate() {
             let next = Screen::ALL[(index + 1) % Screen::ALL.len()];
             let previous = Screen::ALL[(index + Screen::ALL.len() - 1) % Screen::ALL.len()];
@@ -936,6 +1107,128 @@ mod tests {
         ));
         assert_eq!(app.warnings(), ["warning reported without context"]);
         assert_eq!(app.status(), "Ready");
+    }
+
+    /// Verify timing and isolation codes map to distinct explicit labels.
+    #[test]
+    fn execution_context_codes_map_to_explicit_labels() {
+        assert_eq!(
+            TimingLevel::from_code(ZTICK_FRONTEND_TIMING_PER_BLOCK),
+            TimingLevel::PerBlock
+        );
+        assert_eq!(
+            TimingLevel::from_code(ZTICK_FRONTEND_TIMING_WHOLE_RUN),
+            TimingLevel::WholeRun
+        );
+        assert_eq!(
+            TimingLevel::from_code(ZTICK_FRONTEND_TIMING_END_TO_END),
+            TimingLevel::EndToEnd
+        );
+        assert_eq!(
+            TimingLevel::from_code(ZTICK_FRONTEND_TIMING_UNKNOWN),
+            TimingLevel::Unknown
+        );
+        assert_eq!(
+            IsolationMode::from_code(ZTICK_FRONTEND_ISOLATION_IN_PROCESS),
+            IsolationMode::InProcess
+        );
+        assert_eq!(
+            IsolationMode::from_code(ZTICK_FRONTEND_ISOLATION_OUT_OF_PROCESS),
+            IsolationMode::OutOfProcess
+        );
+        assert_eq!(
+            IsolationMode::from_code(ZTICK_FRONTEND_ISOLATION_UNKNOWN),
+            IsolationMode::Unknown
+        );
+        let timing_labels = [
+            TimingLevel::Unknown.label(),
+            TimingLevel::PerBlock.label(),
+            TimingLevel::WholeRun.label(),
+            TimingLevel::EndToEnd.label(),
+        ];
+        let isolation_labels = [
+            IsolationMode::Unknown.label(),
+            IsolationMode::InProcess.label(),
+            IsolationMode::OutOfProcess.label(),
+        ];
+        let unique_timing: std::collections::HashSet<_> = timing_labels.iter().collect();
+        let unique_isolation: std::collections::HashSet<_> = isolation_labels.iter().collect();
+        assert_eq!(unique_timing.len(), timing_labels.len());
+        assert_eq!(unique_isolation.len(), isolation_labels.len());
+    }
+
+    /// Verify copied events retain progress context across unrelated events.
+    #[test]
+    fn observe_event_retains_copied_execution_context() {
+        let mut app = App::new();
+        app.begin_run("/tmp/ztick-run.json");
+        assert_eq!(app.state(), RunState::Validating);
+        app.observe_event(&event_with_context(
+            ZTICK_FRONTEND_EVENT_PROGRESS,
+            ZTICK_FRONTEND_STATE_RUNNING,
+            1,
+            ZTICK_FRONTEND_TIMING_WHOLE_RUN,
+            ZTICK_FRONTEND_ISOLATION_IN_PROCESS,
+            "repetition 1/2",
+        ));
+        assert_eq!(app.progress().config_path, "/tmp/ztick-run.json");
+        assert_eq!(app.progress().test_point, 1);
+        assert_eq!(app.progress().timing_level, TimingLevel::WholeRun);
+        assert_eq!(app.progress().isolation_mode, IsolationMode::InProcess);
+        assert_eq!(app.progress().message, "repetition 1/2");
+
+        app.observe_event(&event_with_context(
+            ZTICK_FRONTEND_EVENT_WARNING,
+            ZTICK_FRONTEND_STATE_WARNING,
+            1,
+            ZTICK_FRONTEND_TIMING_PER_BLOCK,
+            ZTICK_FRONTEND_ISOLATION_OUT_OF_PROCESS,
+            "timing drift",
+        ));
+        assert_eq!(app.progress().timing_level, TimingLevel::PerBlock);
+        assert_eq!(app.progress().isolation_mode, IsolationMode::OutOfProcess);
+        assert_eq!(app.warnings(), ["timing drift"]);
+
+        app.observe_event(&event_with_context(
+            ZTICK_FRONTEND_EVENT_COMPLETION,
+            ZTICK_FRONTEND_STATE_COMPLETE,
+            0,
+            ZTICK_FRONTEND_TIMING_UNKNOWN,
+            ZTICK_FRONTEND_ISOLATION_UNKNOWN,
+            "run completed",
+        ));
+        assert_eq!(app.progress().timing_level, TimingLevel::PerBlock);
+        assert_eq!(app.progress().isolation_mode, IsolationMode::OutOfProcess);
+        assert_eq!(app.progress().test_point, 1);
+    }
+
+    /// Verify a new run clears stale warnings and copied result status.
+    #[test]
+    fn begin_run_resets_stale_execution_state() {
+        let mut app = App::new();
+        app.push_warning("stale");
+        app.set_run_result(r#"{"status":"success"}"#);
+        app.begin_run("/tmp/next.json");
+        assert!(app.warnings().is_empty());
+        assert!(app.progress().result_status.is_empty());
+        assert_eq!(app.progress().test_point, 0);
+        assert_eq!(app.progress().timing_level, TimingLevel::Unknown);
+        assert_eq!(app.progress().isolation_mode, IsolationMode::Unknown);
+    }
+
+    /// Verify result envelopes expose status and destination without recomputing metrics.
+    #[test]
+    fn set_run_result_exposes_envelope_status_and_output_path() {
+        let mut app = App::new();
+        app.set_run_result(
+            r#"{"schema_version":1,"command":"run","status":"success","exit_code":0,"data":{"output_path":"/tmp/result.json"},"error":""}"#,
+        );
+        assert_eq!(
+            app.progress().result_status,
+            "success; output=/tmp/result.json"
+        );
+        app.set_run_result("not json");
+        assert_eq!(app.progress().result_status, "undecodable result envelope");
     }
 
     /// Verify config replacement exposes typed values and rejects malformed text.

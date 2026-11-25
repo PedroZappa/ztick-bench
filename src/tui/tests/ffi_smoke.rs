@@ -10,6 +10,7 @@
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use ztick_tui::*;
 
@@ -97,7 +98,7 @@ fn rust_ffi_calls_every_private_boundary_symbol() {
             patch: 0,
         };
         assert_eq!(ztick_frontend_get_version(&mut version), 0);
-        assert_eq!((version.major, version.minor, version.patch), (0, 1, 0));
+        assert_eq!((version.major, version.minor, version.patch), (0, 2, 0));
         expect_token(ztick_frontend_status_message(3), "invalid argument");
 
         let trust = c_string(&trust_path);
@@ -296,6 +297,35 @@ fn rust_ffi_calls_every_private_boundary_symbol() {
         );
         assert_eq!(after_drain, 0);
         assert!(CALLBACK_COUNT.load(Ordering::SeqCst) > 0);
+
+        assert_eq!(
+            ztick_frontend_run_start(session, std::ptr::null()),
+            ZTICK_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(ztick_frontend_run_start(session, config_file.as_ptr()), 0);
+        let mut result_buffer = vec![0_i8; 131072];
+        let mut result_length = 0_usize;
+        let mut run_available = 0_i32;
+        for _ in 0..500 {
+            let status = ztick_frontend_run_result(
+                session,
+                result_buffer.as_mut_ptr(),
+                result_buffer.len(),
+                &mut result_length,
+                &mut run_available,
+            );
+            assert_eq!(status, 0);
+            if run_available == 1 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(run_available, 1);
+        let async_json = CStr::from_ptr(result_buffer.as_ptr())
+            .to_string_lossy()
+            .into_owned();
+        assert!(async_json.contains("\"command\":\"run\""));
+        assert!(async_json.contains("\"status\":\"success\""));
 
         ztick_frontend_session_destroy(session);
         assert_eq!(ztick_frontend_config_validate(session), 3);

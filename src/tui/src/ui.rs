@@ -31,7 +31,7 @@ fn footer_lines(app: &App) -> Vec<Line<'static>> {
         )];
     }
     vec![Line::from(
-        "1-8 screens  Tab cycle  Up/Down select  Left/Right cycle  Enter edit  +/- adjust  p priority  Ctrl+S save  Ctrl+O reload  r refresh  q quit",
+        "1-9 screens  Tab cycle  Up/Down select  Left/Right cycle  Enter edit  +/- adjust  p priority  Ctrl+R run  Ctrl+S save  Ctrl+O reload  r refresh  q quit",
     )]
 }
 
@@ -417,6 +417,73 @@ fn profiles_lines(app: &App) -> Vec<Line<'static>> {
     lines
 }
 
+/// Build the live execution view from copied core progress events.
+///
+/// Process-level and instrumented measurements are rendered as separate sections
+/// with explicit unavailability text. Live progress carries no metric values, so
+/// this view never presents a process-level number as a DSP/callback measurement.
+fn execution_lines(app: &App) -> Vec<Line<'static>> {
+    let progress = app.progress();
+    let mut lines = vec![
+        Line::from(format!("Run state: {}", app.state().label())),
+        Line::from(format!(
+            "Config: {}",
+            if progress.config_path.is_empty() {
+                "(not started)"
+            } else {
+                &progress.config_path
+            }
+        )),
+        Line::from(format!(
+            "Test point: {}",
+            if progress.test_point == 0 {
+                "(not reported)".to_string()
+            } else {
+                progress.test_point.to_string()
+            }
+        )),
+        Line::from(format!("Timing level: {}", progress.timing_level.label())),
+        Line::from(format!(
+            "Isolation mode: {}",
+            progress.isolation_mode.label()
+        )),
+        Line::from(format!(
+            "Progress: {}",
+            if progress.message.is_empty() {
+                "(waiting for core progress events)"
+            } else {
+                &progress.message
+            }
+        )),
+        Line::from(format!("Result: {}", progress.result_status)),
+        Line::from("Process-level measurements (black-box): unavailable in live progress"),
+        Line::from(
+            "  Process CPU, memory and system observations are not carried by progress events",
+        ),
+        Line::from(
+            "Instrumented DSP/callback measurements (SDK hooks): unavailable in live progress",
+        ),
+        Line::from(format!(
+            "  Recorded samples use timing level {}; detailed values belong to the results screen",
+            progress.timing_level.label()
+        )),
+        Line::from(format!("Warnings: {}", app.warnings().len())),
+    ];
+    if app.warnings().is_empty() {
+        lines.push(Line::from("  (none)"));
+    } else {
+        lines.extend(
+            app.warnings()
+                .iter()
+                .map(|warning| Line::from(format!("  - {warning}"))),
+        );
+    }
+    lines.push(Line::from(
+        "Process isolation, when selected, is containment for crashes and is not a security sandbox",
+    ));
+    lines
+}
+
 /// Render one complete application frame.
 pub fn render(frame: &mut Frame<'_>, app: &App) {
     let [header_area, main_area, keys_area] = Layout::vertical([
@@ -438,6 +505,7 @@ pub fn render(frame: &mut Frame<'_>, app: &App) {
         Screen::Configuration => configuration_lines(app),
         Screen::Measurement => measurement_lines(app),
         Screen::Scheduling => scheduling_lines(app),
+        Screen::Execution => execution_lines(app),
         Screen::Profiles => profiles_lines(app),
     };
     frame.render_widget(
@@ -454,17 +522,25 @@ pub fn render(frame: &mut Frame<'_>, app: &App) {
 /// Unit tests for headless screen rendering.
 #[cfg(test)]
 mod tests {
+    use std::ffi::c_char;
+    use std::mem::size_of;
+
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::{
-        config_gate_lines, dashboard_lines, editable_field_lines, field_line, integration_lines,
-        matching_inspection, profiles_lines, render, scheduling_lines, system_lines,
-        system_summary, value_or_placeholder,
+        config_gate_lines, dashboard_lines, editable_field_lines, execution_lines, field_line,
+        integration_lines, matching_inspection, profiles_lines, render, scheduling_lines,
+        system_lines, system_summary, value_or_placeholder,
     };
     use crate::app::{App, Screen};
     use crate::config::DEFAULT_CONFIG_JSON;
     use crate::data::{DashboardData, PluginInspection, PortabilityReport};
     use crate::profile::SavedProfile;
+    use crate::{
+        ZTICK_FRONTEND_EVENT_MESSAGE_SIZE, ZTICK_FRONTEND_EVENT_PROGRESS,
+        ZTICK_FRONTEND_ISOLATION_OUT_OF_PROCESS, ZTICK_FRONTEND_STATE_RUNNING,
+        ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION, ZTICK_FRONTEND_TIMING_PER_BLOCK, ZtickFrontendEvent,
+    };
 
     /// Dashboard data containing all four availability states and one plugin.
     fn test_data() -> DashboardData {
@@ -706,9 +782,53 @@ mod tests {
                 "screen {screen:?} shows its title"
             );
             assert!(
-                text.contains("1-8 screens"),
+                text.contains("1-9 screens"),
                 "screen {screen:?} shows key hints"
             );
         }
+    }
+
+    /// Verify the execution view shows copied context and separates measurement classes.
+    #[test]
+    fn execution_lines_show_live_context_and_distinct_measurement_sections() {
+        let mut app = App::new();
+        app.begin_run("/tmp/ztick-run.json");
+        let message = "repetition 2/3";
+        let mut bytes = [0 as c_char; ZTICK_FRONTEND_EVENT_MESSAGE_SIZE];
+        for (slot, value) in bytes.iter_mut().zip(message.bytes()) {
+            *slot = value as c_char;
+        }
+        let event = ZtickFrontendEvent {
+            size: size_of::<ZtickFrontendEvent>() as u32,
+            version: ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION,
+            kind: ZTICK_FRONTEND_EVENT_PROGRESS,
+            state: ZTICK_FRONTEND_STATE_RUNNING,
+            test_point: 2,
+            timing_level: ZTICK_FRONTEND_TIMING_PER_BLOCK,
+            isolation_mode: ZTICK_FRONTEND_ISOLATION_OUT_OF_PROCESS,
+            message: bytes,
+        };
+        app.observe_event(&event);
+        app.push_warning("timer drift");
+        app.set_run_result(
+            r#"{"status":"success","exit_code":0,"data":{"output_path":"/tmp/result.json"}}"#,
+        );
+
+        let text = lines_text(&execution_lines(&app));
+        assert!(text.contains("Run state: Running"));
+        assert!(text.contains("Config: /tmp/ztick-run.json"));
+        assert!(text.contains("Test point: 2"));
+        assert!(text.contains("Timing level: per_block"));
+        assert!(text.contains("Isolation mode: out_of_process"));
+        assert!(text.contains("Progress: repetition 2/3"));
+        assert!(text.contains("Result: success; output=/tmp/result.json"));
+        assert!(text.contains("Warnings: 1"));
+        assert!(text.contains("timer drift"));
+        assert!(
+            text.contains("Process-level measurements (black-box): unavailable in live progress")
+        );
+        assert!(text.contains(
+            "Instrumented DSP/callback measurements (SDK hooks): unavailable in live progress"
+        ));
     }
 }

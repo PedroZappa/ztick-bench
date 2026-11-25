@@ -114,8 +114,13 @@ The TUI is a front end over the core engine and result documents
 
 - Configuration screen edits produce the portable config document
   ([RESULTS §6](RESULTS_FORMAT.md#6-config-document)).
-- Execution monitoring reads copied progress events from the private C boundary;
-  it does not implement timing or validation itself.
+- Execution monitoring reads copied core progress events from the private C
+  boundary; it does not implement timing or validation itself. Known timing,
+  isolation and test-point values are retained across events, warnings are kept
+  in arrival order, and the copied run envelope is shown only after the worker
+  publishes it. Process-level and instrumented DSP/callback measurements are
+  rendered as separate sections and remain explicitly unavailable in live
+  progress, so no process-level number is presented as an SDK-hook measurement.
 - Results, compare and report screens read result documents through that
   boundary; they do not recompute metrics except through the core's comparison
   functions.

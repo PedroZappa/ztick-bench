@@ -19,6 +19,7 @@
 #include "ztick/config_value.hpp"
 #include "ztick/execution.hpp"
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -26,10 +27,53 @@
 /** @brief Portable benchmarking core: workload models and execution models. */
 namespace ztick {
 
+/** @brief Lifecycle phase carried by one core progress observation. */
+enum class SessionPhase : std::uint8_t {
+  /** @brief Configuration and capability checks are starting. */
+  validating = 0,
+  /** @brief One test point or repetition is running. */
+  running = 1,
+  /** @brief A non-fatal stability warning was recorded. */
+  warning = 2,
+  /** @brief The session failed before producing a result. */
+  failed = 3,
+  /** @brief The session ended with incomplete measurements. */
+  incomplete = 4,
+  /** @brief Every configured test point completed successfully. */
+  complete = 5,
+};
+
+/**
+ * @brief One copied progress observation emitted outside timed DSP intervals.
+ * @note The observer must copy any borrowed text it retains. No metric value is
+ *       carried here; progress only describes lifecycle and context.
+ */
+struct SessionProgress {
+  /** @brief Lifecycle phase of this observation. */
+  SessionPhase phase{SessionPhase::validating};
+  /** @brief One-based test point, or zero when no test point is active. */
+  std::uint32_t test_point{0U};
+  /** @brief One-based repetition within @ref test_point, or zero. */
+  std::uint32_t repetition{0U};
+  /** @brief Total configured repetitions for @ref test_point, or zero. */
+  std::uint32_t repetition_count{0U};
+  /** @brief Active timing token, or `unknown` when none is active. */
+  std::string timing_level{"unknown"};
+  /** @brief Active isolation token, or `unknown` before planning. */
+  std::string isolation{"unknown"};
+  /** @brief Human-readable context for the observation. */
+  std::string message;
+};
+
+/** @brief Optional observer receiving copied core progress observations. */
+using ProgressObserver = std::function<void(const SessionProgress &)>;
+
 /**
  * @brief Injectable host services needed to materialize a result document.
- * @note All callbacks must be non-null. The front end owns their implementation
- *       so the core depends on neither a clock source nor a platform inventory.
+ * @note `clock`, `machine_metadata`, `session_id` and `timestamp` must be
+ *       non-null. `progress` may be empty. The front end owns their
+ *       implementation so the core depends on neither a clock source nor a
+ *       platform inventory.
  */
 struct SessionContext {
   /** @brief Monotonic clock returning elapsed seconds; used for every bracket. */
@@ -40,6 +84,8 @@ struct SessionContext {
   std::function<std::string()> session_id;
   /** @brief Generator of a non-empty ISO-8601 UTC timestamp string. */
   std::function<std::string()> timestamp;
+  /** @brief Optional observer for lifecycle and repetition progress. */
+  ProgressObserver progress;
 };
 
 /**
@@ -64,7 +110,8 @@ bool validate_run_config(const ConfigValue &config, std::string *error = nullptr
  *       override applied by the caller is visible in the frozen result.
  *       Validation runs after all timed intervals; a failed validation phase is
  *       recorded in the run and makes the session incomplete rather than
- *       discarding the measurements.
+ *       discarding the measurements. Any @ref SessionContext::progress observer
+ *       is called outside timed DSP intervals with copied observations.
  */
 std::optional<ConfigValue> run_configured_session(const ConfigValue &config,
                                                   const SessionContext &context,

@@ -13,6 +13,7 @@
 #include <ztick/result_document.hpp>
 #include <ztick/run_session.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -224,6 +225,75 @@ TEST_CASE("run session requires complete injected context", "[core][run]") {
   std::string error;
   REQUIRE_FALSE(ztick::run_configured_session(parsed.document, context, &error));
   REQUIRE(error.find("session context is incomplete") != std::string::npos);
+}
+
+/**
+ * @brief Verify copied progress observations cover lifecycle, repetitions and context.
+ */
+TEST_CASE("run session emits lifecycle and repetition progress", "[core][run][progress]") {
+  const auto parsed = ztick::parse_config_document(make_config(2, 2));
+  REQUIRE(parsed.valid());
+
+  std::vector<ztick::SessionProgress> observations;
+  SessionContext context = make_context();
+  context.progress = [&observations](const ztick::SessionProgress &progress) {
+    observations.push_back(progress);
+  };
+  std::string error;
+  const auto result = ztick::run_configured_session(parsed.document, context, &error);
+  REQUIRE(result.has_value());
+  REQUIRE(error.empty());
+  REQUIRE_FALSE(observations.empty());
+
+  const auto count_phase = [&observations](ztick::SessionPhase phase) {
+    return std::count_if(
+        observations.begin(), observations.end(),
+        [phase](const ztick::SessionProgress &progress) { return progress.phase == phase; });
+  };
+  REQUIRE(count_phase(ztick::SessionPhase::validating) == 1);
+  REQUIRE(count_phase(ztick::SessionPhase::running) == 3);
+  REQUIRE(count_phase(ztick::SessionPhase::warning) == 1);
+  REQUIRE(count_phase(ztick::SessionPhase::complete) == 1);
+  REQUIRE(observations.front().phase == ztick::SessionPhase::validating);
+  REQUIRE(observations.front().test_point == 1U);
+  REQUIRE(observations.front().repetition_count == 2U);
+  REQUIRE(observations.front().timing_level == "per_block");
+  REQUIRE(observations.front().isolation == "in_process");
+  REQUIRE(observations.back().phase == ztick::SessionPhase::complete);
+  REQUIRE(observations.back().message == "run completed");
+
+  bool saw_first_repetition = false;
+  bool saw_second_repetition = false;
+  for (const ztick::SessionProgress &progress : observations) {
+    if (progress.phase != ztick::SessionPhase::running) {
+      continue;
+    }
+    saw_first_repetition |= progress.repetition == 1U && progress.message == "repetition 1/2";
+    saw_second_repetition |= progress.repetition == 2U && progress.message == "repetition 2/2";
+  }
+  REQUIRE(saw_first_repetition);
+  REQUIRE(saw_second_repetition);
+}
+
+/**
+ * @brief Verify a terminal failure emits one failed observation with its reason.
+ */
+TEST_CASE("run session emits failed progress for an incomplete context", "[core][run][progress]") {
+  const auto parsed = ztick::parse_config_document(make_config(2, 1));
+  REQUIRE(parsed.valid());
+
+  std::vector<ztick::SessionProgress> observations;
+  SessionContext context = make_context();
+  context.session_id = {};
+  context.progress = [&observations](const ztick::SessionProgress &progress) {
+    observations.push_back(progress);
+  };
+  std::string error;
+  REQUIRE_FALSE(ztick::run_configured_session(parsed.document, context, &error));
+  REQUIRE(observations.size() == 1U);
+  REQUIRE(observations.front().phase == ztick::SessionPhase::failed);
+  REQUIRE(observations.front().message.find("session context is incomplete") != std::string::npos);
+  REQUIRE(observations.front().test_point == 0U);
 }
 
 /**

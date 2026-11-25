@@ -371,6 +371,21 @@ Rust. Screen-state tests then cover each of the six workflows in
 [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows), including explicit
 consent denial, blocked cross-machine capabilities and incomplete-result status.
 
+**P5.4 execution-monitoring coverage (Derived design).** Core tests observe the
+validating, per-repetition running, warning and complete phases from an injected
+`ProgressObserver`, assert the copied timing/isolation tokens and repetition
+context, and verify that a missing injected service emits one failed observation
+with its reason. CLI tests inject the same observer through
+`dispatch_with_context`, prove that a `run` reaches the core while read-only
+commands produce no synthetic progress, and re-check the written result through
+the normal dispatch path. The C11 and Rust boundary tests cover `run_start` and
+`run_result` error paths, pending availability, copied progress context and the
+published JSON envelope, including destruction while a worker may still be
+active. Rust app/UI tests drive the execution key flow and assert that the
+screen shows run state, config path, test point, timing level, isolation mode,
+warnings and result status while keeping the two measurement classes visually
+separate. No metric value is invented from a progress event.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |

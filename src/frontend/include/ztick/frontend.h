@@ -15,7 +15,9 @@
  * buffers; borrowed progress events are copied into caller-owned event structs.
  * When an output buffer is too small, `out_length` still receives the required
  * byte count and no partial copy is made. Each session is owned by one front-end
- * thread; separate sessions may be used concurrently.
+ * thread; separate sessions may be used concurrently. An asynchronous run uses a
+ * session-owned worker, but the caller still performs every other session call
+ * from the owning thread.
  */
 
 #ifndef ZTICK_FRONTEND_H
@@ -29,7 +31,7 @@
 /** @brief Major version of the private front-end interface. */
 #define ZTICK_FRONTEND_VERSION_MAJOR 0
 /** @brief Minor version of the private front-end interface. */
-#define ZTICK_FRONTEND_VERSION_MINOR 1
+#define ZTICK_FRONTEND_VERSION_MINOR 2
 /** @brief Patch version of the private front-end interface. */
 #define ZTICK_FRONTEND_VERSION_PATCH 0
 /** @brief Layout version required in every public struct header. */
@@ -338,6 +340,37 @@ ZTICK_FRONTEND_API int32_t ztick_frontend_system(ztick_frontend_session *session
 ZTICK_FRONTEND_API int32_t ztick_frontend_run(ztick_frontend_session *session,
                                               const char *config_path, char *out_json,
                                               size_t capacity, size_t *out_length);
+
+/**
+ * @brief Start `run` on a session-owned worker and return without blocking.
+ * @param session Session to use; must not be NULL.
+ * @param config_path NUL-terminated config path copied before the worker starts.
+ * @return `ztick_status_success` when the worker started,
+ *         `ztick_status_invalid_argument` for a NULL argument, or
+ *         `ztick_status_processing_failure` when another run is active.
+ * @note Core progress is delivered through queued copied events and, when
+ *       registered, the progress callback. The callback runs on the worker; it
+ *       must not call any other session operation or destroy the session.
+ */
+ZTICK_FRONTEND_API int32_t ztick_frontend_run_start(ztick_frontend_session *session,
+                                                    const char *config_path);
+
+/**
+ * @brief Copy the result of the most recent asynchronous run.
+ * @param session Session to use; must not be NULL.
+ * @param out_json Destination buffer; must not be NULL when @p capacity is non-zero.
+ * @param capacity Byte capacity of @p out_json.
+ * @param out_length Optional receiver for the JSON length excluding the NUL.
+ * @param out_available Required receiver: 1 when a completed result is copied,
+ *        0 while a run is pending or no run has been started.
+ * @return `ztick_status_success` for an available or pending result, or a status
+ *         describing a completed run that failed.
+ * @note When @p out_available is 0 no bytes are written to @p out_json. The
+ *       result remains available until the next @ref ztick_frontend_run_start.
+ */
+ZTICK_FRONTEND_API int32_t ztick_frontend_run_result(ztick_frontend_session *session,
+                                                     char *out_json, size_t capacity,
+                                                     size_t *out_length, int32_t *out_available);
 
 /**
  * @brief Run `report` for one stored result and copy its JSON envelope.

@@ -199,7 +199,7 @@ prerequisite before the Rust crate and screens are implemented.
       unsupported cross-machine capabilities is blocked rather than silently
       adapted ([TUI §2–§5](TUI_SPECIFICATION.md#2-screens),
       [RESULTS §6](RESULTS_FORMAT.md#6-config-document)).
-- [ ] **P5.4 — Execution monitoring screen.** Done when: Live run state, progress
+- [x] **P5.4 — Execution monitoring screen.** Done when: Live run state, progress
       by test point, current timing level, warnings and active isolation mode are
       shown from core progress events, with process-level and instrumented
       measurements kept visually distinct ([TUI §3–§5](TUI_SPECIFICATION.md#3-run-state-model)).

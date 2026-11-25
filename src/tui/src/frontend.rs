@@ -17,8 +17,8 @@ use crate::{
     ztick_frontend_config_override, ztick_frontend_config_parse, ztick_frontend_config_save,
     ztick_frontend_config_serialize, ztick_frontend_config_validate, ztick_frontend_last_error,
     ztick_frontend_list, ztick_frontend_plugin_inspect, ztick_frontend_plugin_list,
-    ztick_frontend_progress_poll, ztick_frontend_session_create, ztick_frontend_session_destroy,
-    ztick_frontend_system,
+    ztick_frontend_progress_poll, ztick_frontend_run_result, ztick_frontend_run_start,
+    ztick_frontend_session_create, ztick_frontend_session_destroy, ztick_frontend_system,
 };
 
 /// Status returned by every successful private-boundary operation.
@@ -279,6 +279,62 @@ impl Session {
         }
     }
 
+    /// Start one asynchronous run from a saved portable config document.
+    ///
+    /// # Parameters
+    /// - `path`: Filesystem path of a previously saved config document.
+    ///
+    /// # Returns
+    /// Success once the session-owned worker has started, or the copied boundary
+    /// error. Core progress is delivered through [`Session::poll_event`].
+    pub fn start_run(&self, path: &str) -> Result<(), FrontendError> {
+        let path = CString::new(path)
+            .map_err(|_| FrontendError::new(-1, "run config path contains an interior NUL byte"))?;
+        let status = unsafe { ztick_frontend_run_start(self.handle, path.as_ptr()) };
+        if status == STATUS_SUCCESS {
+            Ok(())
+        } else {
+            Err(FrontendError::new(status, self.last_error()))
+        }
+    }
+
+    /// Copy the result envelope of the most recent asynchronous run.
+    ///
+    /// # Returns
+    /// `Ok(None)` while the worker is active, `Ok(Some(json))` for a completed
+    /// run whose JSON envelope is available even when the run failed, or a
+    /// boundary error when no envelope was copied.
+    pub fn run_result(&self) -> Result<Option<String>, FrontendError> {
+        let mut buffer: Vec<c_char> = vec![0; JSON_CAPACITY];
+        let mut length = 0_usize;
+        let mut available = 0_i32;
+        let status = unsafe {
+            ztick_frontend_run_result(
+                self.handle,
+                buffer.as_mut_ptr(),
+                buffer.len(),
+                &mut length,
+                &mut available,
+            )
+        };
+        if available == 0 {
+            return Ok(None);
+        }
+        if length >= buffer.len() {
+            return Err(FrontendError::new(
+                status,
+                "front-end run result exceeded the copy buffer",
+            ));
+        }
+        let text = unsafe { CStr::from_ptr(buffer.as_ptr()) }
+            .to_string_lossy()
+            .into_owned();
+        if text.is_empty() {
+            return Err(FrontendError::new(status, self.last_error()));
+        }
+        Ok(Some(text))
+    }
+
     /// Copy the dashboard's read-only envelopes from the front end.
     ///
     /// # Returns
@@ -474,8 +530,10 @@ impl Drop for Session {
 #[cfg(test)]
 mod tests {
     use std::ffi::CString;
+    use std::time::Duration;
 
     use super::{FrontendError, Session, Snapshot};
+    use crate::profile;
     use crate::{ztick_frontend_config_parse, ztick_frontend_session_destroy};
 
     /// A complete v1 config used to exercise the successful validation path.
@@ -706,6 +764,9 @@ mod tests {
         let _ = session
             .dashboard_data()
             .expect("dashboard envelopes are copied");
+        let _ = session
+            .parse_config(CONFIG_JSON)
+            .expect("config parsing enqueues a configuring event");
         let first = session
             .poll_event()
             .expect("progress poll succeeds")
@@ -720,5 +781,65 @@ mod tests {
             count += 1;
             assert!(count < 32, "the queue must eventually drain");
         }
+    }
+
+    /// Verify an invalid async path is rejected before it crosses the boundary.
+    #[test]
+    fn session_start_run_rejects_an_interior_nul_path() {
+        let session = Session::new().expect("session creation succeeds");
+        let error = session
+            .start_run("bad\0path")
+            .expect_err("an interior NUL cannot be passed to C");
+        assert!(error.message().contains("interior NUL"));
+    }
+
+    /// Verify a fresh session reports no run result before a run is started.
+    #[test]
+    fn session_run_result_is_pending_before_a_run() {
+        let session = Session::new().expect("session creation succeeds");
+        assert!(
+            session
+                .run_result()
+                .expect("a pending result is not an error")
+                .is_none()
+        );
+    }
+
+    /// Verify an async run delivers copied progress events and a JSON envelope.
+    #[test]
+    fn session_async_run_delivers_progress_and_result() {
+        use crate::{ZTICK_FRONTEND_EVENT_COMPLETION, ZTICK_FRONTEND_STATE_RUNNING};
+
+        let session = Session::new().expect("session creation succeeds");
+        let directory = std::env::temp_dir().join(format!(
+            "ztick-tui-async-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&directory).expect("temporary profile directory is created");
+        let path = profile::save(&directory, "Quick", CONFIG_JSON)
+            .expect("the async config document is saved");
+        let path = path.to_str().expect("temporary path is UTF-8");
+
+        session.start_run(path).expect("the async run starts");
+        let mut saw_running = false;
+        let mut saw_completion = false;
+        let mut result = None;
+        for _ in 0..500 {
+            while let Some(event) = session.poll_event().expect("progress poll succeeds") {
+                saw_running |= event.state == ZTICK_FRONTEND_STATE_RUNNING;
+                saw_completion |= event.kind == ZTICK_FRONTEND_EVENT_COMPLETION;
+            }
+            if let Some(json) = session.run_result().expect("result copy succeeds") {
+                result = Some(json);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(saw_running, "core progress reported a running state");
+        assert!(saw_completion, "core progress reported a terminal state");
+        let json = result.expect("the async run produced a JSON envelope");
+        assert!(json.contains("\"status\":\"success\""));
+        assert!(json.contains("\"command\":\"run\""));
     }
 }

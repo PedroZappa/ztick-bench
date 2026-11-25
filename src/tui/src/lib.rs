@@ -254,6 +254,21 @@ unsafe extern "C" {
         out_length: *mut usize,
     ) -> i32;
 
+    /// Start one asynchronous run on the session-owned worker.
+    pub fn ztick_frontend_run_start(
+        session: *mut ZtickFrontendSession,
+        config_path: *const c_char,
+    ) -> i32;
+
+    /// Copy the result of the most recent asynchronous run.
+    pub fn ztick_frontend_run_result(
+        session: *mut ZtickFrontendSession,
+        out_json: *mut c_char,
+        capacity: usize,
+        out_length: *mut usize,
+        out_available: *mut i32,
+    ) -> i32;
+
     /// Run `report` for one stored result and copy its JSON envelope.
     pub fn ztick_frontend_report(
         session: *mut ZtickFrontendSession,

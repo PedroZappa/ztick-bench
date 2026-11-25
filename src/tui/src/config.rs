@@ -130,7 +130,7 @@ impl EditableField {
                 Self::PriorityValue,
             ],
             Screen::Profiles => &[Self::ProfileName, Self::ReliabilityChecks],
-            Screen::Dashboard | Screen::System | Screen::Integrations => &[],
+            Screen::Dashboard | Screen::System | Screen::Integrations | Screen::Execution => &[],
         }
     }
 

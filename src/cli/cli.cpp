@@ -153,9 +153,12 @@ ConfigValue run_data(const RunOutcome &outcome) {
 /**
  * @brief Route one command after global options have been removed.
  * @param args Command arguments excluding the executable name and global options.
+ * @param context Optional host services used by a delegated core run session;
+ *        null selects the production run context.
  * @return Raw command result before output-format encoding.
  */
-CommandResult dispatch_command(const std::vector<std::string_view> &args) {
+CommandResult dispatch_command(const std::vector<std::string_view> &args,
+                               const ztick::SessionContext *context) {
   if (args.empty()) {
     return usage_error("ztick-bench: missing command\n");
   }
@@ -194,7 +197,8 @@ CommandResult dispatch_command(const std::vector<std::string_view> &args) {
     }
   } else if (command == "run") {
     const std::vector<std::string_view> run_args(args.begin() + 1U, args.end());
-    const RunOutcome outcome = execute_run(run_args);
+    const RunOutcome outcome =
+        context != nullptr ? execute_run(run_args, *context) : execute_run(run_args);
     result = outcome.command;
     result.data = run_data(outcome);
   } else if (command == "system") {
@@ -379,6 +383,21 @@ std::string_view version_text() noexcept {
   return text;
 }
 
+CommandResult dispatch_with_context(const std::vector<std::string_view> &args,
+                                    const ztick::SessionContext &context) {
+  std::string format_error;
+  const std::optional<FormatSelection> selection = select_output_format(args, &format_error);
+  if (!selection.has_value()) {
+    const CommandResult result = detail::usage_error("ztick-bench: " + format_error + "\n");
+    return detail::json_output_requested(args) ? detail::as_json(result, "") : result;
+  }
+  const CommandResult result = detail::dispatch_command(selection->args, &context);
+  if (selection->format == OutputFormat::json) {
+    return detail::as_json(result, detail::command_label(selection->args));
+  }
+  return result;
+}
+
 CommandResult dispatch(const std::vector<std::string_view> &args) {
   std::string format_error;
   const std::optional<FormatSelection> selection = select_output_format(args, &format_error);
@@ -386,7 +405,7 @@ CommandResult dispatch(const std::vector<std::string_view> &args) {
     const CommandResult result = detail::usage_error("ztick-bench: " + format_error + "\n");
     return detail::json_output_requested(args) ? detail::as_json(result, "") : result;
   }
-  const CommandResult result = detail::dispatch_command(selection->args);
+  const CommandResult result = detail::dispatch_command(selection->args, nullptr);
   if (selection->format == OutputFormat::json) {
     return detail::as_json(result, detail::command_label(selection->args));
   }

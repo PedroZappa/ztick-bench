@@ -24,6 +24,7 @@
 #include <ztick/sdk.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -37,6 +38,7 @@
 #include <new>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -51,15 +53,54 @@ namespace ztick::frontend {
 namespace {
 
 /**
- * @brief Opaque state owned by one front-end session.
+ * @brief Worker-owned state for one asynchronous run.
+ * @note Every field except the atomic flags is guarded by @ref mutex. The
+ *       owning session joins its worker before this state is destroyed.
  */
-struct SessionState {
+struct AsyncRunState {
+  /** @brief Guards the copied result fields. */
+  std::mutex mutex;
+  /** @brief Worker executing the private CLI run command. */
+  std::thread worker;
+  /** @brief Whether the worker is still executing a run. */
+  std::atomic<bool> active{false};
+  /** @brief Set by session destruction so the worker stops emitting events. */
+  std::atomic<bool> shutdown{false};
+  /** @brief Whether a terminal core phase was observed for this run. */
+  bool terminal{false};
+  /** @brief Whether the copied result is available to the caller. */
+  std::atomic<bool> available{false};
+  /** @brief Mapped status of the completed asynchronous run. */
+  std::int32_t status{ztick_status_success};
+  /** @brief Copied JSON envelope produced by the completed run. */
+  std::string json;
+};
+
+/**
+ * @brief Opaque state owned by one front-end session.
+ * @note Shared ownership lets the asynchronous worker hold a weak reference to
+ *       this state without creating an ownership cycle.
+ */
+struct SessionState : std::enable_shared_from_this<SessionState> {
   /**
    * @brief Construct session state with a trusted-plugin store.
    * @param trust_store_path Store path, or empty for the platform default.
    */
-  explicit SessionState(std::string trust_store_path) : trust_store(std::move(trust_store_path)) {}
+  explicit SessionState(std::string trust_store_path)
+      : trust_store(std::move(trust_store_path)), async(std::make_shared<AsyncRunState>()) {}
 
+  /**
+   * @brief Stop and join an asynchronous run before releasing session state.
+   */
+  ~SessionState() {
+    async->shutdown.store(true);
+    if (async->worker.joinable()) {
+      async->worker.join();
+    }
+  }
+
+  /** @brief Guards all mutable fields shared with the asynchronous worker. */
+  mutable std::mutex mutex;
   /** @brief Retained portable config document, valid only when @ref has_config is set. */
   ztick::ConfigValue config{ztick::ConfigValue::null()};
   /** @brief Whether @ref config holds a parsed document. */
@@ -74,10 +115,12 @@ struct SessionState {
   ztick_frontend_progress_callback callback{nullptr};
   /** @brief Opaque context passed to the progress callback. */
   void *user_data{nullptr};
+  /** @brief Worker-owned state shared through an asynchronous run. */
+  std::shared_ptr<AsyncRunState> async;
 };
 
 /** @brief Owning registry of live session states keyed by opaque handle values. */
-using SessionRegistry = std::unordered_map<ztick_frontend_session *, std::unique_ptr<SessionState>>;
+using SessionRegistry = std::unordered_map<ztick_frontend_session *, std::shared_ptr<SessionState>>;
 
 /**
  * @brief Return the registry guarding session creation, lookup and destruction.
@@ -124,25 +167,26 @@ ztick_frontend_session *allocate_session_handle() noexcept {
 /**
  * @brief Resolve an opaque session handle to its live implementation state.
  * @param session Handle to resolve; NULL is allowed.
- * @return Owning state pointer, or NULL when the handle is NULL or destroyed.
- * @note The registry lookup avoids dereferencing a stale handle after destruction.
+ * @return Shared ownership of the state, or empty when the handle is NULL or destroyed.
+ * @note Shared ownership keeps the state alive for the full duration of one
+ *       boundary call even when another thread destroys the session concurrently.
  */
-SessionState *state_of(ztick_frontend_session *session) noexcept {
+std::shared_ptr<SessionState> state_of(ztick_frontend_session *session) noexcept {
   if (session == nullptr) {
-    return nullptr;
+    return {};
   }
   const std::lock_guard<std::mutex> lock(session_registry_mutex());
   const auto entry = session_registry().find(session);
-  return entry == session_registry().end() ? nullptr : entry->second.get();
+  return entry == session_registry().end() ? std::shared_ptr<SessionState>{} : entry->second;
 }
 
 /**
  * @brief Resolve a const opaque session handle to its live implementation state.
  * @param session Handle to resolve; NULL is allowed.
- * @return Const owning state pointer, or NULL when the handle is NULL or destroyed.
+ * @return Shared ownership of the const state, or empty when the handle is invalid.
  * @note The pointer value is used only as a registry key; the handle is not modified.
  */
-const SessionState *state_of(const ztick_frontend_session *session) noexcept {
+std::shared_ptr<const SessionState> state_of(const ztick_frontend_session *session) noexcept {
   return state_of(const_cast<ztick_frontend_session *>(session));
 }
 
@@ -267,6 +311,7 @@ std::int32_t map_exit_code(ztick::cli::ExitCode code) noexcept {
  * @param timing_level Timing level code.
  * @param isolation_mode Isolation mode code.
  * @param message Human-readable context, truncated to the event message field.
+ * @note The caller must hold @ref SessionState::mutex.
  */
 void enqueue_event(SessionState *session, std::int32_t kind, std::int32_t state,
                    std::uint32_t test_point, std::int32_t timing_level, std::int32_t isolation_mode,
@@ -290,6 +335,125 @@ void enqueue_event(SessionState *session, std::int32_t kind, std::int32_t state,
   if (session->callback != nullptr) {
     session->callback(&event, session->user_data);
   }
+}
+
+/**
+ * @brief Queue one copied event from the asynchronous worker.
+ * @param session Weak reference to the session owning the event queue.
+ * @param kind Event kind code.
+ * @param state Run state code.
+ * @param test_point One-based test point, or zero.
+ * @param timing_level Timing level code.
+ * @param isolation_mode Isolation mode code.
+ * @param message Human-readable context copied into the event.
+ * @note A destroyed session silently drops events; the callback is invoked while
+ *       the session mutex is held and therefore must not call session operations.
+ */
+void enqueue_event_threadsafe(const std::weak_ptr<SessionState> &session, std::int32_t kind,
+                              std::int32_t state, std::uint32_t test_point,
+                              std::int32_t timing_level, std::int32_t isolation_mode,
+                              std::string_view message) {
+  const std::shared_ptr<SessionState> owner = session.lock();
+  if (!owner) {
+    return;
+  }
+  const std::lock_guard<std::mutex> lock(owner->mutex);
+  enqueue_event(owner.get(), kind, state, test_point, timing_level, isolation_mode, message);
+}
+
+/**
+ * @brief Record a failure reason from the asynchronous worker.
+ * @param session Weak reference to the session owning the error string.
+ * @param reason Explanation to copy.
+ */
+void set_error_threadsafe(const std::weak_ptr<SessionState> &session, std::string_view reason) {
+  const std::shared_ptr<SessionState> owner = session.lock();
+  if (!owner) {
+    return;
+  }
+  const std::lock_guard<std::mutex> lock(owner->mutex);
+  set_error(owner.get(), reason);
+}
+
+/**
+ * @brief Map one core timing token to the private boundary code.
+ * @param token Config timing token carried by a core progress observation.
+ * @return Stable timing level code; unknown tokens remain unknown.
+ */
+std::int32_t map_timing_level(std::string_view token) noexcept {
+  if (token == "per_block") {
+    return ztick_frontend_timing_per_block;
+  }
+  if (token == "whole_run") {
+    return ztick_frontend_timing_whole_run;
+  }
+  if (token == "end_to_end") {
+    return ztick_frontend_timing_end_to_end;
+  }
+  return ztick_frontend_timing_unknown;
+}
+
+/**
+ * @brief Map one core isolation token to the private boundary code.
+ * @param token Resolved isolation token carried by a core progress observation.
+ * @return Stable isolation mode code; unknown tokens remain unknown.
+ */
+std::int32_t map_isolation_mode(std::string_view token) noexcept {
+  if (token == "in_process") {
+    return ztick_frontend_isolation_in_process;
+  }
+  if (token == "out_of_process") {
+    return ztick_frontend_isolation_out_of_process;
+  }
+  return ztick_frontend_isolation_unknown;
+}
+
+/**
+ * @brief Convert one core progress observation into copied boundary events.
+ * @param session Weak reference to the session receiving the observation.
+ * @param run Async run state used to record terminal phases.
+ * @param progress Copied core observation with lifecycle and context fields.
+ */
+void emit_core_progress(const std::weak_ptr<SessionState> &session,
+                        const std::shared_ptr<AsyncRunState> &run,
+                        const ztick::SessionProgress &progress) {
+  if (run->shutdown.load()) {
+    return;
+  }
+  std::int32_t kind = ztick_frontend_event_state_change;
+  std::int32_t state = ztick_frontend_state_validating;
+  switch (progress.phase) {
+  case ztick::SessionPhase::validating:
+    state = ztick_frontend_state_validating;
+    break;
+  case ztick::SessionPhase::running:
+    kind = ztick_frontend_event_progress;
+    state = ztick_frontend_state_running;
+    break;
+  case ztick::SessionPhase::warning:
+    kind = ztick_frontend_event_warning;
+    state = ztick_frontend_state_warning;
+    break;
+  case ztick::SessionPhase::failed:
+    kind = ztick_frontend_event_completion;
+    state = ztick_frontend_state_failed;
+    break;
+  case ztick::SessionPhase::incomplete:
+    kind = ztick_frontend_event_completion;
+    state = ztick_frontend_state_incomplete;
+    break;
+  case ztick::SessionPhase::complete:
+    kind = ztick_frontend_event_completion;
+    state = ztick_frontend_state_complete;
+    break;
+  }
+  if (kind == ztick_frontend_event_completion) {
+    const std::lock_guard<std::mutex> lock(run->mutex);
+    run->terminal = true;
+  }
+  enqueue_event_threadsafe(session, kind, state, progress.test_point,
+                           map_timing_level(progress.timing_level),
+                           map_isolation_mode(progress.isolation), progress.message);
 }
 
 /**
@@ -369,19 +533,28 @@ bool read_text_file(const char *path, std::string &output, std::string &error) {
  * @param out_json Destination buffer for the JSON envelope.
  * @param capacity Byte capacity of @p out_json.
  * @param out_length Optional receiver for the copied JSON length.
+ * @param context Optional core services used by a `run` command.
  * @return CLI status mapped to `ztick_status`, or invalid argument for a short buffer.
+ * @note Only `run` produces synthetic state events; read-only commands must not
+ *       replace an active run state with unrelated completion transitions.
  */
 std::int32_t dispatch_command(SessionState *session, const std::vector<std::string_view> &args,
-                              char *out_json, std::size_t capacity, std::size_t *out_length) {
+                              char *out_json, std::size_t capacity, std::size_t *out_length,
+                              const ztick::SessionContext *context = nullptr) {
   std::vector<std::string_view> full_args;
   full_args.reserve(args.size() + 2U);
   full_args.emplace_back("--format");
   full_args.emplace_back("json");
   std::copy(args.begin(), args.end(), std::back_inserter(full_args));
 
-  enqueue_event(session, ztick_frontend_event_state_change, ztick_frontend_state_running, 0U,
-                ztick_frontend_timing_unknown, ztick_frontend_isolation_unknown, "command started");
-  const auto result = ztick::cli::dispatch(full_args);
+  const bool is_run = !args.empty() && args.front() == "run";
+  if (is_run) {
+    enqueue_event(session, ztick_frontend_event_state_change, ztick_frontend_state_running, 0U,
+                  ztick_frontend_timing_unknown, ztick_frontend_isolation_unknown,
+                  "command started");
+  }
+  const auto result = context != nullptr ? ztick::cli::dispatch_with_context(full_args, *context)
+                                         : ztick::cli::dispatch(full_args);
   const std::int32_t status = map_exit_code(result.code);
   if (status == ztick_status_success) {
     clear_error(session);
@@ -389,13 +562,16 @@ std::int32_t dispatch_command(SessionState *session, const std::vector<std::stri
     set_error(session, result.error.empty() ? ztick_status_message(status) : result.error);
   }
   const auto copied = copy_string(result.output, out_json, capacity, out_length, &session->error);
-  if (status == ztick_status_success) {
-    enqueue_event(session, ztick_frontend_event_completion, ztick_frontend_state_complete, 0U,
-                  ztick_frontend_timing_unknown, ztick_frontend_isolation_unknown,
-                  "command completed");
-  } else {
-    enqueue_event(session, ztick_frontend_event_completion, ztick_frontend_state_failed, 0U,
-                  ztick_frontend_timing_unknown, ztick_frontend_isolation_unknown, session->error);
+  if (is_run) {
+    if (status == ztick_status_success) {
+      enqueue_event(session, ztick_frontend_event_completion, ztick_frontend_state_complete, 0U,
+                    ztick_frontend_timing_unknown, ztick_frontend_isolation_unknown,
+                    "command completed");
+    } else {
+      enqueue_event(session, ztick_frontend_event_completion, ztick_frontend_state_failed, 0U,
+                    ztick_frontend_timing_unknown, ztick_frontend_isolation_unknown,
+                    session->error);
+    }
   }
   return copied == ztick_status_success ? status : copied;
 }
@@ -428,11 +604,14 @@ std::int32_t guard(SessionState *session, Operation &&operation) noexcept {
  */
 template <typename Operation>
 std::int32_t guard_session(ztick_frontend_session *handle, Operation &&operation) noexcept {
-  SessionState *state = state_of(handle);
-  if (state == nullptr) {
+  const std::shared_ptr<SessionState> state = state_of(handle);
+  if (!state) {
     return ztick_status_invalid_argument;
   }
-  return guard(state, [&]() -> std::int32_t { return operation(state); });
+  return guard(state.get(), [&]() -> std::int32_t {
+    const std::lock_guard<std::mutex> lock(state->mutex);
+    return operation(state.get());
+  });
 }
 
 /**
@@ -444,15 +623,130 @@ std::int32_t guard_session(ztick_frontend_session *handle, Operation &&operation
  */
 template <typename Operation>
 std::int32_t guard_session(const ztick_frontend_session *handle, Operation &&operation) noexcept {
-  const SessionState *state = state_of(handle);
-  if (state == nullptr) {
+  const std::shared_ptr<const SessionState> state = state_of(handle);
+  if (!state) {
     return ztick_status_invalid_argument;
   }
   try {
-    return operation(state);
+    const std::lock_guard<std::mutex> lock(state->mutex);
+    return operation(state.get());
   } catch (...) {
     return ztick_status_internal_error;
   }
+}
+
+/**
+ * @brief Execute one asynchronous run and publish its copied result.
+ * @param session Weak reference to the session receiving progress events.
+ * @param run Worker-owned state for this run.
+ * @param config_path Copied config path owned by the worker.
+ */
+void execute_async_run(const std::weak_ptr<SessionState> &session,
+                       const std::shared_ptr<AsyncRunState> &run, const std::string &config_path) {
+  std::vector<std::string_view> args;
+  args.reserve(4U);
+  args.emplace_back("--format");
+  args.emplace_back("json");
+  args.emplace_back("run");
+  args.emplace_back(config_path);
+
+  ztick::SessionContext context = ztick::cli::default_run_context();
+  context.progress = [session, run](const ztick::SessionProgress &progress) {
+    emit_core_progress(session, run, progress);
+  };
+  const auto result = ztick::cli::dispatch_with_context(args, context);
+  const std::int32_t status = map_exit_code(result.code);
+  bool terminal = false;
+  {
+    const std::lock_guard<std::mutex> lock(run->mutex);
+    run->json = result.output;
+    run->status = status;
+    run->available.store(true);
+    terminal = run->terminal;
+  }
+  if (!terminal) {
+    enqueue_event_threadsafe(session, ztick_frontend_event_completion,
+                             status == ztick_status_success ? ztick_frontend_state_complete
+                                                            : ztick_frontend_state_failed,
+                             0U, ztick_frontend_timing_unknown, ztick_frontend_isolation_unknown,
+                             status == ztick_status_success ? "run completed" : result.error);
+  }
+  set_error_threadsafe(session,
+                       status == ztick_status_success
+                           ? std::string_view{}
+                           : (result.error.empty() ? ztick_status_message(status) : result.error));
+  run->active.store(false);
+}
+
+/**
+ * @brief Start one asynchronous run on the session's worker thread.
+ * @param state Shared session state used to guard asynchronous state.
+ * @param config_path NUL-terminated config path.
+ * @return Success, invalid argument for a NULL path, or processing failure while
+ *         another run is still active.
+ * @note The worker keeps only a weak reference, so session destruction can join
+ *       it without forming an ownership cycle.
+ */
+std::int32_t start_async_run(const std::shared_ptr<SessionState> &state, const char *config_path) {
+  if (config_path == nullptr) {
+    return ztick_status_invalid_argument;
+  }
+  const std::shared_ptr<AsyncRunState> run = state->async;
+  if (run->shutdown.load() || run->active.exchange(true)) {
+    return ztick_status_processing_failure;
+  }
+  if (run->worker.joinable()) {
+    run->worker.join();
+  }
+  {
+    const std::lock_guard<std::mutex> lock(run->mutex);
+    run->json.clear();
+    run->status = ztick_status_success;
+    run->available.store(false);
+    run->terminal = false;
+  }
+  const std::string path(config_path);
+  const std::weak_ptr<SessionState> weak = state;
+  try {
+    run->worker = std::thread([weak, run, path]() { execute_async_run(weak, run, path); });
+  } catch (...) {
+    run->active.store(false);
+    throw;
+  }
+  clear_error(state.get());
+  return ztick_status_success;
+}
+
+/**
+ * @brief Copy the result of the most recent asynchronous run.
+ * @param state Session that owns the run state.
+ * @param out_json Destination buffer for the copied JSON envelope.
+ * @param capacity Byte capacity of @p out_json.
+ * @param out_length Optional receiver for the copied JSON length.
+ * @param out_available Receiver set to 1 for a ready result and 0 while pending.
+ * @return Success for a pending or ready result, the run's mapped status when it
+ *         failed, or invalid argument for an invalid receiver or short buffer.
+ */
+std::int32_t copy_async_result(SessionState *state, char *out_json, std::size_t capacity,
+                               std::size_t *out_length, std::int32_t *out_available) {
+  if (out_available == nullptr) {
+    return ztick_status_invalid_argument;
+  }
+  const std::shared_ptr<AsyncRunState> run = state->async;
+  if (run->active.load() || !run->available.load()) {
+    *out_available = 0;
+    clear_error(state);
+    return ztick_status_success;
+  }
+  std::int32_t status = ztick_status_success;
+  std::int32_t copied = ztick_status_success;
+  {
+    const std::lock_guard<std::mutex> lock(run->mutex);
+    status = run->status;
+    *out_available = 1;
+    copied = copy_string(run->json, out_json, capacity, out_length, &state->error);
+  }
+  return copied != ztick_status_success ? copied : status;
 }
 
 } // namespace
@@ -509,6 +803,7 @@ void ztick_frontend_session_destroy(ztick_frontend_session *session) {
   if (session == nullptr) {
     return;
   }
+  std::shared_ptr<ztick::frontend::SessionState> state;
   {
     const std::lock_guard<std::mutex> lock(ztick::frontend::session_registry_mutex());
     auto &registry = ztick::frontend::session_registry();
@@ -516,8 +811,10 @@ void ztick_frontend_session_destroy(ztick_frontend_session *session) {
     if (entry == registry.end()) {
       return;
     }
+    state = std::move(entry->second);
     registry.erase(entry);
   }
+  state.reset();
 }
 
 int32_t ztick_frontend_last_error(const ztick_frontend_session *session, char *buffer,
@@ -689,6 +986,28 @@ int32_t ztick_frontend_run(ztick_frontend_session *session, const char *config_p
         return ztick::frontend::dispatch_command(state, {"run", config_path}, out_json, capacity,
                                                  out_length);
       });
+}
+
+int32_t ztick_frontend_run_start(ztick_frontend_session *session, const char *config_path) {
+  return ztick::frontend::guard_session(
+      session, [&](ztick::frontend::SessionState *state) -> std::int32_t {
+        if (config_path == nullptr) {
+          return ztick_status_invalid_argument;
+        }
+        return ztick::frontend::start_async_run(state->shared_from_this(), config_path);
+      });
+}
+
+int32_t ztick_frontend_run_result(ztick_frontend_session *session, char *out_json, size_t capacity,
+                                  size_t *out_length, int32_t *out_available) {
+  return ztick::frontend::guard_session(session,
+                                        [&](ztick::frontend::SessionState *state) -> std::int32_t {
+                                          if (session == nullptr) {
+                                            return ztick_status_invalid_argument;
+                                          }
+                                          return ztick::frontend::copy_async_result(
+                                              state, out_json, capacity, out_length, out_available);
+                                        });
 }
 
 int32_t ztick_frontend_report(ztick_frontend_session *session, const char *result_path,

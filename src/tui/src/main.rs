@@ -39,6 +39,7 @@ fn main() -> io::Result<()> {
     ratatui::run(|terminal| {
         loop {
             consume_events(&session, &mut app);
+            consume_run_result(&session, &mut app);
             terminal.draw(|frame| ui::render(frame, &app))?;
             if !event::poll(POLL_INTERVAL)? {
                 continue;
@@ -65,6 +66,10 @@ fn handle_key(session: &Session, app: &mut App, key: KeyEvent) -> bool {
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
             KeyCode::Char('c') => return true,
+            KeyCode::Char('r') => {
+                start_run(session, app);
+                return false;
+            }
             KeyCode::Char('s') => {
                 save_current_profile(session, app);
                 return false;
@@ -352,6 +357,58 @@ fn load_selected_profile(session: &Session, app: &mut App) {
     }
 }
 
+/// Start one asynchronous run from the currently retained portable config.
+///
+/// A blocked portability report refuses execution instead of adapting an
+/// unsupported capability. The config is saved under its profile name so the
+/// private boundary receives a stable document path.
+fn start_run(session: &Session, app: &mut App) {
+    if !app.portability().is_allowed() {
+        let detail = app
+            .portability()
+            .blockers()
+            .first()
+            .map(|finding| finding.message())
+            .unwrap_or("portability findings are present");
+        app.set_status(format!("run BLOCKED: {detail}"));
+        return;
+    }
+    let Some(config) = app.config() else {
+        app.set_status("run blocked: no config is retained");
+        return;
+    };
+    let name = config.profile_name().to_string();
+    let text = config.text().to_string();
+    let path = match profile::save(app.profile_directory(), &name, &text) {
+        Ok(path) => path,
+        Err(error) => {
+            app.set_status(format!("run config save failed: {error}"));
+            return;
+        }
+    };
+    let path_text = path.to_string_lossy().to_string();
+    match session.start_run(&path_text) {
+        Ok(()) => {
+            app.begin_run(&path_text);
+            app.set_screen(Screen::Execution);
+            app.set_status(format!("run started from {}", path.display()));
+        }
+        Err(error) => app.set_status(format!("run start failed: {error}")),
+    }
+}
+
+/// Copy one completed asynchronous result envelope into the execution view.
+fn consume_run_result(session: &Session, app: &mut App) {
+    if !app.progress().result_status.is_empty() {
+        return;
+    }
+    match session.run_result() {
+        Ok(Some(json)) => app.set_run_result(&json),
+        Ok(None) => {}
+        Err(error) => app.set_status(format!("run result read failed: {error}")),
+    }
+}
+
 /// Apply all queued boundary events to the displayed run state and status.
 ///
 /// Queue reads stop at the first boundary error so the error remains visible
@@ -447,12 +504,14 @@ fn refresh_inspection(session: &Session, app: &mut App) {
 /// Unit tests for terminal event handling and refresh helpers.
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use super::{
         apply_assignment, apply_dashboard_result, apply_inspection_result, consume_events,
-        handle_key, refresh_dashboard, refresh_portability, refresh_profiles, refresh_screen,
-        save_current_profile,
+        consume_run_result, handle_key, refresh_dashboard, refresh_portability, refresh_profiles,
+        refresh_screen, save_current_profile,
     };
     use ztick_tui::app::{App, RunState, Screen};
     use ztick_tui::config::{DEFAULT_CONFIG_JSON, EditableField};
@@ -528,11 +587,24 @@ mod tests {
         let mut app = App::new();
         assert_eq!(app.state(), RunState::Idle);
         let _ = session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("config parsing enqueues a configuring event");
+        consume_events(&session, &mut app);
+        assert_eq!(app.state(), RunState::Configuring);
+        assert!(session.poll_event().expect("queue is drained").is_none());
+    }
+
+    /// Verify read-only dashboard envelopes do not overwrite an active run state.
+    #[test]
+    fn consume_events_ignores_read_only_envelopes() {
+        let session = Session::new().expect("session creation succeeds");
+        let mut app = App::new();
+        app.begin_run("/tmp/ztick-run.json");
+        let _ = session
             .dashboard_data()
             .expect("dashboard envelopes are copied");
         consume_events(&session, &mut app);
-        assert_eq!(app.state(), RunState::Complete);
-        assert!(session.poll_event().expect("queue is drained").is_none());
+        assert_eq!(app.state(), RunState::Validating);
     }
 
     /// Verify live dashboard refresh populates the application data.
@@ -782,6 +854,62 @@ mod tests {
         refresh_profiles(&mut app);
         assert_eq!(app.saved_profiles()[0].name(), "Saved");
 
+        std::fs::remove_dir_all(&directory).expect("temporary directory is removed");
+    }
+
+    /// Verify Ctrl+R refuses to start a run without a retained config.
+    #[test]
+    fn control_r_blocks_a_run_without_a_config() {
+        let session = Session::new().expect("session creation succeeds");
+        let mut app = App::new();
+        app.set_portability(PortabilityReport::default());
+        assert!(!handle_key(
+            &session,
+            &mut app,
+            KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)
+        ));
+        assert_eq!(app.screen(), Screen::Dashboard);
+        assert!(app.status().contains("run blocked: no config"));
+    }
+
+    /// Verify Ctrl+R starts an allowed run and the result reaches the execution view.
+    #[test]
+    fn control_r_starts_an_allowed_async_run() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let session = Session::new().expect("session creation succeeds");
+        let mut app = configured_app();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after the epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("ztick-ctrl-r-{nonce}"));
+        app.set_profile_directory(&directory);
+        app.set_portability(PortabilityReport::default());
+
+        assert!(!handle_key(
+            &session,
+            &mut app,
+            KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)
+        ));
+        assert_eq!(app.screen(), Screen::Execution);
+        assert_eq!(app.state(), RunState::Validating);
+        assert!(app.status().contains("run started from"));
+        assert!(app.progress().config_path.contains("Quick.json"));
+
+        for _ in 0..500 {
+            consume_events(&session, &mut app);
+            consume_run_result(&session, &mut app);
+            if !app.progress().result_status.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            app.progress().result_status.contains("success"),
+            "the copied run envelope reaches the execution screen"
+        );
+        assert_eq!(app.state(), RunState::Complete);
         std::fs::remove_dir_all(&directory).expect("temporary directory is removed");
     }
 }

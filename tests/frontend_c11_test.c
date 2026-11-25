@@ -8,10 +8,14 @@
  * copied string and event ownership, and verifies the documented error paths.
  */
 
+/// @brief Expose POSIX nanosleep for the asynchronous boundary wait.
+#define _POSIX_C_SOURCE 199309L
+
 #include <ztick/frontend.h>
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 /** @brief Complete, runnable v1 config document used by the parse and save checks. */
@@ -145,6 +149,13 @@ static int check_error_paths(void) {
       ztick_status_invalid_argument) {
     return 12;
   }
+  if (ztick_frontend_run_start(NULL, "missing.json") != ztick_status_invalid_argument) {
+    return 32;
+  }
+  if (ztick_frontend_run_result(NULL, buffer, sizeof(buffer), &length, &trusted) !=
+      ztick_status_invalid_argument) {
+    return 33;
+  }
   if (ztick_frontend_report(NULL, "missing.json", buffer, sizeof(buffer), &length) !=
       ztick_status_invalid_argument) {
     return 13;
@@ -230,6 +241,11 @@ int main(void) {
                            version.minor == ZTICK_FRONTEND_VERSION_MINOR &&
                            version.patch == ZTICK_FRONTEND_VERSION_PATCH,
                        2)) != 0) {
+    return check;
+  }
+
+  if ((check = require(version.major == 0U && version.minor == 2U && version.patch == 0U,
+                       240)) != 0) {
     return check;
   }
 
@@ -487,6 +503,77 @@ int main(void) {
                        26)) != 0) {
     return check;
   }
+
+  if ((check = require(ztick_frontend_run_start(session, NULL) ==
+                            ztick_status_invalid_argument,
+                        241)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_run_result(session, output, sizeof(output), &length,
+                                                 &available) == ztick_status_success &&
+                            available == 0,
+                        242)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_run_start(session, config_path) == ztick_status_success,
+                        243)) != 0) {
+    return check;
+  }
+  for (int attempt = 0; attempt < 1000; ++attempt) {
+    const int32_t status =
+        ztick_frontend_run_result(session, output, sizeof(output), &length, &available);
+    if ((check = require(status == ztick_status_success, 244)) != 0) {
+      return check;
+    }
+    if (available == 1) {
+      break;
+    }
+    const struct timespec delay = {0, 2000000L};
+    (void)nanosleep(&delay, NULL);
+  }
+  if ((check = require(available == 1 && strstr(output, "\"command\":\"run\"") != NULL &&
+                            strstr(output, "\"status\":\"success\"") != NULL,
+                        245)) != 0) {
+    return check;
+  }
+  {
+    int saw_core_context = 0;
+    for (;;) {
+      event.size = sizeof(event);
+      event.version = ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION;
+      if ((check = require(ztick_frontend_progress_poll(session, &event, &available) ==
+                                ztick_status_success,
+                           246)) != 0) {
+        return check;
+      }
+      if (available == 0) {
+        break;
+      }
+      saw_core_context |=
+          event.timing_level == ztick_frontend_timing_per_block &&
+          event.isolation_mode == ztick_frontend_isolation_in_process && event.test_point == 1U &&
+          event.message[0] != '\0';
+    }
+    if ((check = require(saw_core_context, 247)) != 0) {
+      return check;
+    }
+  }
+
+  ztick_frontend_session *transient = ztick_frontend_session_create(NULL);
+  if ((check = require(transient != NULL, 248)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_run_result(transient, output, sizeof(output), &length,
+                                                 &available) == ztick_status_success &&
+                            available == 0,
+                        249)) != 0) {
+    return check;
+  }
+  if ((check = require(ztick_frontend_run_start(transient, config_path) == ztick_status_success,
+                        250)) != 0) {
+    return check;
+  }
+  ztick_frontend_session_destroy(transient);
 
   ztick_frontend_session_destroy(session);
   if ((check = require(ztick_frontend_config_validate(session) ==
