@@ -84,8 +84,7 @@ fn temp_path(label: &str) -> String {
 /// Build one valid stored result document with two run-level MET-01 samples.
 fn result_document(session_id: &str, value: f64) -> String {
     format!(
-        r#"{{"schema_version":"1.0.0","sdk_version":"1.0.0","session":{{"id":"{session_id}"}},"config_snapshot":{config},"build":{{}},"machine":{{}},"environment":{{}},"runs":[{{"id":"run-1","status":"complete","failures":[],"metrics":[{{"id":"MET-01","name":"Execution time","value":{value},"unit":"s","status":"measured","source":"instrumented_dsp","method":"nearest_rank","reason":"","context":{{}}}}]}},{{"id":"run-2","status":"complete","failures":[],"metrics":[{{"id":"MET-01","name":"Execution time","value":{value},"unit":"s","status":"measured","source":"instrumented_dsp","method":"nearest_rank","reason":"","context":{{}}}}]}}],"comparisons":[],"warnings":[],"failures":[],"status":"complete"}}"#,
-        config = CONFIG_JSON
+        r#"{{"schema_version":"1.0.0","sdk_version":"1.0.0","session":{{"id":"{session_id}"}},"config_snapshot":{CONFIG_JSON},"build":{{}},"machine":{{}},"environment":{{}},"runs":[{{"id":"run-1","status":"complete","failures":[],"metrics":[{{"id":"MET-01","name":"Execution time","value":{value},"unit":"s","status":"measured","source":"instrumented_dsp","method":"nearest_rank","reason":"","context":{{}}}}]}},{{"id":"run-2","status":"complete","failures":[],"metrics":[{{"id":"MET-01","name":"Execution time","value":{value},"unit":"s","status":"measured","source":"instrumented_dsp","method":"nearest_rank","reason":"","context":{{}}}}]}}],"comparisons":[],"warnings":[],"failures":[],"status":"complete"}}"#
     )
 }
 

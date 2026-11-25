@@ -793,26 +793,22 @@ fn resolve_trust_prompt(session: &Session, app: &mut App, granted: bool) {
                 let trusted = session.trust_query(&identifier).ok();
                 if trusted == Some(true) {
                     app.set_status(format!(
-                        "trust granted for {} ({}); execution remains subject to normal run checks",
-                        name, identifier
+                        "trust granted for {name} ({identifier}); execution remains subject to normal run checks"
                     ));
                 } else {
                     app.set_status(format!(
-                        "trust decision recorded for {} ({}), but trust state could not be confirmed",
-                        name, identifier
+                        "trust decision recorded for {name} ({identifier}), but trust state could not be confirmed"
                     ));
                 }
             } else {
                 app.set_status(format!(
-                    "trust denied for {} ({}); execution remains refused until explicit consent is recorded",
-                    name, identifier
+                    "trust denied for {name} ({identifier}); execution remains refused until explicit consent is recorded"
                 ));
             }
         }
         Err(error) => {
             app.set_status(format!(
-                "trust decision failed for {} ({}): {}",
-                name, identifier, error
+                "trust decision failed for {name} ({identifier}): {error}"
             ));
         }
     }
@@ -1183,8 +1179,7 @@ mod tests {
     /// Build one valid stored result document with one MET-01 sample.
     fn result_document(session_id: &str, value: f64) -> String {
         format!(
-            r#"{{"schema_version":"1.0.0","sdk_version":"1.0.0","session":{{"id":"{session_id}"}},"config_snapshot":{config},"build":{{}},"machine":{{}},"environment":{{}},"runs":[{{"id":"run-1","status":"complete","failures":[],"metrics":[{{"id":"MET-01","name":"Execution time","value":{value},"unit":"s","status":"measured","source":"instrumented_dsp","method":"nearest_rank","reason":"","context":{{}}}}]}}],"comparisons":[],"warnings":[],"failures":[],"status":"complete"}}"#,
-            config = DEFAULT_CONFIG_JSON
+            r#"{{"schema_version":"1.0.0","sdk_version":"1.0.0","session":{{"id":"{session_id}"}},"config_snapshot":{DEFAULT_CONFIG_JSON},"build":{{}},"machine":{{}},"environment":{{}},"runs":[{{"id":"run-1","status":"complete","failures":[],"metrics":[{{"id":"MET-01","name":"Execution time","value":{value},"unit":"s","status":"measured","source":"instrumented_dsp","method":"nearest_rank","reason":"","context":{{}}}}]}}],"comparisons":[],"warnings":[],"failures":[],"status":"complete"}}"#
         )
     }
 
