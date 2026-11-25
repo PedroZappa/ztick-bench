@@ -31,7 +31,7 @@
 /** @brief Major version of the private front-end interface. */
 #define ZTICK_FRONTEND_VERSION_MAJOR 0
 /** @brief Minor version of the private front-end interface. */
-#define ZTICK_FRONTEND_VERSION_MINOR 3
+#define ZTICK_FRONTEND_VERSION_MINOR 5
 /** @brief Patch version of the private front-end interface. */
 #define ZTICK_FRONTEND_VERSION_PATCH 0
 /** @brief Layout version required in every public struct header. */

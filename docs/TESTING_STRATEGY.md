@@ -394,7 +394,9 @@ symbols through FFI and checks that copied data remains valid after callbacks
 return. CTest registration proves the boundary is part of `make verify`, while a
 separate `ZTICK_BUILD_TUI=OFF` configuration proves core/CLI-only builds need no
 Rust. Screen-state tests then cover each of the six workflows in
-[TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows), including explicit
+[TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows) through named
+`principal_workflow_*` Rust tests in `src/tui/src/main.rs`, registered by
+`tui.rust.test`; `tui.ffi.smoke` covers the private boundary, including explicit
 consent denial, blocked cross-machine capabilities and incomplete-result status.
 
 **P5.4 execution-monitoring coverage (Derived design).** Core tests observe the
@@ -455,7 +457,7 @@ async run test.
 | 3. Static and dynamic integrations | §3 apps A/B; §8 discovery/load tests |
 | 4. Initial metrics and workload levels | §4, §5, §6 tests across processor/chain/engine |
 | 5. CLI, JSON, comparisons, regressions | §9 tests; §6 comparison tests; Phase 4 end-to-end verification pass (P4.11) |
-| 6. TUI principal workflows | P5.8 system tests for the six workflows in [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows): orientation, configuration, execution monitoring, results inspection, comparison/report and trust consent; P5.1 C11/Rust FFI smoke tests cover the private boundary |
+| 6. TUI principal workflows | P5.8 named Rust tests `principal_workflow_orientation`, `principal_workflow_configuration`, `principal_workflow_execution_monitoring`, `principal_workflow_results_inspection`, `principal_workflow_comparison_and_report`, `principal_workflow_trust_consent` in `src/tui/src/main.rs` (registered by `tui.rust.test`) cover the six workflows in [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows); P5.1 C11/Rust FFI smoke tests cover the private boundary |
 | 7. Automated correctness/overhead/repeatability/failure/isolation tests | §4–§8 |
 | 8. Third-party integration docs | [SDK_SPECIFICATION](SDK_SPECIFICATION.md) conformance checklist and build steps validated by the out-of-tree builds of both apps (P3.9) |
 

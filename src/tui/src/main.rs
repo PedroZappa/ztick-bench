@@ -1982,4 +1982,150 @@ mod tests {
         assert_eq!(app.state(), RunState::Complete);
         std::fs::remove_dir_all(&directory).expect("temporary directory is removed");
     }
+
+    /// P5.8 principal workflow: dashboard orientation shows system, integrations and warnings.
+    #[test]
+    fn principal_workflow_orientation() {
+        let session = Session::new().expect("session creation succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+        let mut app = configured_app();
+        refresh_dashboard(&session, &mut app);
+        consume_events(&session, &mut app);
+        assert_eq!(app.screen(), Screen::Dashboard);
+        assert!(!app.data().system().fields().is_empty());
+        assert!(!app.data().plugins().directories().is_empty());
+        assert_eq!(app.state(), RunState::Configuring);
+    }
+
+    /// P5.8 principal workflow: configuration edits are validated through the boundary.
+    #[test]
+    fn principal_workflow_configuration() {
+        let session = Session::new().expect("session creation succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+        let mut app = configured_app();
+        app.set_screen(Screen::Configuration);
+        assert!(!handle_key(&session, &mut app, key(KeyCode::Right)));
+        assert_eq!(
+            app.config().expect("config remains").sample_rate_hz(),
+            Some(96000.0)
+        );
+        apply_assignment(&session, &mut app, "dimensions.channels=0");
+        assert_eq!(app.config().expect("config remains").channels(), Some(2));
+        assert!(app.status().contains("override rejected"));
+    }
+
+    /// P5.8 principal workflow: execution monitoring reports progress and completes.
+    #[test]
+    fn principal_workflow_execution_monitoring() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let session = Session::new().expect("session creation succeeds");
+        let mut app = configured_app();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after the epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("ztick-p58-monitor-{nonce}"));
+        app.set_profile_directory(&directory);
+        app.set_portability(PortabilityReport::default());
+        start_run(&session, &mut app);
+        assert_eq!(app.screen(), Screen::Execution);
+        for _ in 0..500 {
+            consume_events(&session, &mut app);
+            consume_run_result(&session, &mut app);
+            if !app.progress().result_status.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(app.progress().result_status.contains("success"));
+        assert_eq!(app.state(), RunState::Complete);
+        std::fs::remove_dir_all(&directory).expect("temporary directory is removed");
+    }
+
+    /// P5.8 principal workflow: results inspection shows stored statuses and warnings.
+    #[test]
+    fn principal_workflow_results_inspection() {
+        let session = Session::new().expect("session creation succeeds");
+        let mut app = configured_app();
+        app.set_run_result(r#"{"status":"success","data":{"output_path":"/missing/result.json"}}"#);
+        app.set_screen(Screen::Results);
+        refresh_screen(&session, &mut app);
+        assert!(app.result_inspection().is_none());
+        assert!(app.status().contains("result document read failed"));
+
+        let inspection = ztick_tui::data::ResultInspection::from_json(
+            r#"{"schema_version":"1.0.0","sdk_version":"1.0.0","session":{"id":"s"},"config_snapshot":{"config_version":"1.0.0","sdk_version":"1.0.0","integration":{"id":"app-a","version":"1"},"workload":{"level":"processor"},"dimensions":{},"execution":{},"profile":{},"measurement":{},"validation":{},"parallelism":{}},"build":{},"machine":{},"environment":{},"runs":[{"id":"r1","status":"incomplete","failures":[{"kind":"validation","message":"bad"}],"metrics":[{"id":"MET-01","name":"Execution time","value":1.0,"unit":"s","status":"measured","source":"instrumented_dsp","method":"","reason":"","context":{}}],"validation":{"level":"Basic","passed":false,"checks":[]}}],"comparisons":[],"warnings":[{"kind":"w","message":"warning"}],"failures":[],"status":"incomplete"}"#,
+        )
+        .expect("result decodes");
+        app.set_result_inspection(Some(inspection));
+        assert_eq!(app.screen(), Screen::Results);
+        let displayed = app.result_inspection().expect("inspection present");
+        assert!(!displayed.is_complete());
+        assert_eq!(displayed.runs().len(), 1);
+    }
+
+    /// P5.8 principal workflow: comparison/report screens show stored records and exports.
+    #[test]
+    fn principal_workflow_comparison_and_report() {
+        let directory = flow_dir("workflow");
+        std::fs::create_dir_all(&directory).expect("temporary directory is created");
+        let baseline = directory.join("baseline.json");
+        let candidate = directory.join("candidate.json");
+        std::fs::write(&baseline, result_document("baseline", 1.0)).expect("baseline written");
+        std::fs::write(&candidate, result_document("candidate", 1.2)).expect("candidate written");
+        let session = Session::new().expect("session creation succeeds");
+        let mut app = configured_app();
+        app.set_baseline_path(Some(baseline.clone()));
+        app.set_candidate_path(Some(candidate.clone()));
+        app.set_screen(Screen::Compare);
+        execute_screen_action(&session, &mut app);
+        assert!(app.comparison().is_some(), "status: {}", app.status());
+
+        app.set_report_path(Some(candidate.clone()));
+        app.set_screen(Screen::Report);
+        refresh_screen(&session, &mut app);
+        assert!(app.report().is_some(), "status: {}", app.status());
+        std::fs::remove_dir_all(&directory).expect("temporary directory is removed");
+    }
+
+    /// P5.8 principal workflow: trust consent blocks execution until explicit grant.
+    #[test]
+    fn principal_workflow_trust_consent() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after the epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("ztick-p58-trust-{nonce}"));
+        let trust_path = directory.join("trusted.json");
+        std::fs::create_dir_all(&directory).expect("temporary trust directory is created");
+        let trust_path_text = trust_path.to_string_lossy().to_string();
+        let session = Session::with_trust_store_path(Some(&trust_path_text))
+            .expect("session creation with trust store succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+        let mut app = configured_app();
+        let plugins = r#"{"schema_version":1,"command":"plugin list","status":"success","exit_code":0,"data":{"directories":[],"trust":{"status":"available","reason":"","entries":[]},"plugins":[{"path":"/app.so","source":"explicit_path","status":"success","reason":"","identifier":"app-a","name":"App A","version":"1.2.3","sdk_version":"1.0.0","capabilities":"0x7f","trust":"untrusted"}]},"error":""}"#;
+        let system = r#"{"schema_version":1,"command":"system","status":"success","exit_code":0,"data":{"fields":{"cpu_model":{"status":"value","value":"Test CPU","reason":""}}},"error":""}"#;
+        let list = r#"{"schema_version":1,"command":"list","status":"success","exit_code":0,"data":{"profiles":[]},"error":""}"#;
+        app.set_dashboard_data(DashboardData::from_json(system, list, plugins));
+        app.set_inspection(Some(PluginInspection::from_json(
+            r#"{"schema_version":1,"command":"plugin inspect","status":"success","exit_code":0,"data":{"path":"/app.so","status":"success","reason":"","metadata":{"identifier":"app-a","name":"App A","version":"1.2.3","sdk_version":"1.0.0","capabilities":"0x7f","metadata":"demo"},"compatibility":{"status":"success","reason":""},"trust":{"status":"available","reason":"","entries":[],"state":"untrusted"}},"error":""}"#,
+        ).expect("inspection decodes")));
+        refresh_portability(&mut app);
+        start_run(&session, &mut app);
+        assert!(app.status().to_ascii_lowercase().contains("run blocked"));
+        app.set_screen(Screen::Integrations);
+        open_trust_prompt(&session, &mut app);
+        resolve_trust_prompt(&session, &mut app, true);
+        assert!(session.trust_query("app-a").expect("trust query succeeds"));
+        std::fs::remove_dir_all(&directory).expect("temporary trust directory is removed");
+    }
 }

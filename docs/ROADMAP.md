@@ -92,7 +92,7 @@ external-style consumer check and a dynamic-module symbol check exercise the run
 the plugin host and the static example link the compiled library. The dynamic example
 does not link `ztick_sdk` so the host owns a single registry. P3.1–P3.10 are
 complete and Phase 3 is verified. P3.10 bumped the development version to
-`0.3.0-dev` per BR §21.
+`0.5.0-dev` per BR §21.
 
 **Progress (after P3.10).** The static App A adapter registers and is discoverable in
 process through the private host registry observers, and its executable host harness
@@ -218,7 +218,7 @@ prerequisite before the Rust crate and screens are implemented.
       works through the TUI, displays plugin identity and declared capabilities,
       and refuses execution until consent is recorded
       ([TUI §4](TUI_SPECIFICATION.md#4-interaction-rules), BR §6.2).
-- [ ] **P5.8 — Phase 5 verification pass.** Done when: The principal workflows
+- [x] **P5.8 — Phase 5 verification pass.** Done when: The principal workflows
       defined in [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows) are
       verified by named CTest entries from `cargo test` and the FFI smoke test;
       the BR §17.6 acceptance traceability is complete; and the development

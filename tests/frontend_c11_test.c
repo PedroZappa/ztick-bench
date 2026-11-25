@@ -300,7 +300,7 @@ int main(void) {
     return check;
   }
 
-  if ((check = require(version.major == 0U && version.minor == 3U && version.patch == 0U, 240)) !=
+  if ((check = require(version.major == 0U && version.minor == 5U && version.patch == 0U, 240)) !=
       0) {
     return check;
   }

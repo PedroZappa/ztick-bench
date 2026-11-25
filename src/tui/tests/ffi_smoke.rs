@@ -109,7 +109,7 @@ fn rust_ffi_calls_every_private_boundary_symbol() {
             patch: 0,
         };
         assert_eq!(ztick_frontend_get_version(&mut version), 0);
-        assert_eq!((version.major, version.minor, version.patch), (0, 3, 0));
+        assert_eq!((version.major, version.minor, version.patch), (0, 5, 0));
         expect_token(ztick_frontend_status_message(3), "invalid argument");
 
         let trust = c_string(&trust_path);

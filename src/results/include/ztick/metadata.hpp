@@ -131,7 +131,7 @@ struct BuildInfo {
   std::string optimization_flags;
   /** @brief Build configuration such as `Release` or `Debug`. */
   std::string build_configuration;
-  /** @brief Tool version and maturity suffix, such as `0.3.0-dev`. */
+  /** @brief Tool version and maturity suffix, such as `0.5.0-dev`. */
   std::string project_version;
 };
 

@@ -72,7 +72,7 @@ record sections.
 C++20 and CMake are confirmed for the core, CLI and SDK (Q46); the integration
 boundary is a versioned C ABI with C++ wrappers. The TUI is the Rust/ratatui
 exception confirmed in BR §21. The toolchain targets GCC 13+/Clang 16+, uses
-Catch2 v3 as a dev-only test framework, and is at tool version `0.3.0-dev` with
+Catch2 v3 as a dev-only test framework, and is at tool version `0.5.0-dev` with
 SDK ABI `1.0.0` (BR §21–§22).
 The Phase 5 TUI is an optional Rust/ratatui front end (0.30.2, MIT; Rust 1.88+)
 that calls the C ABI via FFI. Rust and Cargo are needed only when the TUI target

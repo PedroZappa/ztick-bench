@@ -3,15 +3,15 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(ztick-bench
-  VERSION 0.3.0
+  VERSION 0.5.0
   DESCRIPTION "Portable DSP benchmarking framework"
   LANGUAGES C CXX
 )
 
 # CMake's VERSION field is numeric-only; the development suffix is carried
-# separately so the displayed tool version is "0.3.0-dev" (BR §21).
+# separately so the displayed tool version is "0.5.0-dev" (BR §21).
 set(ZTICK_VERSION_SUFFIX "dev")
-set(ZTICK_VERSION_DISPLAY "${PROJECT_VERSION}-${ZTICK_VERSION_SUFFIX}")
+set(ZTICK_VERSION_DISPLAY "0.5.0-${ZTICK_VERSION_SUFFIX}")
 # Tool maturity and the frozen C ABI contract are independent: the ABI version
 # drives find_package compatibility, while the project version is informational.
 set(ZTICK_SDK_ABI_VERSION "1.0.0")
