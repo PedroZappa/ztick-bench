@@ -909,6 +909,707 @@ impl DashboardData {
     }
 }
 
+/// Read one optional array member, using an empty slice when absent.
+fn optional_array<'a>(value: &'a Json, key: &str, context: &str) -> Result<&'a [Json], DataError> {
+    match value.get(key) {
+        None | Some(Json::Null) => Ok(&[]),
+        Some(Json::Array(items)) => Ok(items),
+        Some(_) => Err(DataError::new(format!(
+            "{context} member '{key}' is not an array"
+        ))),
+    }
+}
+
+/// Return the original text of one optional number for lossless display.
+fn number_text(value: Option<&Json>) -> String {
+    match value {
+        Some(Json::Number(text)) | Some(Json::String(text)) => text.clone(),
+        _ => String::new(),
+    }
+}
+
+/// Append one semicolon-separated explanation to a status reason.
+fn append_reason(reason: &mut String, detail: &str) {
+    if !reason.is_empty() {
+        reason.push_str("; ");
+    }
+    reason.push_str(detail);
+}
+
+/// The four metric value states defined by [METRICS §1](METRICS_REFERENCE.md#1-value-statuses).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MetricStatus {
+    /// Directly observed by instrumentation or monitoring.
+    Measured,
+    /// Derived or approximated from other observations.
+    Estimated,
+    /// Supported but not readable in this run.
+    Unavailable,
+    /// Meaningless for the selected benchmark mode.
+    NotApplicable,
+    /// An unrecognised status token copied without interpretation.
+    Unknown(String),
+}
+
+/// Map stored metric status tokens without hiding unknown values.
+impl MetricStatus {
+    /// Map one serialized metric status token to a display state.
+    pub fn from_token(token: &str) -> Self {
+        match token {
+            "measured" => Self::Measured,
+            "estimated" => Self::Estimated,
+            "unavailable" => Self::Unavailable,
+            "not_applicable" => Self::NotApplicable,
+            other => Self::Unknown(other.to_string()),
+        }
+    }
+
+    /// Return the stable token rendered for this status.
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Measured => "measured",
+            Self::Estimated => "estimated",
+            Self::Unavailable => "unavailable",
+            Self::NotApplicable => "not_applicable",
+            Self::Unknown(token) => token,
+        }
+    }
+
+    /// Return true only when this status carries a numeric value.
+    pub fn has_value(&self) -> bool {
+        matches!(self, Self::Measured | Self::Estimated)
+    }
+}
+
+/// One metric record copied from a stored result run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResultMetric {
+    /// Stable metric identifier such as `MET-01`.
+    id: String,
+    /// Human-readable metric name.
+    name: String,
+    /// The recorded four-state status.
+    status: MetricStatus,
+    /// The original value text, empty for non-value states.
+    value: String,
+    /// Recorded SI or derived unit.
+    unit: String,
+    /// Instrumentation source token.
+    source: String,
+    /// Reason recorded for a non-value state.
+    reason: String,
+}
+
+/// Decode and expose one stored metric record without recomputing it.
+impl ResultMetric {
+    /// Decode one metric record from a run's `metrics` array.
+    fn from_json(value: &Json) -> Result<Self, DataError> {
+        Ok(Self {
+            id: required_string(value, "id", "metric")?,
+            name: required_string(value, "name", "metric")?,
+            status: MetricStatus::from_token(&required_string(value, "status", "metric")?),
+            value: number_text(value.get("value")),
+            unit: optional_string(value, "unit", "metric")?,
+            source: optional_string(value, "source", "metric")?,
+            reason: optional_string(value, "reason", "metric")?,
+        })
+    }
+
+    /// Return the stable metric identifier.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Return the human-readable metric name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Return the recorded four-state status.
+    pub fn status(&self) -> &MetricStatus {
+        &self.status
+    }
+
+    /// Return the recorded value text, empty for non-value states.
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
+    /// Return the recorded instrumentation source.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// Return the most informative display text without hiding a non-value state.
+    pub fn display_value(&self) -> String {
+        if self.value.is_empty() {
+            value_or_placeholder(&self.reason, "(no value recorded)")
+        } else if self.unit.is_empty() {
+            self.value.clone()
+        } else {
+            format!("{} {}", self.value, self.unit)
+        }
+    }
+}
+
+/// One validation check outcome copied from a stored result run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidationCheck {
+    /// Stable check identifier such as `finite_output`.
+    check: String,
+    /// Human-readable case label.
+    case_label: String,
+    /// Recorded check status token.
+    status: String,
+    /// Explanation attached to the outcome.
+    reason: String,
+}
+
+/// Decode and expose one validation check outcome.
+impl ValidationCheck {
+    /// Decode one check record from a validation `checks` array.
+    fn from_json(value: &Json) -> Result<Self, DataError> {
+        Ok(Self {
+            check: required_string(value, "check", "validation check")?,
+            case_label: optional_string(value, "case_label", "validation check")?,
+            status: required_string(value, "status", "validation check")?,
+            reason: optional_string(value, "reason", "validation check")?,
+        })
+    }
+
+    /// Return the stable check identifier.
+    pub fn check(&self) -> &str {
+        &self.check
+    }
+
+    /// Return the human-readable case label.
+    pub fn case_label(&self) -> &str {
+        &self.case_label
+    }
+
+    /// Return the recorded check status token.
+    pub fn status(&self) -> &str {
+        &self.status
+    }
+
+    /// Return the recorded explanation.
+    pub fn reason(&self) -> &str {
+        &self.reason
+    }
+}
+
+/// Validation summary and check outcomes copied from one stored run.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ValidationSummary {
+    /// Validation level used for the run.
+    level: String,
+    /// Number of cases checked by the core.
+    cases_checked: u64,
+    /// Every recorded check outcome in source order.
+    checks: Vec<ValidationCheck>,
+}
+
+/// Decode and expose one validation summary.
+impl ValidationSummary {
+    /// Decode one validation object from a stored run.
+    fn from_json(value: &Json) -> Result<Self, DataError> {
+        let checks = optional_array(value, "checks", "validation")?
+            .iter()
+            .map(ValidationCheck::from_json)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            level: optional_string(value, "level", "validation")?,
+            cases_checked: value
+                .get("cases_checked")
+                .and_then(Json::as_i64)
+                .unwrap_or(0)
+                .max(0) as u64,
+            checks,
+        })
+    }
+
+    /// Return the recorded validation level.
+    pub fn level(&self) -> &str {
+        &self.level
+    }
+
+    /// Return the number of checked cases.
+    pub fn cases_checked(&self) -> u64 {
+        self.cases_checked
+    }
+
+    /// Return every recorded check outcome.
+    pub fn checks(&self) -> &[ValidationCheck] {
+        &self.checks
+    }
+}
+
+/// One classified warning or failure copied from a stored result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResultIssue {
+    /// Stable classification category.
+    category: String,
+    /// Human-readable context recorded by the core.
+    message: String,
+}
+
+/// Decode and display one classified issue.
+impl ResultIssue {
+    /// Decode one warning or failure record.
+    fn from_json(value: &Json) -> Result<Self, DataError> {
+        Ok(Self {
+            category: optional_string(value, "category", "classified issue")?,
+            message: optional_string(value, "message", "classified issue")?,
+        })
+    }
+
+    /// Return the stable classification category.
+    pub fn category(&self) -> &str {
+        &self.category
+    }
+
+    /// Return the recorded human-readable context.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Return one visible line that retains both category and context.
+    pub fn display(&self) -> String {
+        if self.category.is_empty() {
+            value_or_placeholder(&self.message, "(no issue detail recorded)")
+        } else {
+            format!(
+                "{}: {}",
+                self.category,
+                value_or_placeholder(&self.message, "(no issue detail recorded)")
+            )
+        }
+    }
+}
+
+/// One retained raw timing population and its sample count.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawSampleGroup {
+    /// Timing level token recorded by the core.
+    level: String,
+    /// Number of retained raw durations.
+    count: usize,
+}
+
+/// Expose one retained raw timing population.
+impl RawSampleGroup {
+    /// Build one raw sample group.
+    fn new(level: impl Into<String>, count: usize) -> Self {
+        Self {
+            level: level.into(),
+            count,
+        }
+    }
+
+    /// Return the timing level token.
+    pub fn level(&self) -> &str {
+        &self.level
+    }
+
+    /// Return the number of retained raw durations.
+    pub fn count(&self) -> usize {
+        self.count
+    }
+}
+
+/// The overhead estimate retained separately from measured timings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OverheadEstimate {
+    /// Recorded value status of the estimate.
+    status: MetricStatus,
+    /// Estimated overhead in seconds.
+    seconds: String,
+    /// DSP time observed during calibration in seconds.
+    dsp_time_seconds: String,
+    /// Number of calibration intervals used.
+    interval_count: u64,
+    /// Calibration method token.
+    method: String,
+    /// Number of retained calibration samples.
+    calibration_count: usize,
+}
+
+/// Decode and display one retained overhead estimate.
+impl OverheadEstimate {
+    /// Decode one `timing.overhead_estimate` object.
+    fn from_json(value: &Json) -> Result<Self, DataError> {
+        Ok(Self {
+            status: MetricStatus::from_token(&optional_string(
+                value,
+                "status",
+                "overhead estimate",
+            )?),
+            seconds: number_text(value.get("seconds")),
+            dsp_time_seconds: number_text(value.get("dsp_time_seconds")),
+            interval_count: value
+                .get("interval_count")
+                .and_then(Json::as_i64)
+                .unwrap_or(0)
+                .max(0) as u64,
+            method: optional_string(value, "method", "overhead estimate")?,
+            calibration_count: value
+                .get("calibration_samples_seconds")
+                .and_then(Json::as_array)
+                .map_or(0, |samples| samples.len()),
+        })
+    }
+
+    /// Return the recorded value status of this estimate.
+    pub fn status(&self) -> &MetricStatus {
+        &self.status
+    }
+
+    /// Return one visible summary retaining all recorded estimate fields.
+    pub fn display(&self) -> String {
+        format!(
+            "status={} seconds={} dsp_time_seconds={} intervals={} method={} calibration_samples={}",
+            value_or_placeholder(self.status.label(), "unknown"),
+            value_or_placeholder(&self.seconds, "(unset)"),
+            value_or_placeholder(&self.dsp_time_seconds, "(unset)"),
+            self.interval_count,
+            value_or_placeholder(&self.method, "(unreported)"),
+            self.calibration_count
+        )
+    }
+}
+
+/// Everything the results screen reads from one stored run record.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RunInspection {
+    /// Stable run identifier.
+    id: String,
+    /// Stored run status token.
+    status: String,
+    /// Compact description of the recorded test point.
+    test_point: String,
+    /// Execution mode actually used for the run.
+    isolation_mode: String,
+    /// Metric records in stored order.
+    metrics: Vec<ResultMetric>,
+    /// Validation summary and check outcomes.
+    validation: ValidationSummary,
+    /// Classified measurement warnings.
+    warnings: Vec<ResultIssue>,
+    /// Classified workload or infrastructure failures.
+    failures: Vec<ResultIssue>,
+    /// Retained raw timing populations in stored order.
+    raw_samples: Vec<RawSampleGroup>,
+    /// Separately retained overhead estimate, when one was recorded.
+    overhead: Option<OverheadEstimate>,
+}
+
+/// Decode and expose one stored run record without recomputing metrics.
+impl RunInspection {
+    /// Decode one run record from a result document's `runs` array.
+    fn from_json(value: &Json) -> Result<Self, DataError> {
+        let metrics = required_array(value, "metrics", "run")?
+            .iter()
+            .map(ResultMetric::from_json)
+            .collect::<Result<Vec<_>, _>>()?;
+        let validation = value
+            .get("validation")
+            .map(ValidationSummary::from_json)
+            .transpose()?
+            .unwrap_or_default();
+        let warnings = optional_array(value, "warnings", "run")?
+            .iter()
+            .map(ResultIssue::from_json)
+            .collect::<Result<Vec<_>, _>>()?;
+        let failures = optional_array(value, "failures", "run")?
+            .iter()
+            .map(ResultIssue::from_json)
+            .collect::<Result<Vec<_>, _>>()?;
+        let timing = value.get("timing");
+        let raw_samples = timing
+            .and_then(Json::as_object)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .filter(|(level, _)| {
+                        level != "overhead_estimate" && level != "overhead_estimates"
+                    })
+                    .filter_map(|(level, samples)| {
+                        samples
+                            .as_array()
+                            .map(|items| RawSampleGroup::new(level.clone(), items.len()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let overhead = timing
+            .and_then(|value| value.get("overhead_estimate"))
+            .filter(|value| matches!(value, Json::Object(_)))
+            .map(OverheadEstimate::from_json)
+            .transpose()?;
+        let point_field = |name: &str| {
+            let field = value.get("test_point").and_then(|point| point.get(name));
+            let text = number_text(field);
+            if text.is_empty() {
+                field
+                    .and_then(Json::as_str)
+                    .unwrap_or("(unset)")
+                    .to_string()
+            } else {
+                text
+            }
+        };
+        let test_point = format!(
+            "level={} block_size={} channels={} instances={}",
+            point_field("workload_level"),
+            point_field("block_size"),
+            point_field("channels"),
+            point_field("instances")
+        );
+        let isolation_mode = value
+            .get("execution")
+            .and_then(|execution| execution.get("mode"))
+            .and_then(Json::as_str)
+            .unwrap_or("(unreported)")
+            .to_string();
+        Ok(Self {
+            id: required_string(value, "id", "run")?,
+            status: required_string(value, "status", "run")?,
+            test_point,
+            isolation_mode,
+            metrics,
+            validation,
+            warnings,
+            failures,
+            raw_samples,
+            overhead,
+        })
+    }
+
+    /// Return true only when the stored run is complete and carries no failure evidence.
+    ///
+    /// A `complete` token is demoted by recorded failures or by any validation
+    /// check whose stored status is `failed`, so contradictory documents cannot
+    /// be shown as successful runs.
+    pub fn is_complete(&self) -> bool {
+        self.status == "complete"
+            && self.failures.is_empty()
+            && !self
+                .validation
+                .checks()
+                .iter()
+                .any(|check| check.status() == "failed")
+    }
+
+    /// Return the stable run identifier.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Return the stored run status token.
+    pub fn status(&self) -> &str {
+        &self.status
+    }
+
+    /// Return the compact test-point description.
+    pub fn test_point(&self) -> &str {
+        &self.test_point
+    }
+
+    /// Return the execution mode actually used for this run.
+    pub fn isolation_mode(&self) -> &str {
+        &self.isolation_mode
+    }
+
+    /// Return every metric record in stored order.
+    pub fn metrics(&self) -> &[ResultMetric] {
+        &self.metrics
+    }
+
+    /// Return the validation summary.
+    pub fn validation(&self) -> &ValidationSummary {
+        &self.validation
+    }
+
+    /// Return every classified measurement warning.
+    pub fn warnings(&self) -> &[ResultIssue] {
+        &self.warnings
+    }
+
+    /// Return every classified failure.
+    pub fn failures(&self) -> &[ResultIssue] {
+        &self.failures
+    }
+
+    /// Return every retained raw timing population.
+    pub fn raw_samples(&self) -> &[RawSampleGroup] {
+        &self.raw_samples
+    }
+
+    /// Return the separately retained overhead estimate, when present.
+    pub fn overhead(&self) -> Option<&OverheadEstimate> {
+        self.overhead.as_ref()
+    }
+}
+
+/// A typed, read-only view of one stored result document.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResultInspection {
+    /// Result document schema version.
+    schema_version: String,
+    /// SDK version recorded in the document.
+    sdk_version: String,
+    /// Session status token as stored on disk.
+    stored_status: String,
+    /// Status derived from stored failure evidence, never trusted from one token alone.
+    derived_status: String,
+    /// Explanation when the derived status differs from the stored status.
+    status_reason: String,
+    /// Inspected run records in stored order.
+    runs: Vec<RunInspection>,
+    /// Session-level classified warnings.
+    warnings: Vec<ResultIssue>,
+    /// Session-level classified failures.
+    failures: Vec<ResultIssue>,
+}
+
+/// Decode and inspect one stored result document without recomputing metrics.
+impl ResultInspection {
+    /// Decode one compact result document returned by `ztick_frontend_result_read`.
+    ///
+    /// A stored `complete` token is demoted whenever session or run failures,
+    /// non-complete runs, or a contradictory run status are present. Both the
+    /// stored and derived statuses remain available for display.
+    ///
+    /// # Parameters
+    /// - `text`: Compact JSON result document copied through the private boundary.
+    ///
+    /// # Returns
+    /// The typed view, or an error naming the missing or invalid document member.
+    pub fn from_json(text: &str) -> Result<Self, DataError> {
+        let root = json::parse(text).map_err(|error| {
+            DataError::new(format!(
+                "invalid result document at byte {}: {}",
+                error.offset(),
+                error.message()
+            ))
+        })?;
+        if root.as_object().is_none() {
+            return Err(DataError::new("result document root is not an object"));
+        }
+        let schema_version = required_string(&root, "schema_version", "result document")?;
+        if schema_version != "1.0.0" {
+            return Err(DataError::new(format!(
+                "unsupported result schema_version '{schema_version}'"
+            )));
+        }
+        let sdk_version = required_string(&root, "sdk_version", "result document")?;
+        let stored_status = required_string(&root, "status", "result document")?;
+        let runs = required_array(&root, "runs", "result document")?
+            .iter()
+            .map(RunInspection::from_json)
+            .collect::<Result<Vec<_>, _>>()?;
+        let warnings = optional_array(&root, "warnings", "result document")?
+            .iter()
+            .map(ResultIssue::from_json)
+            .collect::<Result<Vec<_>, _>>()?;
+        let failures = optional_array(&root, "failures", "result document")?
+            .iter()
+            .map(ResultIssue::from_json)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut status_reason = String::new();
+        let mut incomplete = stored_status != "complete";
+        if stored_status != "complete" {
+            append_reason(
+                &mut status_reason,
+                &format!("stored status is '{stored_status}'"),
+            );
+        }
+        if !failures.is_empty() {
+            incomplete = true;
+            append_reason(
+                &mut status_reason,
+                &format!("{} session failure(s) recorded", failures.len()),
+            );
+        }
+        for run in &runs {
+            if !run.is_complete() {
+                incomplete = true;
+                append_reason(
+                    &mut status_reason,
+                    &format!(
+                        "run {} has status '{}' or recorded failure evidence",
+                        run.id(),
+                        run.status()
+                    ),
+                );
+            }
+        }
+        Ok(Self {
+            schema_version,
+            sdk_version,
+            stored_status,
+            derived_status: if incomplete { "incomplete" } else { "complete" }.to_string(),
+            status_reason,
+            runs,
+            warnings,
+            failures,
+        })
+    }
+
+    /// Return true only when the stored evidence supports a complete run.
+    pub fn is_complete(&self) -> bool {
+        self.derived_status == "complete"
+    }
+
+    /// Return the result document schema version.
+    pub fn schema_version(&self) -> &str {
+        &self.schema_version
+    }
+
+    /// Return the SDK version recorded in the result document.
+    pub fn sdk_version(&self) -> &str {
+        &self.sdk_version
+    }
+
+    /// Return the session status token exactly as stored.
+    pub fn stored_status(&self) -> &str {
+        &self.stored_status
+    }
+
+    /// Return the status derived from stored failure evidence.
+    pub fn derived_status(&self) -> &str {
+        &self.derived_status
+    }
+
+    /// Return the explanation for a derived incomplete status.
+    pub fn status_reason(&self) -> &str {
+        &self.status_reason
+    }
+
+    /// Return every inspected run record.
+    pub fn runs(&self) -> &[RunInspection] {
+        &self.runs
+    }
+
+    /// Return every session-level warning.
+    pub fn warnings(&self) -> &[ResultIssue] {
+        &self.warnings
+    }
+
+    /// Return every session-level failure.
+    pub fn failures(&self) -> &[ResultIssue] {
+        &self.failures
+    }
+}
+
+/// Deterministic result fixtures shared by the result-screen tests.
+#[cfg(test)]
+pub(crate) mod fixtures {
+    /// A stored result document with all four metric statuses and retained evidence.
+    pub(crate) const RESULT_JSON: &str = r#"{"schema_version":"1.0.0","sdk_version":"1.0.0","session":{"id":"s-1","started_at":"t0","ended_at":"t1"},"config_snapshot":{"config_version":"1.0.0","sdk_version":"1.0.0","integration":{"id":"app-a","version":"1.2.3"},"workload":{"level":"processor","processors":["eq"],"generator":{"kind":"sine","amplitude":0.5,"frequency_hz":1000.0,"phase_rad":0.0}},"dimensions":{"sample_rate_hz":48000.0,"block_size":128,"channels":2,"oversampling":1,"instances":1},"execution":{"duration_mode":"iterations","iterations":100,"duration_seconds":0.0,"repetitions":1,"warmup":{"iterations":0},"isolation":"auto"},"profile":{"name":"Quick"},"measurement":{"detail":"aggregate","end_to_end":false,"timing_levels":["per_block","whole_run"]},"validation":{"level":"Basic","tolerances":{"absolute":0.000001,"relative":0.000001},"references":[]},"parallelism":{"workers":"auto","affinity":"auto","cpu_isolation":"off","priority_opt_in":false,"priority":0}},"build":{},"machine":{},"environment":{},"runs":[{"id":"run-1","test_point":{"workload_level":"processor","processors":["eq"],"sample_rate_hz":48000.0,"block_size":128,"channels":2,"instances":1,"oversampling":1},"config_snapshot_ref":"config_snapshot","timing":{"per_block":[0.001,0.002],"whole_run":[],"overhead_estimate":{"status":"estimated","seconds":0.0001,"dsp_time_seconds":0.01,"interval_count":3,"method":"empty_interval_calibration","calibration_samples_seconds":[0.0001]}},"metrics":[{"id":"MET-01","name":"Execution time","value":0.5,"unit":"s","status":"measured","source":"instrumented_dsp","method":"timer","reason":"","context":{}},{"id":"MET-17","name":"Benchmark overhead estimate","value":0.0001,"unit":"s","status":"estimated","source":"empty_interval_calibration","method":"empty_interval_calibration","reason":"","context":{}},{"id":"MET-08","name":"P90","value":null,"unit":"s","status":"unavailable","source":"instrumented_dsp","method":"nearest_rank","reason":"no samples","context":{}},{"id":"MET-09","name":"P99","value":null,"unit":"s","status":"not_applicable","source":"instrumented_dsp","method":"nearest_rank","reason":"whole-run basis","context":{}}],"validation":{"level":"Basic","cases_checked":2,"checks":[{"check":"finite_output","case_label":"case-a","level":"Basic","status":"passed","reason":"","observed_error":0.0,"checked_samples":2,"reference_source":"host_generated","tolerance":{"absolute":0.0,"relative":0.0}}],"tolerance":{"absolute":0.0,"relative":0.0}},"execution":{"isolation_request":"auto","mode":"in_process","workers":1,"affinity":"auto"},"warnings":[{"category":"execution","message":"thermal drift"}],"failures":[],"status":"complete"}],"comparisons":[],"warnings":[],"failures":[],"status":"complete"}"#;
+}
+
 /// Record a failed command note while leaving its decoded data intact.
 fn record_status_note(output: &mut String, section: &str, text: &str) {
     if let Ok(envelope) = Envelope::parse(text, section)
@@ -1637,6 +2338,7 @@ fn parse_capability_mask(text: &str) -> Option<u64> {
 /// Unit tests for typed envelope decoding and error reporting.
 #[cfg(test)]
 mod tests {
+    use super::fixtures::RESULT_JSON;
     use super::{
         AvailabilityField, AvailabilityStatus, DashboardData, DataError, Envelope,
         PluginInspection, PluginList, PortabilityReport, PortableConfig, ProfileList,
@@ -2070,5 +2772,173 @@ mod tests {
                 .iter()
                 .any(|finding| finding.message().contains("SDK version mismatch"))
         );
+    }
+
+    /// Verify a stored result keeps all four metric statuses and retained evidence.
+    #[test]
+    fn result_inspection_keeps_four_metric_statuses_and_retained_evidence() {
+        let result =
+            super::ResultInspection::from_json(RESULT_JSON).expect("result document decodes");
+        assert_eq!(result.schema_version(), "1.0.0");
+        assert_eq!(result.sdk_version(), "1.0.0");
+        assert_eq!(result.stored_status(), "complete");
+        assert_eq!(result.derived_status(), "complete");
+        assert!(result.is_complete());
+        assert!(result.status_reason().is_empty());
+
+        let run = &result.runs()[0];
+        assert!(run.is_complete());
+        assert_eq!(run.id(), "run-1");
+        assert_eq!(run.isolation_mode(), "in_process");
+        assert!(run.test_point().contains("level=processor"));
+        assert!(run.test_point().contains("block_size=128"));
+        let statuses: Vec<&str> = run
+            .metrics()
+            .iter()
+            .map(|metric| metric.status().label())
+            .collect();
+        assert_eq!(
+            statuses,
+            ["measured", "estimated", "unavailable", "not_applicable"]
+        );
+        assert_eq!(run.metrics()[0].display_value(), "0.5 s");
+        assert_eq!(run.metrics()[1].display_value(), "0.0001 s");
+        assert_eq!(run.metrics()[2].display_value(), "no samples");
+        assert_eq!(run.metrics()[3].display_value(), "whole-run basis");
+        assert_eq!(run.metrics()[0].source(), "instrumented_dsp");
+        assert_eq!(run.metrics()[1].source(), "empty_interval_calibration");
+        assert_eq!(run.validation().level(), "Basic");
+        assert_eq!(run.validation().cases_checked(), 2);
+        assert_eq!(run.validation().checks()[0].status(), "passed");
+        assert_eq!(run.warnings()[0].display(), "execution: thermal drift");
+        assert!(run.failures().is_empty());
+        assert_eq!(
+            run.raw_samples()
+                .iter()
+                .map(super::RawSampleGroup::count)
+                .collect::<Vec<_>>(),
+            [2, 0]
+        );
+        let overhead = run.overhead().expect("overhead estimate is retained");
+        assert_eq!(overhead.status(), &super::MetricStatus::Estimated);
+        assert!(overhead.display().contains("seconds=0.0001"));
+        assert!(overhead.display().contains("calibration_samples=1"));
+    }
+
+    /// Verify a stored complete token is demoted by recorded failure evidence.
+    #[test]
+    fn result_inspection_demotes_contradictory_complete_status() {
+        let failed = RESULT_JSON.replacen(
+            "\"failures\":[]",
+            "\"failures\":[{\"category\":\"workload_failure\",\"message\":\"validation checks failed\"}]",
+            1,
+        );
+        let result = super::ResultInspection::from_json(&failed).expect("result decodes");
+        assert_eq!(result.stored_status(), "complete");
+        assert_eq!(result.derived_status(), "incomplete");
+        assert!(!result.is_complete());
+        assert!(result.status_reason().contains("run run-1"));
+        assert!(!result.runs()[0].is_complete());
+        assert_eq!(
+            result.runs()[0].failures()[0].display(),
+            "workload_failure: validation checks failed"
+        );
+    }
+
+    /// Verify a failed validation check demotes a contradictory complete run.
+    #[test]
+    fn result_inspection_demotes_failed_validation_check() {
+        let failed = RESULT_JSON.replacen("\"status\":\"passed\"", "\"status\":\"failed\"", 1);
+        let result = super::ResultInspection::from_json(&failed).expect("result decodes");
+        assert_eq!(result.stored_status(), "complete");
+        assert_eq!(result.derived_status(), "incomplete");
+        assert!(!result.is_complete());
+        assert!(result.status_reason().contains("run run-1"));
+        assert!(result.runs()[0].validation().checks()[0].status() == "failed");
+    }
+
+    /// Verify session-level failures and stored incomplete status both demote.
+    #[test]
+    fn result_inspection_demotes_session_failure_and_stored_incomplete_status() {
+        let status_marker = "\"status\":\"complete\"}";
+        let status_position = RESULT_JSON
+            .rfind(status_marker)
+            .expect("the session status is present");
+        let mut incomplete = RESULT_JSON.to_string();
+        incomplete.replace_range(
+            status_position..status_position + status_marker.len(),
+            "\"status\":\"incomplete\"}",
+        );
+        let marker = "\"failures\":[]";
+        let position = incomplete
+            .rfind(marker)
+            .expect("the session failure array is present");
+        incomplete.replace_range(
+            position..position + marker.len(),
+            "\"failures\":[{\"category\":\"infrastructure_failure\",\"message\":\"host lost\"}]",
+        );
+        let result = super::ResultInspection::from_json(&incomplete).expect("result decodes");
+        assert_eq!(result.stored_status(), "incomplete");
+        assert_eq!(result.derived_status(), "incomplete");
+        assert!(
+            result
+                .status_reason()
+                .contains("stored status is 'incomplete'")
+        );
+        assert!(result.status_reason().contains("; "));
+        assert!(
+            result
+                .status_reason()
+                .contains("1 session failure(s) recorded")
+        );
+        assert_eq!(
+            result.failures()[0].display(),
+            "infrastructure_failure: host lost"
+        );
+    }
+
+    /// Verify malformed and unsupported result documents report explicit errors.
+    #[test]
+    fn result_inspection_rejects_malformed_and_unsupported_documents() {
+        assert!(super::ResultInspection::from_json("not json").is_err());
+        assert!(super::ResultInspection::from_json("[]").is_err());
+        let future = RESULT_JSON.replacen(
+            "\"schema_version\":\"1.0.0\"",
+            "\"schema_version\":\"2.0.0\"",
+            1,
+        );
+        assert!(super::ResultInspection::from_json(&future).is_err());
+        let broken = RESULT_JSON.replacen("\"runs\":[{", "\"runs\":{\"id\":\"bad\"", 1);
+        assert!(super::ResultInspection::from_json(&broken).is_err());
+    }
+
+    /// Verify missing optional sections stay visible as empty evidence.
+    #[test]
+    fn result_inspection_uses_empty_defaults_for_missing_optional_sections() {
+        let minimal = r#"{"schema_version":"1.0.0","sdk_version":"1.0.0","status":"incomplete","runs":[{"id":"run-1","status":"failed","metrics":[]}]}"#;
+        let result = super::ResultInspection::from_json(minimal).expect("minimal result decodes");
+        assert_eq!(result.derived_status(), "incomplete");
+        assert!(!result.is_complete());
+        let run = &result.runs()[0];
+        assert!(run.metrics().is_empty());
+        assert!(run.validation().checks().is_empty());
+        assert!(run.raw_samples().is_empty());
+        assert!(run.overhead().is_none());
+        assert!(run.warnings().is_empty());
+        assert_eq!(run.isolation_mode(), "(unreported)");
+    }
+
+    /// Verify unknown status and empty issue tokens are never hidden.
+    #[test]
+    fn result_tokens_preserve_unknown_values() {
+        assert_eq!(super::MetricStatus::from_token("future").label(), "future");
+        assert!(!super::MetricStatus::from_token("future").has_value());
+        assert!(super::MetricStatus::Measured.has_value());
+        let empty = parse(r#"{"category":"","message":""}"#).expect("issue JSON parses");
+        let issue = super::ResultIssue::from_json(&empty).expect("issue decodes");
+        assert_eq!(issue.display(), "(no issue detail recorded)");
+        let message = parse(r#"{"category":"","message":"reason"}"#).expect("issue JSON parses");
+        let issue = super::ResultIssue::from_json(&message).expect("issue decodes");
+        assert_eq!(issue.display(), "reason");
     }
 }

@@ -203,7 +203,7 @@ prerequisite before the Rust crate and screens are implemented.
       by test point, current timing level, warnings and active isolation mode are
       shown from core progress events, with process-level and instrumented
       measurements kept visually distinct ([TUI §3–§5](TUI_SPECIFICATION.md#3-run-state-model)).
-- [ ] **P5.5 — Results inspection screen.** Done when: Metrics show all four
+- [x] **P5.5 — Results inspection screen.** Done when: Metrics show all four
       statuses distinctly, validation outcomes, warnings/failures, completeness,
       raw-data availability and retained overhead estimates are visible, and
       incomplete runs are never rendered as complete

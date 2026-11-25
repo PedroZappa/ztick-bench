@@ -4,7 +4,7 @@
 //! This binary contains no benchmark logic. It copies read-only envelopes from
 //! the private C11 boundary, edits portable configs through the same boundary,
 //! renders ratatui screens and processes navigation input until the user quits.
-//! Live runs and result workflows land in later Phase 5 tasks.
+//! P5.4 carries live runs; P5.5 reads the stored result document for inspection.
 
 use std::io;
 use std::time::Duration;
@@ -13,7 +13,7 @@ use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, Ke
 
 use ztick_tui::app::{App, Screen};
 use ztick_tui::config::{DEFAULT_CONFIG_JSON, EditableField};
-use ztick_tui::data::{DashboardData, PluginInspection, PortabilityReport};
+use ztick_tui::data::{DashboardData, PluginInspection, PortabilityReport, ResultInspection};
 use ztick_tui::frontend::{FrontendError, Session};
 use ztick_tui::profile;
 use ztick_tui::ui;
@@ -99,9 +99,16 @@ fn handle_key(session: &Session, app: &mut App, key: KeyEvent) -> bool {
     match key.code {
         KeyCode::Char('q') | KeyCode::Esc => true,
         KeyCode::Char(character) if character.is_ascii_digit() => {
-            let index = character.to_digit(10).expect("digit is valid") as usize;
-            if index >= 1 && index <= Screen::ALL.len() {
-                app.set_screen(Screen::ALL[index - 1]);
+            let digit = character.to_digit(10).expect("digit is valid") as usize;
+            let screen = if digit == 0 {
+                Some(Screen::Results)
+            } else if digit <= Screen::ALL.len() {
+                Some(Screen::ALL[digit - 1])
+            } else {
+                None
+            };
+            if let Some(screen) = screen {
+                app.set_screen(screen);
                 refresh_screen(session, app);
             }
             false
@@ -403,7 +410,10 @@ fn consume_run_result(session: &Session, app: &mut App) {
         return;
     }
     match session.run_result() {
-        Ok(Some(json)) => app.set_run_result(&json),
+        Ok(Some(json)) => {
+            app.set_run_result(&json);
+            refresh_result(session, app);
+        }
         Ok(None) => {}
         Err(error) => app.set_status(format!("run result read failed: {error}")),
     }
@@ -450,6 +460,7 @@ fn refresh_screen(session: &Session, app: &mut App) {
     match app.screen() {
         Screen::Integrations => refresh_inspection(session, app),
         Screen::Profiles => refresh_profiles(app),
+        Screen::Results => refresh_result(session, app),
         _ => {}
     }
 }
@@ -501,6 +512,41 @@ fn refresh_inspection(session: &Session, app: &mut App) {
     refresh_portability(app);
 }
 
+/// Apply one result-document read and keep decode failures visible.
+fn apply_result_result(result: Result<String, FrontendError>, app: &mut App) {
+    match result {
+        Ok(text) => match ResultInspection::from_json(&text) {
+            Ok(inspection) => app.set_result_inspection(Some(inspection)),
+            Err(error) => {
+                app.set_result_inspection(None);
+                app.set_status(format!("result document decode failed: {error}"));
+            }
+        },
+        Err(error) => {
+            app.set_result_inspection(None);
+            app.set_status(format!("result document read failed: {error}"));
+        }
+    }
+}
+
+/// Load the typed inspection for the completed run's stored result document.
+///
+/// The path comes only from a published result envelope. A missing or unreadable
+/// document is reported through the app status instead of being shown as a
+/// completed result.
+fn refresh_result(session: &Session, app: &mut App) {
+    if app.result_inspection().is_some() {
+        return;
+    }
+    let Some(path) = app
+        .result_path()
+        .map(|path| path.to_string_lossy().into_owned())
+    else {
+        return;
+    };
+    apply_result_result(session.result_read(&path), app);
+}
+
 /// Unit tests for terminal event handling and refresh helpers.
 #[cfg(test)]
 mod tests {
@@ -509,9 +555,9 @@ mod tests {
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use super::{
-        apply_assignment, apply_dashboard_result, apply_inspection_result, consume_events,
-        consume_run_result, handle_key, refresh_dashboard, refresh_portability, refresh_profiles,
-        refresh_screen, save_current_profile,
+        apply_assignment, apply_dashboard_result, apply_inspection_result, apply_result_result,
+        consume_events, consume_run_result, handle_key, refresh_dashboard, refresh_portability,
+        refresh_profiles, refresh_screen, save_current_profile,
     };
     use ztick_tui::app::{App, RunState, Screen};
     use ztick_tui::config::{DEFAULT_CONFIG_JSON, EditableField};
@@ -663,11 +709,80 @@ mod tests {
         let session = Session::new().expect("session creation succeeds");
         let mut app = configured_app();
         for (index, expected) in Screen::ALL.iter().enumerate() {
-            let digit = char::from_digit((index + 1) as u32, 10).expect("index is a digit");
+            let digit = if *expected == Screen::Results {
+                '0'
+            } else {
+                char::from_digit((index + 1) as u32, 10).expect("index is a digit")
+            };
             assert!(!handle_key(&session, &mut app, key(KeyCode::Char(digit))));
             assert_eq!(app.screen(), *expected);
         }
         assert!(handle_key(&session, &mut app, key(KeyCode::Char('q'))));
+    }
+
+    /// Verify the zero key opens results inspection and loads retained result data.
+    #[test]
+    fn zero_key_opens_results_and_loads_stored_document() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let session = Session::new().expect("session creation succeeds");
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after the epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("ztick-results-key-{nonce}"));
+        std::fs::create_dir_all(&directory).expect("temporary profile directory is created");
+        let config_path = profile::save(&directory, "Quick", DEFAULT_CONFIG_JSON)
+            .expect("the run config is saved");
+        let config_text = config_path.to_string_lossy().to_string();
+        session
+            .start_run(&config_text)
+            .expect("the async run starts");
+
+        let mut envelope = None;
+        for _ in 0..500 {
+            while session
+                .poll_event()
+                .expect("progress poll succeeds")
+                .is_some()
+            {}
+            if let Some(json) = session.run_result().expect("result copy succeeds") {
+                envelope = Some(json);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let envelope = envelope.expect("the async run published a result envelope");
+        assert!(envelope.contains("\"status\":\"success\""));
+
+        let mut app = configured_app();
+        app.set_run_result(&envelope);
+        assert!(!handle_key(&session, &mut app, key(KeyCode::Char('0'))));
+        assert_eq!(app.screen(), Screen::Results);
+        let inspection = app
+            .result_inspection()
+            .expect("the stored result was decoded");
+        assert!(inspection.is_complete());
+        assert!(!inspection.runs().is_empty());
+        assert!(app.status().is_empty() || !app.status().contains("failed"));
+
+        std::fs::remove_dir_all(&directory).expect("temporary directory is removed");
+    }
+
+    /// Verify an unreadable result path is reported instead of appearing complete.
+    #[test]
+    fn unreadable_result_document_is_reported() {
+        let session = Session::new().expect("session creation succeeds");
+        let mut app = configured_app();
+        app.set_run_result(
+            r#"{"status":"success","data":{"output_path":"/missing/ztick-result.json"}}"#,
+        );
+        app.set_screen(Screen::Results);
+        refresh_screen(&session, &mut app);
+        assert!(app.result_inspection().is_none());
+        assert!(app.status().contains("result document read failed"));
+        apply_result_result(Err(FrontendError::new(7, "decode rejected")), &mut app);
+        assert!(app.status().contains("result document read failed"));
     }
 
     /// Verify right arrow applies a documented field override through the boundary.

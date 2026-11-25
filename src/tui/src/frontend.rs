@@ -17,8 +17,9 @@ use crate::{
     ztick_frontend_config_override, ztick_frontend_config_parse, ztick_frontend_config_save,
     ztick_frontend_config_serialize, ztick_frontend_config_validate, ztick_frontend_last_error,
     ztick_frontend_list, ztick_frontend_plugin_inspect, ztick_frontend_plugin_list,
-    ztick_frontend_progress_poll, ztick_frontend_run_result, ztick_frontend_run_start,
-    ztick_frontend_session_create, ztick_frontend_session_destroy, ztick_frontend_system,
+    ztick_frontend_progress_poll, ztick_frontend_result_read, ztick_frontend_run_result,
+    ztick_frontend_run_start, ztick_frontend_session_create, ztick_frontend_session_destroy,
+    ztick_frontend_system,
 };
 
 /// Status returned by every successful private-boundary operation.
@@ -333,6 +334,24 @@ impl Session {
             return Err(FrontendError::new(status, self.last_error()));
         }
         Ok(Some(text))
+    }
+
+    /// Read one stored result document as compact JSON through the private boundary.
+    ///
+    /// The copied text is the stored v1 result document, not a CLI envelope.
+    /// Decoding it into a typed view is the caller's responsibility.
+    ///
+    /// # Parameters
+    /// - `path`: Filesystem path of a stored result document.
+    ///
+    /// # Returns
+    /// The compact result document, or a boundary or copy error.
+    pub fn result_read(&self, path: &str) -> Result<String, FrontendError> {
+        let path = CString::new(path)
+            .map_err(|_| FrontendError::new(-1, "result path contains an interior NUL byte"))?;
+        self.call_config_string(|session, buffer, capacity, length| unsafe {
+            ztick_frontend_result_read(session, path.as_ptr(), buffer, capacity, length)
+        })
     }
 
     /// Copy the dashboard's read-only envelopes from the front end.
@@ -805,6 +824,16 @@ mod tests {
         );
     }
 
+    /// Verify a result read rejects an interior NUL path before crossing the boundary.
+    #[test]
+    fn session_result_read_rejects_an_interior_nul_path() {
+        let session = Session::new().expect("session creation succeeds");
+        let error = session
+            .result_read("bad\0path")
+            .expect_err("an interior NUL cannot be passed to C");
+        assert!(error.message().contains("interior NUL"));
+    }
+
     /// Verify an async run delivers copied progress events and a JSON envelope.
     #[test]
     fn session_async_run_delivers_progress_and_result() {
@@ -841,5 +870,17 @@ mod tests {
         let json = result.expect("the async run produced a JSON envelope");
         assert!(json.contains("\"status\":\"success\""));
         assert!(json.contains("\"command\":\"run\""));
+
+        let envelope = crate::json::parse(&json).expect("the envelope is valid JSON");
+        let output_path = envelope
+            .get("data")
+            .and_then(|data| data.get("output_path"))
+            .and_then(crate::json::Json::as_str)
+            .expect("a successful run publishes an output path");
+        let document = session
+            .result_read(output_path)
+            .expect("the stored result document is read through the safe wrapper");
+        assert!(document.contains("\"schema_version\":\"1.0.0\""));
+        assert!(document.contains("\"runs\""));
     }
 }

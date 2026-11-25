@@ -386,6 +386,22 @@ screen shows run state, config path, test point, timing level, isolation mode,
 warnings and result status while keeping the two measurement classes visually
 separate. No metric value is invented from a progress event.
 
+**P5.5 results-inspection coverage (Derived design).** Rust data tests decode a
+deterministic stored result document containing `measured`, `estimated`,
+`unavailable` and `not_applicable` metrics, validation outcomes, classified
+warnings/failures, retained raw sample counts and a separate overhead estimate.
+They assert that a stored `complete` token is demoted by run failures, failed
+validation checks or session failures, and that malformed, unsupported and
+minimal documents keep explicit status/error evidence. UI tests assert that all
+four statuses, validation, warnings/failures, raw-data availability and retained
+overhead are visible, process-level and instrumented measurements remain
+distinct, and incomplete evidence is never rendered as complete. Key-flow tests
+map `0` to the results screen, load the stored document from the published run
+envelope through the safe `result_read` wrapper, and report unreadable paths
+without showing a completed result. The C11 and Rust boundary suites already
+cover `ztick_frontend_result_read`; the safe wrapper adds an owned-path error
+test and reads a real run document in the async run test.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |

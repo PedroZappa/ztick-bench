@@ -103,6 +103,13 @@ Additional rules (Derived design):
   explicit confirmation; field cycling and typed entry cannot bypass it.
 - Show when raw measurements and overhead estimates are both retained and confirm
   that overhead was not subtracted.
+- Treat a stored `complete` token as incomplete when session failures, a
+  non-complete run, recorded run failures or a failed validation check are
+  present. Show the stored token and the derived status separately, and never
+  render such a document as complete (Derived design; BR §14).
+- Read results from the output path published by the completed run envelope. An
+  unreadable or undecodable document is reported as unavailable evidence rather
+  than shown as a completed run (Derived design; BR §14).
 - If a config from another machine contains unsupported capabilities, block the
   run with an explanation instead of adapting it silently
   ([RESULTS §7](RESULTS_FORMAT.md#7-portability-checks)).
@@ -123,7 +130,10 @@ The TUI is a front end over the core engine and result documents
   progress, so no process-level number is presented as an SDK-hook measurement.
 - Results, compare and report screens read result documents through that
   boundary; they do not recompute metrics except through the core's comparison
-  functions.
+  functions. The results screen decodes one stored document into a typed,
+  read-only view that retains metric status/value/source pairs, validation
+  outcomes, classified warnings/failures, retained raw sample counts and the
+  separately stored overhead estimate (Derived design).
 
 ## 6. Out of scope for this document
 

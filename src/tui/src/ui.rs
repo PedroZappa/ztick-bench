@@ -12,7 +12,10 @@ use ratatui::{
 };
 
 use crate::app::{App, Screen};
-use crate::data::{AvailabilityField, DashboardData, PluginInspection};
+use crate::data::{
+    AvailabilityField, DashboardData, PluginInspection, ResultInspection, ResultIssue,
+    RunInspection,
+};
 
 /// Build the header lines shared by every screen.
 fn header_lines(app: &App) -> Vec<Line<'static>> {
@@ -31,7 +34,7 @@ fn footer_lines(app: &App) -> Vec<Line<'static>> {
         )];
     }
     vec![Line::from(
-        "1-9 screens  Tab cycle  Up/Down select  Left/Right cycle  Enter edit  +/- adjust  p priority  Ctrl+R run  Ctrl+S save  Ctrl+O reload  r refresh  q quit",
+        "0-9 screens  Tab cycle  Up/Down select  Left/Right cycle  Enter edit  +/- adjust  p priority  Ctrl+R run  Ctrl+S save  Ctrl+O reload  r refresh  q quit",
     )]
 }
 
@@ -484,6 +487,163 @@ fn execution_lines(app: &App) -> Vec<Line<'static>> {
     lines
 }
 
+/// Build the stored results inspection view from one typed result document.
+///
+/// Completeness comes from stored failure evidence rather than from a single
+/// status token, and no metric is recomputed here.
+fn results_lines(app: &App) -> Vec<Line<'static>> {
+    let Some(path) = app.result_path() else {
+        return vec![
+            Line::from("Result document: (no completed run available)"),
+            Line::from("Completeness: unavailable; no result was loaded"),
+            Line::from("Press Ctrl+R to run; results are read from the stored v1 document"),
+        ];
+    };
+    let mut lines = vec![Line::from(format!("Result document: {}", path.display()))];
+    let Some(inspection) = app.result_inspection() else {
+        lines.push(Line::from(
+            "Inspection: unavailable; the stored document was not decoded",
+        ));
+        lines.push(Line::from(
+            "Completeness: unavailable; no stored evidence was loaded",
+        ));
+        if !app.status().is_empty() {
+            lines.push(Line::from(format!("Status: {}", app.status())));
+        }
+        return lines;
+    };
+    lines.extend(result_summary_lines(inspection));
+    for (index, run) in inspection.runs().iter().enumerate() {
+        lines.extend(run_inspection_lines(run, index));
+    }
+    lines.extend(issue_lines("Session warnings", inspection.warnings()));
+    lines.extend(issue_lines("Session failures", inspection.failures()));
+    lines
+}
+
+/// Build document-level status and measurement-class context lines.
+fn result_summary_lines(inspection: &ResultInspection) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        Line::from(format!(
+            "Schema: {} sdk={} runs={}",
+            inspection.schema_version(),
+            inspection.sdk_version(),
+            inspection.runs().len()
+        )),
+        Line::from(format!(
+            "Stored status token: {}",
+            inspection.stored_status()
+        )),
+        Line::from(format!(
+            "Completeness: {}",
+            if inspection.is_complete() {
+                "complete"
+            } else {
+                "incomplete"
+            }
+        )),
+        Line::from(format!("Derived status: {}", inspection.derived_status())),
+        Line::from(
+            "Process-level measurements (black-box): stored metadata only; no DSP timing inferred",
+        ),
+        Line::from(
+            "Instrumented DSP/callback measurements (SDK hooks): metric records listed per run",
+        ),
+    ];
+    if !inspection.status_reason().is_empty() {
+        lines.push(Line::from(format!(
+            "Status evidence: {}",
+            inspection.status_reason()
+        )));
+    }
+    lines
+}
+
+/// Build one stored run's metrics, validation, issues, raw data and overhead view.
+fn run_inspection_lines(run: &RunInspection, index: usize) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        Line::from(format!(
+            "Run [{}] {} stored_status={} complete={}",
+            index,
+            run.id(),
+            run.status(),
+            if run.is_complete() { "yes" } else { "no" }
+        )),
+        Line::from(format!("  Test point: {}", run.test_point())),
+        Line::from(format!(
+            "  Execution mode: {} (process isolation is not a security sandbox)",
+            run.isolation_mode()
+        )),
+        Line::from(format!(
+            "  Validation: level={} cases_checked={}",
+            value_or_placeholder(run.validation().level(), "(unreported)"),
+            run.validation().cases_checked()
+        )),
+    ];
+    for check in run.validation().checks() {
+        lines.push(Line::from(format!(
+            "    check={} case={} status={} reason={}",
+            check.check(),
+            value_or_placeholder(check.case_label(), "(none)"),
+            check.status(),
+            value_or_placeholder(check.reason(), "no reason recorded")
+        )));
+    }
+    lines.push(Line::from(
+        "  Metrics (stored status/value; nothing recomputed by the TUI):",
+    ));
+    for metric in run.metrics() {
+        lines.push(Line::from(format!(
+            "    {} {} status={} value={} source={}",
+            metric.id(),
+            metric.name(),
+            metric.status().label(),
+            metric.display_value(),
+            value_or_placeholder(metric.source(), "(unreported)")
+        )));
+    }
+    lines.extend(issue_lines("  Warnings", run.warnings()));
+    lines.extend(issue_lines("  Failures", run.failures()));
+    if run.raw_samples().is_empty() {
+        lines.push(Line::from(
+            "  Raw samples: none serialized; an aggregate raw basis need not be retained",
+        ));
+    } else {
+        let groups = run
+            .raw_samples()
+            .iter()
+            .map(|group| format!("{}={}", group.level(), group.count()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        lines.push(Line::from(format!("  Retained raw samples: {groups}")));
+    }
+    match run.overhead() {
+        Some(overhead) => lines.push(Line::from(format!(
+            "  Retained overhead estimate (separate; not subtracted): {}",
+            overhead.display()
+        ))),
+        None => lines.push(Line::from(
+            "  Retained overhead estimate: unavailable in this document",
+        )),
+    }
+    lines
+}
+
+/// Build a labelled list of classified warnings or failures with no empty state hidden.
+fn issue_lines(label: &str, issues: &[ResultIssue]) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(format!("{label}: {}", issues.len()))];
+    if issues.is_empty() {
+        lines.push(Line::from("  (none)"));
+    } else {
+        lines.extend(
+            issues
+                .iter()
+                .map(|issue| Line::from(format!("  - {}", issue.display()))),
+        );
+    }
+    lines
+}
+
 /// Render one complete application frame.
 pub fn render(frame: &mut Frame<'_>, app: &App) {
     let [header_area, main_area, keys_area] = Layout::vertical([
@@ -507,6 +667,7 @@ pub fn render(frame: &mut Frame<'_>, app: &App) {
         Screen::Scheduling => scheduling_lines(app),
         Screen::Execution => execution_lines(app),
         Screen::Profiles => profiles_lines(app),
+        Screen::Results => results_lines(app),
     };
     frame.render_widget(
         Paragraph::new(body).block(Block::bordered().title(app.screen().title())),
@@ -529,12 +690,12 @@ mod tests {
 
     use super::{
         config_gate_lines, dashboard_lines, editable_field_lines, execution_lines, field_line,
-        integration_lines, matching_inspection, profiles_lines, render, scheduling_lines,
-        system_lines, system_summary, value_or_placeholder,
+        integration_lines, matching_inspection, profiles_lines, render, results_lines,
+        scheduling_lines, system_lines, system_summary, value_or_placeholder,
     };
     use crate::app::{App, Screen};
     use crate::config::DEFAULT_CONFIG_JSON;
-    use crate::data::{DashboardData, PluginInspection, PortabilityReport};
+    use crate::data::{DashboardData, PluginInspection, PortabilityReport, ResultInspection};
     use crate::profile::SavedProfile;
     use crate::{
         ZTICK_FRONTEND_EVENT_MESSAGE_SIZE, ZTICK_FRONTEND_EVENT_PROGRESS,
@@ -556,6 +717,15 @@ mod tests {
             r#"{"schema_version":1,"command":"plugin inspect","status":"success","exit_code":0,"data":{"path":"/app.so","status":"success","reason":"no reason recorded","metadata":{"identifier":"app-a","name":"App A","version":"1.2.3","sdk_version":"1.0.0","capabilities":"0x7c","metadata":"test adapter"},"compatibility":{"status":"success","reason":"no reason recorded"},"trust":{"status":"available","reason":"","entries":[],"state":"untrusted"}},"error":""}"#,
         )
         .expect("inspection decodes")
+    }
+
+    /// Build an app with a retained result path and one decoded inspection.
+    fn result_app(text: &str) -> App {
+        let mut app = App::new();
+        app.set_run_result(r#"{"status":"success","data":{"output_path":"/tmp/result.json"}}"#);
+        let inspection = ResultInspection::from_json(text).expect("result document decodes");
+        app.set_result_inspection(Some(inspection));
+        app
     }
 
     /// Flatten one rendered buffer into trimmed rows for content assertions.
@@ -782,7 +952,7 @@ mod tests {
                 "screen {screen:?} shows its title"
             );
             assert!(
-                text.contains("1-9 screens"),
+                text.contains("0-9 screens"),
                 "screen {screen:?} shows key hints"
             );
         }
@@ -830,5 +1000,61 @@ mod tests {
         assert!(text.contains(
             "Instrumented DSP/callback measurements (SDK hooks): unavailable in live progress"
         ));
+    }
+
+    /// Verify stored results expose all four statuses and every retained evidence class.
+    #[test]
+    fn results_lines_show_all_statuses_validation_and_retained_evidence() {
+        let app = result_app(crate::data::fixtures::RESULT_JSON);
+        let text = lines_text(&results_lines(&app));
+        assert!(text.contains("Result document: /tmp/result.json"));
+        assert!(text.contains("Completeness: complete"));
+        assert!(text.contains("status=measured"));
+        assert!(text.contains("status=estimated"));
+        assert!(text.contains("status=unavailable"));
+        assert!(text.contains("status=not_applicable"));
+        assert!(text.contains("check=finite_output"));
+        assert!(text.contains("status=passed"));
+        assert!(text.contains("execution: thermal drift"));
+        assert!(text.contains("Retained raw samples: per_block=2 whole_run=0"));
+        assert!(text.contains("Retained overhead estimate (separate; not subtracted)"));
+        assert!(text.contains("calibration_samples=1"));
+        assert!(text.contains("Process-level measurements (black-box)"));
+        assert!(text.contains("Instrumented DSP/callback measurements (SDK hooks)"));
+        assert!(text.contains("not a security sandbox"));
+    }
+
+    /// Verify failure evidence is never rendered as a complete result.
+    #[test]
+    fn results_lines_never_render_incomplete_evidence_as_complete() {
+        let failed = crate::data::fixtures::RESULT_JSON.replacen(
+            "\"failures\":[]",
+            "\"failures\":[{\"category\":\"workload_failure\",\"message\":\"validation checks failed\"}]",
+            1,
+        );
+        let app = result_app(&failed);
+        let text = lines_text(&results_lines(&app));
+        assert!(text.contains("Completeness: incomplete"));
+        assert!(!text.contains("Completeness: complete"));
+        assert!(text.contains("workload_failure: validation checks failed"));
+        assert!(text.contains("complete=no"));
+
+        let empty = App::new();
+        let text = lines_text(&results_lines(&empty));
+        assert!(text.contains("no completed run available"));
+        assert!(!text.contains("Completeness: complete"));
+    }
+
+    /// Verify an unreadable result document is shown as unavailable evidence.
+    #[test]
+    fn results_lines_report_an_unreadable_result_document() {
+        let mut app = App::new();
+        app.set_run_result(
+            r#"{"status":"success","data":{"output_path":"/tmp/missing-result.json"}}"#,
+        );
+        let text = lines_text(&results_lines(&app));
+        assert!(text.contains("Inspection: unavailable"));
+        assert!(text.contains("Completeness: unavailable"));
+        assert!(!text.contains("Completeness: complete"));
     }
 }

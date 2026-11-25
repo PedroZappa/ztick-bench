@@ -3,13 +3,15 @@
 //!
 //! P5.2 added the three read-only screens. P5.3 adds the editable config
 //! screens, typed input state, named-profile selection and the portability gate.
-//! Live run monitoring and result workflows remain in later phases; no metric
-//! computation belongs here.
+//! P5.4 carries live run progress; P5.5 retains the completed run's result path
+//! and typed inspection. No metric computation belongs here.
 
 use std::path::PathBuf;
 
 use crate::config::EditableField;
-use crate::data::{DashboardData, PluginCandidate, PluginInspection, PortabilityReport};
+use crate::data::{
+    DashboardData, PluginCandidate, PluginInspection, PortabilityReport, ResultInspection,
+};
 use crate::profile::SavedProfile;
 use crate::{
     ZTICK_FRONTEND_EVENT_WARNING, ZTICK_FRONTEND_STATE_COMPLETE, ZTICK_FRONTEND_STATE_CONFIGURING,
@@ -165,7 +167,7 @@ pub struct ExecutionProgress {
     pub result_status: String,
 }
 
-/// Screens available after Phase 5.4.
+/// Screens available after Phase 5.5.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Screen {
     /// Orientation summary and active run state.
@@ -187,6 +189,8 @@ pub enum Screen {
     Execution,
     /// Built-in and saved named config profiles.
     Profiles,
+    /// Detailed inspection of one stored result document.
+    Results,
 }
 
 /// Provide screen titles and cyclic navigation.
@@ -203,11 +207,12 @@ impl Screen {
             Self::Scheduling => "Parallelism & scheduling",
             Self::Execution => "Execution monitoring",
             Self::Profiles => "Profiles & settings",
+            Self::Results => "Results inspection",
         }
     }
 
     /// Return all screens in navigation order.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Dashboard,
         Self::System,
         Self::Integrations,
@@ -217,6 +222,7 @@ impl Screen {
         Self::Scheduling,
         Self::Execution,
         Self::Profiles,
+        Self::Results,
     ];
 
     /// Return the screen reached by moving forward once.
@@ -312,6 +318,10 @@ pub struct App {
     warnings: Vec<String>,
     /// Live execution context copied from core progress events.
     progress: ExecutionProgress,
+    /// Stored result document path copied from a completed run envelope.
+    result_path: Option<PathBuf>,
+    /// Typed inspection of the stored result document, when one was loaded.
+    result_inspection: Option<ResultInspection>,
     /// The most recent status message shown on the dashboard.
     status: String,
     /// The decoded portable config retained by the front-end session.
@@ -348,6 +358,8 @@ impl Default for App {
             inspection: None,
             warnings: Vec::new(),
             progress: ExecutionProgress::default(),
+            result_path: None,
+            result_inspection: None,
             status: "Ready".to_string(),
             config: None,
             config_error: String::new(),
@@ -493,6 +505,9 @@ impl App {
 
     /// Reset execution state when a new asynchronous run is started.
     ///
+    /// Stale result state is discarded so a previous run can never appear as the
+    /// result of the new run.
+    ///
     /// # Parameters
     /// - `config_path`: Config document path passed to the private boundary.
     pub fn begin_run(&mut self, config_path: impl Into<String>) {
@@ -501,15 +516,20 @@ impl App {
             ..ExecutionProgress::default()
         };
         self.warnings.clear();
+        self.result_path = None;
+        self.result_inspection = None;
         self.set_state_code(crate::ZTICK_FRONTEND_STATE_VALIDATING);
         self.set_status("run started");
     }
 
     /// Record the copied result envelope for the active run.
     ///
-    /// Unknown or malformed envelopes are reported explicitly rather than being
-    /// presented as a successful completed result.
+    /// A usable `output_path` is retained for the results screen. Unknown or
+    /// malformed envelopes are reported explicitly rather than being presented
+    /// as a successful completed result, and any earlier inspection is discarded.
     pub fn set_run_result(&mut self, json: &str) {
+        self.result_path = None;
+        self.result_inspection = None;
         let parsed = crate::json::parse(json);
         self.progress.result_status = match parsed {
             Ok(envelope) => {
@@ -522,10 +542,28 @@ impl App {
                     .and_then(|data| data.get("output_path"))
                     .and_then(crate::json::Json::as_str)
                     .unwrap_or("unavailable");
+                if !output.is_empty() && output != "unavailable" {
+                    self.result_path = Some(PathBuf::from(output));
+                }
                 format!("{status}; output={output}")
             }
             Err(_) => "undecodable result envelope".to_string(),
         };
+    }
+
+    /// Return the stored result path copied from the latest run envelope.
+    pub fn result_path(&self) -> Option<&std::path::Path> {
+        self.result_path.as_deref()
+    }
+
+    /// Return the typed inspection loaded for the stored result document.
+    pub fn result_inspection(&self) -> Option<&ResultInspection> {
+        self.result_inspection.as_ref()
+    }
+
+    /// Replace the typed inspection for the stored result document.
+    pub fn set_result_inspection(&mut self, inspection: Option<ResultInspection>) {
+        self.result_inspection = inspection;
     }
 
     /// Return the most recent status message.
@@ -936,7 +974,8 @@ mod tests {
     /// Verify screen cycles forward and backward through every registered screen.
     #[test]
     fn screen_cycles_forward_and_backward() {
-        assert_eq!(Screen::ALL.len(), 9);
+        assert_eq!(Screen::ALL.len(), 10);
+        assert_eq!(Screen::Results.title(), "Results inspection");
         for (index, screen) in Screen::ALL.iter().enumerate() {
             let next = Screen::ALL[(index + 1) % Screen::ALL.len()];
             let previous = Screen::ALL[(index + Screen::ALL.len() - 1) % Screen::ALL.len()];
@@ -1208,9 +1247,14 @@ mod tests {
         let mut app = App::new();
         app.push_warning("stale");
         app.set_run_result(r#"{"status":"success"}"#);
+        let result = crate::data::ResultInspection::from_json(crate::data::fixtures::RESULT_JSON)
+            .expect("result fixture decodes");
+        app.set_result_inspection(Some(result));
         app.begin_run("/tmp/next.json");
         assert!(app.warnings().is_empty());
         assert!(app.progress().result_status.is_empty());
+        assert!(app.result_path().is_none());
+        assert!(app.result_inspection().is_none());
         assert_eq!(app.progress().test_point, 0);
         assert_eq!(app.progress().timing_level, TimingLevel::Unknown);
         assert_eq!(app.progress().isolation_mode, IsolationMode::Unknown);
@@ -1227,8 +1271,18 @@ mod tests {
             app.progress().result_status,
             "success; output=/tmp/result.json"
         );
+        assert_eq!(
+            app.result_path().map(|path| path.display().to_string()),
+            Some("/tmp/result.json".to_string())
+        );
+        let inspection =
+            crate::data::ResultInspection::from_json(crate::data::fixtures::RESULT_JSON)
+                .expect("result fixture decodes");
+        app.set_result_inspection(Some(inspection));
         app.set_run_result("not json");
         assert_eq!(app.progress().result_status, "undecodable result envelope");
+        assert!(app.result_path().is_none());
+        assert!(app.result_inspection().is_none());
     }
 
     /// Verify config replacement exposes typed values and rejects malformed text.
