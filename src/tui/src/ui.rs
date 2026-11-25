@@ -7,9 +7,12 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
-    text::Line,
+    style::{Modifier, Style},
+    text::{Line, Span},
     widgets::{Block, Paragraph},
 };
+
+use crate::theme::ThemePalette;
 
 use crate::app::{App, Screen};
 use crate::data::{
@@ -18,42 +21,69 @@ use crate::data::{
 };
 
 /// Build the header lines shared by every screen.
-fn header_lines(app: &App) -> Vec<Line<'static>> {
-    vec![Line::from(format!(
-        "{} | run state: {}",
-        app.screen().title(),
-        app.state().label()
-    ))]
+fn header_lines(app: &App, p: &ThemePalette) -> Vec<Line<'static>> {
+    let state = app.state().label();
+    vec![Line::from(vec![
+        Span::styled(
+            app.screen().title(),
+            Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" | run state: ", Style::default().fg(p.muted)),
+        Span::styled(state, p.status_style(state)),
+        Span::styled(" | theme: ", Style::default().fg(p.muted)),
+        Span::styled(app.theme().name(), Style::default().fg(p.label)),
+    ])]
 }
 
 /// Build the key hint footer shared by every screen.
-fn footer_lines(app: &App) -> Vec<Line<'static>> {
+fn footer_lines(app: &App, p: &ThemePalette) -> Vec<Line<'static>> {
+    let key = Style::default().fg(p.accent).add_modifier(Modifier::BOLD);
+    let txt = Style::default().fg(p.muted);
     if app.trust_prompt().is_some() {
-        return vec![Line::from(
-            "Trust confirmation: y/Enter grant  n/Esc deny  q quit",
-        )];
+        return vec![Line::from(vec![
+            Span::styled(
+                "Trust confirmation: ",
+                Style::default().fg(p.warn).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("y/Enter", key),
+            Span::styled(" grant  ", txt),
+            Span::styled("n/Esc", key),
+            Span::styled(" deny  ", txt),
+            Span::styled("q", key),
+            Span::styled(" quit", txt),
+        ])];
     }
     if app.input().is_some() {
-        return vec![Line::from(
-            "type value  Backspace delete  Enter apply  Esc cancel  q quit",
-        )];
+        return vec![Line::from(vec![
+            Span::styled("type value  ", txt),
+            Span::styled("Backspace", key),
+            Span::styled(" delete  ", txt),
+            Span::styled("Enter", key),
+            Span::styled(" apply  ", txt),
+            Span::styled("Esc", key),
+            Span::styled(" cancel  ", txt),
+            Span::styled("q", key),
+            Span::styled(" quit", txt),
+        ])];
     }
+    let screen_hint = match app.screen() {
+        Screen::Compare => {
+            "Compare: b baseline  n candidate  t threshold  a alpha  s sided  f fail-on-regression  Ctrl+E compare"
+        }
+        Screen::Report => {
+            "Report: f result  m CSV mode  g JSON path  y CSV path  u bundle path  d import dir  Ctrl+E export"
+        }
+        Screen::Integrations => {
+            "Integrations: t confirm trust  y grant  n deny  metadata-only inspection before consent"
+        }
+        _ => "Compare and report screens expose their own local keys in their headers",
+    };
     vec![
-        Line::from(
-            "0-9 screens  c compare  e report  Tab cycle  Up/Down select  Left/Right cycle  Enter edit  +/- adjust  p priority  t trust  Ctrl+R run  Ctrl+E execute/export  Ctrl+B bundle export  Ctrl+I bundle import  Ctrl+S save  Ctrl+O reload  r refresh  q quit",
-        ),
-        Line::from(match app.screen() {
-            Screen::Compare => {
-                "Compare: b baseline  n candidate  t threshold  a alpha  s sided  f fail-on-regression  Ctrl+E compare"
-            }
-            Screen::Report => {
-                "Report: f result  m CSV mode  g JSON path  y CSV path  u bundle path  d import dir  Ctrl+E export"
-            }
-            Screen::Integrations => {
-                "Integrations: t confirm trust  y grant  n deny  metadata-only inspection before consent"
-            }
-            _ => "Compare and report screens expose their own local keys in their headers",
-        }),
+        Line::from(Span::styled(
+            "0-9 screens  c compare  e report  Tab cycle  Up/Down select  Left/Right cycle  Enter edit  +/- adjust  p priority  t trust  T theme  Ctrl+R run  Ctrl+E execute/export  Ctrl+B bundle export  Ctrl+I bundle import  Ctrl+S save  Ctrl+O reload  r refresh  q quit",
+            txt,
+        )),
+        Line::from(Span::styled(screen_hint, Style::default().fg(p.label))),
     ]
 }
 
@@ -913,6 +943,7 @@ fn report_lines(app: &App) -> Vec<Line<'static>> {
 
 /// Render one complete application frame.
 pub fn render(frame: &mut Frame<'_>, app: &App) {
+    let p = app.theme().palette();
     let [header_area, main_area, keys_area] = Layout::vertical([
         Constraint::Length(3),
         Constraint::Min(0),
@@ -920,7 +951,16 @@ pub fn render(frame: &mut Frame<'_>, app: &App) {
     ])
     .areas(frame.area());
     frame.render_widget(
-        Paragraph::new(header_lines(app)).block(Block::bordered().title("ztick-bench")),
+        Paragraph::new(header_lines(app, &p))
+            .style(Style::default().fg(p.fg))
+            .block(
+                Block::bordered()
+                    .title(Span::styled(
+                        "ztick-bench",
+                        Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
+                    ))
+                    .border_style(Style::default().fg(p.accent)),
+            ),
         header_area,
     );
 
@@ -939,12 +979,25 @@ pub fn render(frame: &mut Frame<'_>, app: &App) {
         Screen::Report => report_lines(app),
     };
     frame.render_widget(
-        Paragraph::new(body).block(Block::bordered().title(app.screen().title())),
+        Paragraph::new(body).style(Style::default().fg(p.fg)).block(
+            Block::bordered()
+                .title(Span::styled(
+                    app.screen().title(),
+                    Style::default().fg(p.label).add_modifier(Modifier::BOLD),
+                ))
+                .border_style(Style::default().fg(p.label)),
+        ),
         main_area,
     );
 
     frame.render_widget(
-        Paragraph::new(footer_lines(app)).block(Block::bordered().title("Keys")),
+        Paragraph::new(footer_lines(app, &p))
+            .style(Style::default().fg(p.fg))
+            .block(
+                Block::bordered()
+                    .title(Span::styled("Keys", Style::default().fg(p.muted)))
+                    .border_style(Style::default().fg(p.muted)),
+            ),
         keys_area,
     );
 }

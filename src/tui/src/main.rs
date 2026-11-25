@@ -283,6 +283,11 @@ fn handle_key(session: &Session, app: &mut App, key: KeyEvent) -> bool {
             refresh_screen(session, app);
             false
         }
+        KeyCode::Char('T') => {
+            let name = app.cycle_theme();
+            app.set_status(format!("theme: {name}"));
+            false
+        }
         _ => false,
     }
 }

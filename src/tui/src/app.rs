@@ -15,6 +15,7 @@ use crate::data::{
     ReportInspection, ResultInspection,
 };
 use crate::profile::SavedProfile;
+use crate::theme::ThemeKind;
 use crate::{
     ZTICK_FRONTEND_EVENT_WARNING, ZTICK_FRONTEND_STATE_COMPLETE, ZTICK_FRONTEND_STATE_CONFIGURING,
     ZTICK_FRONTEND_STATE_FAILED, ZTICK_FRONTEND_STATE_IDLE, ZTICK_FRONTEND_STATE_INCOMPLETE,
@@ -518,6 +519,8 @@ pub struct App {
     profile_directory: PathBuf,
     /// Saved profiles discovered on disk.
     saved_profiles: Vec<SavedProfile>,
+    /// Active color theme.
+    theme: ThemeKind,
     /// The zero-based index of the selected saved profile.
     selected_profile: usize,
 }
@@ -564,6 +567,7 @@ impl Default for App {
             profile_directory: crate::profile::default_directory(),
             saved_profiles: Vec::new(),
             selected_profile: 0,
+            theme: ThemeKind::default(),
         }
     }
 }
@@ -1117,6 +1121,17 @@ impl App {
     /// Return the editable fields shown on the active screen.
     pub fn editable_fields(&self) -> &'static [EditableField] {
         EditableField::fields_for(self.screen)
+    }
+
+    /// Return the active color theme.
+    pub fn theme(&self) -> ThemeKind {
+        self.theme
+    }
+
+    /// Cycle the active color theme and return its name.
+    pub fn cycle_theme(&mut self) -> &'static str {
+        self.theme = self.theme.next();
+        self.theme.name()
     }
 
     /// Return the zero-based index of the selected editable field.

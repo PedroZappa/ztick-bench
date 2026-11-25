@@ -24,6 +24,8 @@ mod json;
 pub mod profile;
 /// Versioned JSON session bundles holding results, comparisons and configs.
 pub mod session_bundle;
+/// Color themes for the terminal front end.
+pub mod theme;
 /// Stateless ratatui rendering for the dashboard and configuration screens.
 pub mod ui;
 
