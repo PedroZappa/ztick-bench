@@ -160,10 +160,31 @@ impl Session {
     /// # Returns
     /// The owned session, or an error when construction fails.
     pub fn new() -> Result<Self, FrontendError> {
+        Self::with_trust_store_path(None)
+    }
+
+    /// Create one front-end session with an optional trust-store override.
+    ///
+    /// # Parameters
+    /// - `trust_store_path`: Optional trusted-plugin store path. `None` uses the
+    ///   platform default.
+    ///
+    /// # Returns
+    /// The owned session, or an error when construction fails.
+    pub fn with_trust_store_path(trust_store_path: Option<&str>) -> Result<Self, FrontendError> {
+        let trust_store_path = trust_store_path
+            .map(|path| {
+                CString::new(path).map_err(|_| {
+                    FrontendError::new(-1, "trust store path contains an interior NUL byte")
+                })
+            })
+            .transpose()?;
         let options = ZtickFrontendSessionOptions {
             size: size_of::<ZtickFrontendSessionOptions>() as u32,
             version: ZTICK_FRONTEND_STRUCT_LAYOUT_VERSION,
-            trust_store_path: ptr::null(),
+            trust_store_path: trust_store_path
+                .as_ref()
+                .map_or(ptr::null(), |path| path.as_ptr()),
         };
         let handle = unsafe { ztick_frontend_session_create(&options) };
         if handle.is_null() {
@@ -525,6 +546,56 @@ impl Session {
         PluginInspection::from_json(&json).map_err(|error| FrontendError::data(error.message()))
     }
 
+    /// Query whether one stable plugin identifier is trusted.
+    ///
+    /// # Parameters
+    /// - `identifier`: Stable plugin identifier recorded by discovery/inspection.
+    ///
+    /// # Returns
+    /// `true` when the identifier is currently trusted, `false` when it is not,
+    /// or a boundary error when the trust store cannot be read.
+    pub fn trust_query(&self, identifier: &str) -> Result<bool, FrontendError> {
+        let identifier = CString::new(identifier).map_err(|_| {
+            FrontendError::new(-1, "plugin identifier contains an interior NUL byte")
+        })?;
+        let mut trusted = 0_i32;
+        let status = unsafe {
+            crate::ztick_frontend_trust_query(self.handle, identifier.as_ptr(), &mut trusted)
+        };
+        if status == STATUS_SUCCESS {
+            Ok(trusted == 1)
+        } else {
+            Err(FrontendError::new(status, self.last_error()))
+        }
+    }
+
+    /// Record an explicit first-run consent decision for one plugin identifier.
+    ///
+    /// # Parameters
+    /// - `identifier`: Stable plugin identifier to approve or deny.
+    /// - `granted`: `true` to persist trust, `false` to record an explicit denial.
+    ///
+    /// # Returns
+    /// Success when the boundary recorded the decision, or an error when the
+    /// identifier, decision or trust store was rejected.
+    pub fn trust_consent(&self, identifier: &str, granted: bool) -> Result<(), FrontendError> {
+        let identifier = CString::new(identifier).map_err(|_| {
+            FrontendError::new(-1, "plugin identifier contains an interior NUL byte")
+        })?;
+        let status = unsafe {
+            crate::ztick_frontend_trust_consent(
+                self.handle,
+                identifier.as_ptr(),
+                i32::from(granted),
+            )
+        };
+        if status == STATUS_SUCCESS {
+            Ok(())
+        } else {
+            Err(FrontendError::new(status, self.last_error()))
+        }
+    }
+
     /// Copy the next queued progress event without discarding the queue.
     ///
     /// The event header is initialized with the layout values required by the
@@ -821,6 +892,55 @@ mod tests {
             .plugin_inspect("bad\0path")
             .expect_err("interior NUL cannot cross the C boundary");
         assert_ne!(error.status(), 0);
+    }
+
+    /// Verify trust query and consent round-trip through the front-end boundary.
+    #[test]
+    fn session_trust_query_and_consent_round_trip() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after the epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("ztick-tui-trust-{nonce}"));
+        std::fs::create_dir_all(&directory).expect("temporary trust directory is created");
+        let path = directory.join("trusted.json");
+        let path_text = path.to_string_lossy().to_string();
+        let session = Session::with_trust_store_path(Some(&path_text))
+            .expect("session creation with trust store succeeds");
+
+        assert!(
+            !session
+                .trust_query("demo.plugin")
+                .expect("trust query succeeds before consent")
+        );
+        session
+            .trust_consent("demo.plugin", false)
+            .expect("denial is recorded");
+        assert!(
+            !session
+                .trust_query("demo.plugin")
+                .expect("trust query succeeds after denial")
+        );
+        assert!(!path.exists(), "denial must not persist trust");
+
+        session
+            .trust_consent("demo.plugin", true)
+            .expect("grant is recorded");
+        assert!(
+            session
+                .trust_query("demo.plugin")
+                .expect("trust query succeeds after grant")
+        );
+        assert!(path.exists(), "grant persists trust");
+
+        let bad = session
+            .trust_consent("bad\0id", true)
+            .expect_err("interior NUL cannot cross the C boundary");
+        assert_ne!(bad.status(), 0);
+
+        std::fs::remove_dir_all(&directory).expect("temporary trust directory is removed");
     }
 
     /// Verify parse override validate save and load use one retained config.

@@ -279,6 +279,117 @@ pub enum InputTarget {
     BundleTargetDir,
 }
 
+/// Explicit first-run trust confirmation requested by the Integrations screen.
+///
+/// The prompt carries copied metadata only. No plugin code is executed while the
+/// prompt is visible, and no execution is allowed until an explicit grant is
+/// recorded through the private front-end boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrustConsentPrompt {
+    /// Filesystem path of the discovered plugin candidate.
+    path: String,
+    /// Stable plugin identifier that receives the consent decision.
+    identifier: String,
+    /// Human-readable plugin name.
+    name: String,
+    /// Declared adapter version.
+    version: String,
+    /// Declared SDK version.
+    sdk_version: String,
+    /// Declared capability mask.
+    capabilities: String,
+    /// Core compatibility status token.
+    compatibility_status: String,
+    /// Core compatibility explanation.
+    compatibility_reason: String,
+    /// Current trust state token for the selected plugin.
+    trust_state: String,
+}
+
+impl TrustConsentPrompt {
+    /// Construct a consent prompt from copied plugin metadata.
+    ///
+    /// # Parameters
+    /// - `path`: Discovered plugin descriptor path.
+    /// - `identifier`: Stable plugin identifier.
+    /// - `name`: Human-readable plugin name.
+    /// - `version`: Declared adapter version.
+    /// - `sdk_version`: Declared SDK version.
+    /// - `capabilities`: Declared capability mask.
+    /// - `compatibility_status`: Core compatibility status token.
+    /// - `compatibility_reason`: Core compatibility explanation.
+    /// - `trust_state`: Current trust state token.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        path: impl Into<String>,
+        identifier: impl Into<String>,
+        name: impl Into<String>,
+        version: impl Into<String>,
+        sdk_version: impl Into<String>,
+        capabilities: impl Into<String>,
+        compatibility_status: impl Into<String>,
+        compatibility_reason: impl Into<String>,
+        trust_state: impl Into<String>,
+    ) -> Self {
+        Self {
+            path: path.into(),
+            identifier: identifier.into(),
+            name: name.into(),
+            version: version.into(),
+            sdk_version: sdk_version.into(),
+            capabilities: capabilities.into(),
+            compatibility_status: compatibility_status.into(),
+            compatibility_reason: compatibility_reason.into(),
+            trust_state: trust_state.into(),
+        }
+    }
+
+    /// Return the discovered plugin descriptor path.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// Return the stable plugin identifier.
+    pub fn identifier(&self) -> &str {
+        &self.identifier
+    }
+
+    /// Return the human-readable plugin name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Return the declared adapter version.
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    /// Return the declared SDK version.
+    pub fn sdk_version(&self) -> &str {
+        &self.sdk_version
+    }
+
+    /// Return the declared capability mask.
+    pub fn capabilities(&self) -> &str {
+        &self.capabilities
+    }
+
+    /// Return the core compatibility status token.
+    pub fn compatibility_status(&self) -> &str {
+        &self.compatibility_status
+    }
+
+    /// Return the core compatibility explanation.
+    pub fn compatibility_reason(&self) -> &str {
+        &self.compatibility_reason
+    }
+
+    /// Return the current trust state token.
+    pub fn trust_state(&self) -> &str {
+        &self.trust_state
+    }
+}
+
 /// One active text edit started from a config field or a P5.6 operation field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextInput {
@@ -345,6 +456,8 @@ pub struct App {
     selected_plugin: usize,
     /// The metadata-only inspection loaded for the selected candidate.
     inspection: Option<PluginInspection>,
+    /// Active first-run trust confirmation prompt, when one is open.
+    trust_prompt: Option<TrustConsentPrompt>,
     /// The warning messages retained in arrival order.
     warnings: Vec<String>,
     /// Live execution context copied from core progress events.
@@ -419,6 +532,7 @@ impl Default for App {
             data: DashboardData::default(),
             selected_plugin: 0,
             inspection: None,
+            trust_prompt: None,
             warnings: Vec::new(),
             progress: ExecutionProgress::default(),
             result_path: None,
@@ -482,6 +596,7 @@ impl App {
         self.selected_field = 0;
         self.input = None;
         self.pending_priority = None;
+        self.trust_prompt = None;
     }
 
     /// Move to the next screen in dashboard order.
@@ -545,6 +660,7 @@ impl App {
         }
         self.selected_plugin = (self.selected_plugin + 1) % count;
         self.inspection = None;
+        self.trust_prompt = None;
     }
 
     /// Select the previous plugin candidate with wrap-around.
@@ -555,6 +671,7 @@ impl App {
         }
         self.selected_plugin = (self.selected_plugin + count - 1) % count;
         self.inspection = None;
+        self.trust_prompt = None;
     }
 
     /// Return the inspection loaded for the selected candidate.
@@ -564,7 +681,112 @@ impl App {
 
     /// Replace the inspection loaded for the selected candidate.
     pub fn set_inspection(&mut self, inspection: Option<PluginInspection>) {
+        let keep_prompt = self
+            .trust_prompt
+            .as_ref()
+            .zip(inspection.as_ref())
+            .is_some_and(|(prompt, value)| prompt.path() == value.path());
         self.inspection = inspection;
+        if !keep_prompt {
+            self.trust_prompt = None;
+        }
+    }
+
+    /// Return the active first-run trust confirmation prompt.
+    pub fn trust_prompt(&self) -> Option<&TrustConsentPrompt> {
+        self.trust_prompt.as_ref()
+    }
+
+    /// Open the first-run trust confirmation prompt for the selected plugin.
+    ///
+    /// # Returns
+    /// `true` when a prompt was opened for the selected plugin.
+    pub fn open_trust_prompt(&mut self) -> bool {
+        let Some(prompt) = self.selected_trust_prompt() else {
+            return false;
+        };
+        self.trust_prompt = Some(prompt);
+        true
+    }
+
+    /// Close the active trust confirmation prompt without recording a decision.
+    pub fn cancel_trust_prompt(&mut self) {
+        self.trust_prompt = None;
+    }
+
+    /// Take the active trust confirmation prompt for an explicit decision.
+    pub fn take_trust_prompt(&mut self) -> Option<TrustConsentPrompt> {
+        self.trust_prompt.take()
+    }
+
+    /// Build the trust confirmation prompt for the currently selected plugin.
+    ///
+    /// The prompt is only available when metadata-only inspection has produced a
+    /// stable identifier, compatibility status and capability report. Missing
+    /// identity is treated as unavailable rather than guessed.
+    pub fn selected_trust_prompt(&self) -> Option<TrustConsentPrompt> {
+        let plugin = self.selected_plugin()?;
+        let inspection = self
+            .inspection
+            .as_ref()
+            .filter(|value| value.path() == plugin.path());
+        let trust_state = inspection
+            .map(|value| value.trust().state().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| {
+                if plugin.has_metadata() {
+                    self.data
+                        .plugins()
+                        .trust()
+                        .state_for(plugin.identifier())
+                        .to_string()
+                } else {
+                    plugin.trust().to_string()
+                }
+            });
+        let (
+            identifier,
+            name,
+            version,
+            sdk_version,
+            capabilities,
+            compatibility_status,
+            compatibility_reason,
+        ) = if let Some(inspection) = inspection.filter(|value| !value.identifier().is_empty()) {
+            (
+                inspection.identifier().to_string(),
+                inspection.name().to_string(),
+                inspection.version().to_string(),
+                inspection.sdk_version().to_string(),
+                inspection.capabilities().to_string(),
+                inspection.compatibility().status().to_string(),
+                inspection.compatibility().reason().to_string(),
+            )
+        } else if plugin.has_metadata() {
+            (
+                plugin.identifier().to_string(),
+                plugin.name().to_string(),
+                plugin.version().to_string(),
+                plugin.sdk_version().to_string(),
+                plugin.capabilities().to_string(),
+                "uninspected".to_string(),
+                "metadata-only plugin inspection has not been loaded".to_string(),
+            )
+        } else {
+            return None;
+        };
+
+        Some(TrustConsentPrompt::new(
+            plugin.path().to_string(),
+            identifier,
+            name,
+            version,
+            sdk_version,
+            capabilities,
+            compatibility_status,
+            compatibility_reason,
+            trust_state,
+        ))
     }
 
     /// Return warnings recorded from boundary events.
@@ -1256,6 +1478,29 @@ mod tests {
         ];
         let unique: std::collections::HashSet<_> = labels.iter().collect();
         assert_eq!(unique.len(), labels.len());
+    }
+
+    /// Verify trust confirmation prompt captures selected plugin identity and capabilities.
+    #[test]
+    fn trust_prompt_carries_selected_plugin_identity_and_capabilities() {
+        let mut app = App::new();
+        app.set_dashboard_data(data_with_plugins(1));
+        let inspection = PluginInspection::from_json(
+            r#"{"schema_version":1,"command":"plugin inspect","status":"success","exit_code":0,"data":{"path":"/app0.so","status":"success","reason":"","metadata":{"identifier":"app-0","name":"App 0","version":"1.0.0","sdk_version":"1.0.0","capabilities":"0x7c","metadata":"demo"},"compatibility":{"status":"success","reason":""},"trust":{"status":"available","reason":"","entries":[],"state":"untrusted"}},"error":""}"#,
+        )
+        .expect("inspection decodes");
+        app.set_inspection(Some(inspection));
+        assert!(app.open_trust_prompt());
+        let prompt = app.trust_prompt().expect("prompt is open");
+        assert_eq!(prompt.identifier(), "app-0");
+        assert_eq!(prompt.name(), "App 0");
+        assert_eq!(prompt.version(), "1.0.0");
+        assert_eq!(prompt.sdk_version(), "1.0.0");
+        assert_eq!(prompt.capabilities(), "0x7c");
+        assert_eq!(prompt.compatibility_status(), "success");
+        assert_eq!(prompt.trust_state(), "untrusted");
+        app.cancel_trust_prompt();
+        assert!(app.trust_prompt().is_none());
     }
 
     /// Verify screen cycles forward and backward through every registered screen.

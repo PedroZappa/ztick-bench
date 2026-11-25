@@ -69,6 +69,19 @@ fn main() -> io::Result<()> {
 /// shortcuts while an editor is open. Every config edit crosses the private
 /// boundary through [`Session::apply_overrides`].
 fn handle_key(session: &Session, app: &mut App, key: KeyEvent) -> bool {
+    if app.trust_prompt().is_some() {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                resolve_trust_prompt(session, app, true);
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                resolve_trust_prompt(session, app, false);
+            }
+            KeyCode::Char('q') => return true,
+            _ => {}
+        }
+        return false;
+    }
     if app.input().is_some() {
         match key.code {
             KeyCode::Esc => {
@@ -259,6 +272,10 @@ fn handle_key(session: &Session, app: &mut App, key: KeyEvent) -> bool {
         }
         KeyCode::Char('p') if app.screen() == Screen::Scheduling => {
             confirm_priority_change(session, app);
+            false
+        }
+        KeyCode::Char('t') if app.screen() == Screen::Integrations => {
+            open_trust_prompt(session, app);
             false
         }
         KeyCode::Char('r') => {
@@ -716,6 +733,87 @@ fn refresh_inspection(session: &Session, app: &mut App) {
     refresh_portability(app);
 }
 
+/// Open the first-run trust confirmation prompt for the selected plugin.
+///
+/// The prompt is only offered after metadata-only inspection has provided a
+/// stable identity, declared capabilities and core compatibility. No plugin code
+/// is loaded or executed by this interaction.
+fn open_trust_prompt(session: &Session, app: &mut App) {
+    if app.screen() != Screen::Integrations {
+        app.set_status("trust confirmation is available on Integrations only");
+        return;
+    }
+    let Some(plugin) = app.selected_plugin() else {
+        app.set_status("trust confirmation needs a selected plugin");
+        return;
+    };
+    let path = plugin.path().to_string();
+    if app
+        .inspection()
+        .is_none_or(|inspection| inspection.path() != path)
+    {
+        refresh_inspection(session, app);
+    }
+    if !app.open_trust_prompt() {
+        app.set_status(
+            "trust confirmation unavailable: load a plugin inspection with a stable identifier first",
+        );
+        return;
+    }
+    let Some(prompt) = app.trust_prompt() else {
+        return;
+    };
+    app.set_status(format!(
+        "first-run consent requested for {} ({}); y/Enter grant, n/Esc deny",
+        prompt.name(),
+        prompt.identifier()
+    ));
+}
+
+/// Apply an explicit trust decision through the private front-end boundary.
+///
+/// A denial never authorizes execution and never writes trust. A grant is only
+/// treated as success when the boundary records it; dashboard data is refreshed
+/// so the rendered trust state reflects the persisted store.
+fn resolve_trust_prompt(session: &Session, app: &mut App, granted: bool) {
+    let Some(prompt) = app.take_trust_prompt() else {
+        return;
+    };
+    let identifier = prompt.identifier().to_string();
+    let name = prompt.name().to_string();
+    match session.trust_consent(&identifier, granted) {
+        Ok(()) => {
+            refresh_dashboard(session, app);
+            if granted {
+                let trusted = session.trust_query(&identifier).ok();
+                if trusted == Some(true) {
+                    app.set_status(format!(
+                        "trust granted for {} ({}); execution remains subject to normal run checks",
+                        name, identifier
+                    ));
+                } else {
+                    app.set_status(format!(
+                        "trust decision recorded for {} ({}), but trust state could not be confirmed",
+                        name, identifier
+                    ));
+                }
+            } else {
+                app.set_status(format!(
+                    "trust denied for {} ({}); execution remains refused until explicit consent is recorded",
+                    name, identifier
+                ));
+            }
+        }
+        Err(error) => {
+            app.set_status(format!(
+                "trust decision failed for {} ({}): {}",
+                name, identifier, error
+            ));
+        }
+    }
+    refresh_portability(app);
+}
+
 /// Apply one result-document read and keep decode failures visible.
 fn apply_result_result(result: Result<String, FrontendError>, app: &mut App) {
     match result {
@@ -1042,8 +1140,8 @@ mod tests {
         apply_assignment, apply_comparison_result, apply_dashboard_result, apply_inspection_result,
         apply_report_envelope, apply_result_result, consume_events, consume_run_result,
         execute_screen_action, export_session_bundle, handle_key, import_session_bundle,
-        refresh_dashboard, refresh_portability, refresh_profiles, refresh_screen,
-        save_current_profile, write_export,
+        open_trust_prompt, refresh_dashboard, refresh_portability, refresh_profiles,
+        refresh_screen, resolve_trust_prompt, save_current_profile, start_run, write_export,
     };
     use ztick_tui::app::{App, InputTarget, RunState, Screen};
     use ztick_tui::config::{DEFAULT_CONFIG_JSON, EditableField};
@@ -1654,6 +1752,107 @@ mod tests {
             "last edit rejected; current config unchanged"
         );
         assert!(app.status().contains("override rejected"));
+    }
+
+    /// Verify trust confirmation refuses execution until an explicit grant is recorded.
+    #[test]
+    fn trust_confirmation_refuses_execution_until_explicit_grant() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after the epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("ztick-trust-ui-{nonce}"));
+        let trust_path = directory.join("trusted.json");
+        std::fs::create_dir_all(&directory).expect("temporary trust directory is created");
+        let trust_path_text = trust_path.to_string_lossy().to_string();
+
+        let session = Session::with_trust_store_path(Some(&trust_path_text))
+            .expect("session creation with trust store succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+
+        let mut app = configured_app();
+        let plugins = r#"{"schema_version":1,"command":"plugin list","status":"success","exit_code":0,"data":{"directories":[],"trust":{"status":"available","reason":"","entries":[]},"plugins":[{"path":"/app.so","source":"explicit_path","status":"success","reason":"","identifier":"app-a","name":"App A","version":"1.2.3","sdk_version":"1.0.0","capabilities":"0x7f","trust":"untrusted"}]},"error":""}"#;
+        let system = r#"{"schema_version":1,"command":"system","status":"success","exit_code":0,"data":{"fields":{"cpu_model":{"status":"value","value":"Test CPU","reason":""}}},"error":""}"#;
+        let list = r#"{"schema_version":1,"command":"list","status":"success","exit_code":0,"data":{"profiles":[]},"error":""}"#;
+        app.set_dashboard_data(DashboardData::from_json(system, list, plugins));
+        let inspection = PluginInspection::from_json(
+            r#"{"schema_version":1,"command":"plugin inspect","status":"success","exit_code":0,"data":{"path":"/app.so","status":"success","reason":"","metadata":{"identifier":"app-a","name":"App A","version":"1.2.3","sdk_version":"1.0.0","capabilities":"0x7f","metadata":"demo"},"compatibility":{"status":"success","reason":""},"trust":{"status":"available","reason":"","entries":[],"state":"untrusted"}},"error":""}"#,
+        )
+        .expect("inspection decodes");
+        app.set_inspection(Some(inspection));
+        refresh_portability(&mut app);
+
+        assert!(!app.portability().is_allowed());
+        assert!(app.portability().blockers().iter().any(|finding| {
+            finding
+                .message()
+                .contains("explicit first-run consent is required")
+        }));
+
+        start_run(&session, &mut app);
+        let status = app.status().to_ascii_lowercase();
+        assert!(
+            status.contains("run blocked"),
+            "status was {}",
+            app.status()
+        );
+        assert!(
+            session
+                .run_result()
+                .expect("run result query succeeds")
+                .is_none()
+        );
+
+        app.set_screen(Screen::Integrations);
+        open_trust_prompt(&session, &mut app);
+        assert!(app.trust_prompt().is_some());
+        let prompt = app.trust_prompt().expect("prompt open");
+        assert_eq!(prompt.identifier(), "app-a");
+        assert_eq!(prompt.capabilities(), "0x7f");
+        assert_eq!(prompt.trust_state(), "untrusted");
+
+        resolve_trust_prompt(&session, &mut app, false);
+        assert!(!trust_path.exists(), "denial must not create trust store");
+        assert!(app.status().contains("execution remains refused"));
+        app.set_dashboard_data(DashboardData::from_json(system, list, plugins));
+        app.set_inspection(Some(PluginInspection::from_json(
+            r#"{"schema_version":1,"command":"plugin inspect","status":"success","exit_code":0,"data":{"path":"/app.so","status":"success","reason":"","metadata":{"identifier":"app-a","name":"App A","version":"1.2.3","sdk_version":"1.0.0","capabilities":"0x7f","metadata":"demo"},"compatibility":{"status":"success","reason":""},"trust":{"status":"available","reason":"","entries":[],"state":"untrusted"}},"error":""}"#,
+        ).expect("inspection decodes")));
+        refresh_portability(&mut app);
+        assert!(!app.portability().is_allowed());
+
+        open_trust_prompt(&session, &mut app);
+        resolve_trust_prompt(&session, &mut app, true);
+        assert!(
+            trust_path.exists(),
+            "grant must persist trust; status={}; trust_query={:?}",
+            app.status(),
+            session.trust_query("app-a")
+        );
+        assert!(
+            session.trust_query("app-a").expect("trust query succeeds"),
+            "trusted plugin should be reported as trusted"
+        );
+        let trusted_inspection = PluginInspection::from_json(
+            r#"{"schema_version":1,"command":"plugin inspect","status":"success","exit_code":0,"data":{"path":"/app.so","status":"success","reason":"","metadata":{"identifier":"app-a","name":"App A","version":"1.2.3","sdk_version":"1.0.0","capabilities":"0x7f","metadata":"demo"},"compatibility":{"status":"success","reason":""},"trust":{"status":"available","reason":"","entries":[{"identifier":"app-a","name":"app-a","version":"","sdk_version":"","capabilities":""}],"state":"trusted"}},"error":""}"#,
+        )
+        .expect("trusted inspection decodes");
+        app.set_inspection(Some(trusted_inspection));
+        refresh_portability(&mut app);
+        assert!(
+            !app.portability()
+                .blockers()
+                .iter()
+                .any(|finding| finding.message().contains("untrusted")),
+            "grant should clear untrusted blocker: {:?}",
+            app.portability().blockers()
+        );
+
+        std::fs::remove_dir_all(&directory).expect("temporary trust directory is removed");
     }
 
     /// Verify typed priority entries cannot bypass the explicit opt-in flow.

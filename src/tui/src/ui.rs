@@ -28,6 +28,11 @@ fn header_lines(app: &App) -> Vec<Line<'static>> {
 
 /// Build the key hint footer shared by every screen.
 fn footer_lines(app: &App) -> Vec<Line<'static>> {
+    if app.trust_prompt().is_some() {
+        return vec![Line::from(
+            "Trust confirmation: y/Enter grant  n/Esc deny  q quit",
+        )];
+    }
     if app.input().is_some() {
         return vec![Line::from(
             "type value  Backspace delete  Enter apply  Esc cancel  q quit",
@@ -35,7 +40,7 @@ fn footer_lines(app: &App) -> Vec<Line<'static>> {
     }
     vec![
         Line::from(
-            "0-9 screens  c compare  e report  Tab cycle  Up/Down select  Left/Right cycle  Enter edit  +/- adjust  p priority  Ctrl+R run  Ctrl+E execute/export  Ctrl+B bundle export  Ctrl+I bundle import  Ctrl+S save  Ctrl+O reload  r refresh  q quit",
+            "0-9 screens  c compare  e report  Tab cycle  Up/Down select  Left/Right cycle  Enter edit  +/- adjust  p priority  t trust  Ctrl+R run  Ctrl+E execute/export  Ctrl+B bundle export  Ctrl+I bundle import  Ctrl+S save  Ctrl+O reload  r refresh  q quit",
         ),
         Line::from(match app.screen() {
             Screen::Compare => {
@@ -43,6 +48,9 @@ fn footer_lines(app: &App) -> Vec<Line<'static>> {
             }
             Screen::Report => {
                 "Report: f result  m CSV mode  g JSON path  y CSV path  u bundle path  d import dir  Ctrl+E export"
+            }
+            Screen::Integrations => {
+                "Integrations: t confirm trust  y grant  n deny  metadata-only inspection before consent"
             }
             _ => "Compare and report screens expose their own local keys in their headers",
         }),
@@ -205,6 +213,7 @@ fn integration_lines(app: &App) -> Vec<Line<'static>> {
     }
 
     lines.extend(inspection_lines(app));
+    lines.extend(trust_prompt_lines(app));
     if !data.load_error().is_empty() {
         lines.push(Line::from(format!("Load errors: {}", data.load_error())));
     }
@@ -222,6 +231,7 @@ fn inspection_lines(app: &App) -> Vec<Line<'static>> {
             Line::from("Inspection: not loaded"),
             Line::from("Compatibility: not inspected"),
             Line::from("Execution mode preference: not advertised by discovery"),
+            Line::from("Trust consent: load metadata-only inspection before confirming first run"),
         ];
     };
     vec![
@@ -254,8 +264,42 @@ fn inspection_lines(app: &App) -> Vec<Line<'static>> {
         )),
         Line::from("Execution mode preference: not advertised by discovery"),
         Line::from("Execution mode follows the config request, not trust alone"),
-        Line::from("Untrusted plugins are refused until consent is recorded"),
+        Line::from("Untrusted plugins are refused until explicit consent is recorded"),
         Line::from("Process isolation is not a security sandbox"),
+    ]
+}
+
+/// Build the active first-run trust confirmation prompt.
+fn trust_prompt_lines(app: &App) -> Vec<Line<'static>> {
+    let Some(prompt) = app.trust_prompt() else {
+        if app.screen() == Screen::Integrations {
+            return vec![Line::from(
+                "Trust consent: press t on an inspected plugin to grant or deny first-run consent",
+            )];
+        }
+        return Vec::new();
+    };
+    vec![
+        Line::from("First-run trust confirmation required before execution:"),
+        Line::from(format!("  Path: {}", prompt.path())),
+        Line::from(format!(
+            "  Identity: {} ({})",
+            prompt.name(),
+            prompt.identifier()
+        )),
+        Line::from(format!(
+            "  Version: {}  SDK: {}",
+            prompt.version(),
+            prompt.sdk_version()
+        )),
+        Line::from(format!("  Capabilities: {}", prompt.capabilities())),
+        Line::from(format!(
+            "  Compatibility: {} ({})",
+            prompt.compatibility_status(),
+            value_or_placeholder(prompt.compatibility_reason(), "no reason recorded")
+        )),
+        Line::from(format!("  Current trust: {}", prompt.trust_state())),
+        Line::from("  Decision: y/Enter grant trust, n/Esc deny and refuse execution"),
     ]
 }
 
@@ -1075,7 +1119,7 @@ mod tests {
         assert!(text.contains("Inspection: success (no reason recorded)"));
         assert!(text.contains("Compatibility: success"));
         assert!(text.contains("Execution mode follows the config request"));
-        assert!(text.contains("Untrusted plugins are refused until consent is recorded"));
+        assert!(text.contains("Untrusted plugins are refused until explicit consent is recorded"));
         assert!(text.contains("Process isolation is not a security sandbox"));
         assert!(!text.contains("Trusted plugins run in-process"));
     }
@@ -1092,6 +1136,23 @@ mod tests {
         assert!(text.contains("Inspection: failure (descriptor rejected)"));
         assert!(text.contains("Compatibility: unsupported (sdk mismatch)"));
         assert!(text.contains("trust=untrusted"));
+    }
+
+    /// Verify trust confirmation prompt shows identity, capabilities and decision keys.
+    #[test]
+    fn integration_lines_show_trust_confirmation_prompt() {
+        let mut app = App::new();
+        app.set_dashboard_data(test_data());
+        app.set_inspection(Some(test_inspection()));
+        assert!(app.open_trust_prompt());
+        let text = lines_text(&integration_lines(&app));
+        assert!(text.contains("First-run trust confirmation required before execution:"));
+        assert!(text.contains("Identity: App A (app-a)"));
+        assert!(text.contains("Version: 1.2.3  SDK: 1.0.0"));
+        assert!(text.contains("Capabilities: 0x7c"));
+        assert!(text.contains("Compatibility: success"));
+        assert!(text.contains("Current trust: untrusted"));
+        assert!(text.contains("y/Enter grant trust, n/Esc deny and refuse execution"));
     }
 
     /// Verify matching inspection refuses a stale path.

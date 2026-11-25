@@ -214,7 +214,7 @@ prerequisite before the Rust crate and screens are implemented.
       documents and core comparison records without recomputing metrics in the
       TUI ([TUI §5](TUI_SPECIFICATION.md#5-data-binding),
       [RESULTS §11](RESULTS_FORMAT.md#11-session-exportimport-and-storage)).
-- [ ] **P5.7 — Trust confirmation interaction.** Done when: First-run consent
+- [x] **P5.7 — Trust confirmation interaction.** Done when: First-run consent
       works through the TUI, displays plugin identity and declared capabilities,
       and refuses execution until consent is recorded
       ([TUI §4](TUI_SPECIFICATION.md#4-interaction-rules), BR §6.2).

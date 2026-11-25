@@ -2845,6 +2845,38 @@ impl PortabilityReport {
                 value_or_placeholder(inspection.compatibility().reason(), "no reason recorded")
             ));
         }
+        let trust_state =
+            if let Some(inspection) = inspection.filter(|value| value.path() == plugin.path()) {
+                let state = inspection.trust().state();
+                if state.is_empty() {
+                    plugin.trust()
+                } else {
+                    state
+                }
+            } else {
+                plugin.trust()
+            };
+        match trust_state {
+            "trusted" => {}
+            "untrusted" => report.block(format!(
+                "integration '{}' is untrusted; explicit first-run consent is required before execution",
+                value_or_placeholder(plugin.identifier(), plugin.path())
+            )),
+            "unknown" => report.block(format!(
+                "integration '{}' trust state is unknown; execution is refused until trust can be confirmed",
+                value_or_placeholder(plugin.identifier(), plugin.path())
+            )),
+            "" if plugin.has_metadata() => report.block(format!(
+                "integration '{}' has no trust state; execution is refused until trust can be confirmed",
+                value_or_placeholder(plugin.identifier(), plugin.path())
+            )),
+            "" => {}
+            other => report.block(format!(
+                "integration '{}' has unsupported trust state '{}'; execution is refused until trust can be confirmed",
+                value_or_placeholder(plugin.identifier(), plugin.path()),
+                other
+            )),
+        }
         let Some(capabilities) = parse_capability_mask(plugin.capabilities()) else {
             report.block(format!(
                 "integration capability mask is not decodable: '{}'",
@@ -3348,6 +3380,57 @@ mod tests {
         assert!(!impulse.contains("\"tones\""));
     }
 
+    /// Verify an untrusted plugin blocks execution until explicit consent is recorded.
+    #[test]
+    fn portability_blocks_untrusted_plugin_until_consent_recorded() {
+        let config = PortableConfig::from_json(DEFAULT_CONFIG_JSON).expect("config decodes");
+        let plugins = PluginList::from_json(PLUGIN_JSON).expect("plugins decode");
+        let inspection = PluginInspection::from_json(INSPECT_JSON).expect("inspection decodes");
+        let system = SystemInventory::from_json(SYSTEM_JSON).expect("system decodes");
+        let report = PortabilityReport::evaluate(
+            &config,
+            Some(&plugins.plugins()[0]),
+            Some(&inspection),
+            &system,
+        );
+        assert!(!report.is_allowed());
+        assert!(report.blockers().iter().any(|finding| {
+            finding
+                .message()
+                .contains("untrusted; explicit first-run consent is required before execution")
+        }));
+    }
+
+    /// Verify unknown trust state blocks execution instead of being guessed.
+    #[test]
+    fn portability_blocks_unknown_trust_state() {
+        let config = PortableConfig::from_json(DEFAULT_CONFIG_JSON).expect("config decodes");
+        let plugins = PluginList::from_json(
+            &PLUGIN_JSON.replace("\"status\":\"available\"", "\"status\":\"unavailable\""),
+        )
+        .expect("plugins decode");
+        let inspection = PluginInspection::from_json(
+            &INSPECT_JSON
+                .replace("\"state\":\"untrusted\"", "\"state\":\"unknown\"")
+                .replace("\"status\":\"available\"", "\"status\":\"unavailable\""),
+        )
+        .expect("inspection decodes");
+        let system = SystemInventory::from_json(SYSTEM_JSON).expect("system decodes");
+        let report = PortabilityReport::evaluate(
+            &config,
+            Some(&plugins.plugins()[0]),
+            Some(&inspection),
+            &system,
+        );
+        assert!(!report.is_allowed());
+        assert!(
+            report
+                .blockers()
+                .iter()
+                .any(|finding| finding.message().contains("trust state is unknown"))
+        );
+    }
+
     /// Verify SDK compatibility allows patch differences but rejects minor or major regressions.
     #[test]
     fn sdk_compatibility_follows_major_and_minor_rules() {
@@ -3362,10 +3445,19 @@ mod tests {
     fn portability_blocks_priority_without_opt_in() {
         let text = DEFAULT_CONFIG_JSON.replace("\"priority\":0", "\"priority\":5");
         let config = PortableConfig::from_json(&text).expect("priority config decodes");
-        let plugins =
-            PluginList::from_json(&PLUGIN_JSON.replace("0x7c", "0x7f")).expect("plugins decode");
-        let inspection = PluginInspection::from_json(&INSPECT_JSON.replace("0x7c", "0x7f"))
-            .expect("inspection decodes");
+        let plugins = PluginList::from_json(
+            &PLUGIN_JSON
+                .replace("\"entries\":[]", "\"entries\":[{\"identifier\":\"app-a\",\"name\":\"App A\",\"version\":\"1.2.3\",\"sdk_version\":\"1.0.0\",\"capabilities\":\"0x7f\"}]")
+                .replace("\"trust\":\"untrusted\"", "\"trust\":\"trusted\"")
+                .replace("0x7c", "0x7f"),
+        )
+        .expect("plugins decode");
+        let inspection = PluginInspection::from_json(
+            &INSPECT_JSON
+                .replace("\"state\":\"untrusted\"", "\"state\":\"trusted\"")
+                .replace("0x7c", "0x7f"),
+        )
+        .expect("inspection decodes");
         let system = SystemInventory::from_json(SYSTEM_JSON).expect("system decodes");
         let report = PortabilityReport::evaluate(
             &config,
@@ -3385,10 +3477,19 @@ mod tests {
     /// Verify CPU isolation and unknown affinity requests are reported explicitly.
     #[test]
     fn portability_reports_cpu_isolation_and_affinity_requests() {
-        let plugins =
-            PluginList::from_json(&PLUGIN_JSON.replace("0x7c", "0x7f")).expect("plugins decode");
-        let inspection = PluginInspection::from_json(&INSPECT_JSON.replace("0x7c", "0x7f"))
-            .expect("inspection decodes");
+        let plugins = PluginList::from_json(
+            &PLUGIN_JSON
+                .replace("\"entries\":[]", "\"entries\":[{\"identifier\":\"app-a\",\"name\":\"App A\",\"version\":\"1.2.3\",\"sdk_version\":\"1.0.0\",\"capabilities\":\"0x7f\"}]")
+                .replace("\"trust\":\"untrusted\"", "\"trust\":\"trusted\"")
+                .replace("0x7c", "0x7f"),
+        )
+        .expect("plugins decode");
+        let inspection = PluginInspection::from_json(
+            &INSPECT_JSON
+                .replace("\"state\":\"untrusted\"", "\"state\":\"trusted\"")
+                .replace("0x7c", "0x7f"),
+        )
+        .expect("inspection decodes");
         let system = SystemInventory::from_json(SYSTEM_JSON).expect("system decodes");
         let cpu_request = DEFAULT_CONFIG_JSON
             .replace("\"cpu_isolation\":\"off\"", "\"cpu_isolation\":\"request\"");
@@ -3459,8 +3560,13 @@ mod tests {
     #[test]
     fn portability_allows_supported_capabilities_and_warns_on_priority() {
         let config = PortableConfig::from_json(DEFAULT_CONFIG_JSON).expect("config decodes");
-        let supported_plugin = PLUGIN_JSON.replace("0x7c", "0x7f");
-        let supported_inspection = INSPECT_JSON.replace("0x7c", "0x7f");
+        let supported_plugin = PLUGIN_JSON
+            .replace("\"entries\":[]", "\"entries\":[{\"identifier\":\"app-a\",\"name\":\"App A\",\"version\":\"1.2.3\",\"sdk_version\":\"1.0.0\",\"capabilities\":\"0x7f\"}]")
+            .replace("\"trust\":\"untrusted\"", "\"trust\":\"trusted\"")
+            .replace("0x7c", "0x7f");
+        let supported_inspection = INSPECT_JSON
+            .replace("\"state\":\"untrusted\"", "\"state\":\"trusted\"")
+            .replace("0x7c", "0x7f");
         let priority_config =
             DEFAULT_CONFIG_JSON.replace("\"priority_opt_in\":false", "\"priority_opt_in\":true");
         let priority_config =
