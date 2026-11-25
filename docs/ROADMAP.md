@@ -22,7 +22,7 @@ dependency-ordered: no dates or estimates are included (BR §21).
 | 2 | Benchmark engine | Workloads, input generators, execution, timing, statistics, validation | Generators and timing levels work; metrics computed per [METRICS](METRICS_REFERENCE.md) |
 | 3 | Integrations | Static and dynamic adapters, two custom SDK test applications | Both test apps run end-to-end ([TESTING_STRATEGY §3](TESTING_STRATEGY.md#3-custom-sdk-test-applications)) |
 | 4 | CLI and results | Profiles, JSON/CSV, comparison, regression detection, CI support | CLI workflows, portable config, comparisons and CI exit codes verified |
-| 5 | TUI | Dashboard, configuration, execution monitoring, result inspection | Principal TUI workflows verified |
+| 5 | TUI | Private front-end C boundary, Rust/ratatui crate, dashboard, configuration, execution monitoring, result inspection, comparison/report and trust consent | Principal TUI workflows verified |
 | 6 | Reliability | Stress tests, isolation, overhead validation, repeatability | Overhead, repeatability, failure and isolation tests pass |
 | 7 | Platform expansion | macOS support, subsequent Windows preparation | Platform abstraction extended; unsupported capabilities reported |
 
@@ -92,7 +92,7 @@ external-style consumer check and a dynamic-module symbol check exercise the run
 the plugin host and the static example link the compiled library. The dynamic example
 does not link `ztick_sdk` so the host owns a single registry. P3.1–P3.10 are
 complete and Phase 3 is verified. P3.10 bumped the development version to
-`0.3.0-dev` per BR §21.
+`0.5.0-dev` per BR §21.
 
 **Progress (after P3.10).** The static App A adapter registers and is discoverable in
 process through the private host registry observers, and its executable host harness
@@ -163,17 +163,66 @@ Phase 4 with a clean `make verify` gate
 
 ### 2.5 Phase 5 — TUI
 
-- [ ] **P5.0 — Rust/ratatui crate, C ABI FFI bindings and optional Cargo build.**
+**Planning note (before P5.0).** Phase 5 has one prerequisite that was implicit in
+BR §21 but not yet a discrete task: the TUI must reach core functionality through
+a versioned `ztick_` C ABI, while the installed SDK C ABI is adapter-facing.
+P5.0 defines a **private, internal C boundary** for front-end control. It adds no
+installed public header and does not change SDK ABI 1.0.0. The resulting surface
+is owned by [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design);
+the screens and interaction rules it serves are owned by
+[TUI_SPECIFICATION](TUI_SPECIFICATION.md). This closes the P5.0 FFI smoke-test
+prerequisite before the Rust crate and screens are implemented.
+
+- [x] **P5.0 — Private front-end C boundary and FFI gate (Derived design).**
+      Done when: [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design)
+      defines the versioned C11 surface, opaque handle lifetimes, status mapping,
+      progress-event delivery and the operation set for config, `list`, `system`,
+      `run`, `report`, `compare`, plugin list/inspect and trust consent; a
+      standalone C11 caller exercises every function; and a Rust FFI smoke test
+      calls the same boundary through `ztick_` symbols. No installed SDK header
+      or ABI version changes.
+- [x] **P5.1 — Rust/ratatui crate, C ABI FFI bindings and optional Cargo build.**
       Done when: `src/tui/` builds through the optional CMake target with ratatui
-      0.30.2 pinned, a C ABI FFI smoke test passes, and core/CLI builds still need
-      no Rust toolchain ([TUI §1](TUI_SPECIFICATION.md#1-principles), BR §21).
-- [ ] **P5.1 — Dashboard screen wired to core and results.** Done when: Principal run status is visible ([TUI](TUI_SPECIFICATION.md)).
-- [ ] **P5.2 — Configuration screen.** Done when: Profiles and dimensions are editable from the TUI.
-- [ ] **P5.3 — Execution monitoring screen.** Done when: Live progress and status are shown.
-- [ ] **P5.4 — Results inspection screen.** Done when: Metrics and their statuses are displayed.
-- [ ] **P5.5 — Comparison and report screens.** Done when: Stored comparisons are viewable.
-- [ ] **P5.6 — Trust confirmation interaction.** Done when: First-run consent works through the active front end.
-- [ ] **P5.7 — Phase 5 verification pass.** Done when: Principal TUI workflows are verified.
+      0.30.2 pinned, the C++ placeholder target is replaced by the Cargo crate,
+      `cargo test`/rustfmt/clippy and the P5.0 FFI smoke test join CTest and
+      `make verify`, and core/CLI-only builds still need no Rust toolchain
+      ([TUI §1](TUI_SPECIFICATION.md#1-principles), BR §21).
+- [x] **P5.2 — Dashboard, system and integration screens.** Done when: The
+      dashboard, system inventory and integration/plugin screens show the active
+      run state, availability states, plugin identity/version/compatibility,
+      declared capabilities and trust state, with no hidden `unsupported` or
+      `unavailable` fields ([TUI §2–§4](TUI_SPECIFICATION.md#2-screens)).
+- [x] **P5.3 — Configuration and scheduling screens.** Done when: Workload,
+      configuration, measurement/validation, parallelism/scheduling and
+      profiles/settings edits produce a valid portable v1 config, including saved
+      named profiles; higher priority requires explicit opt-in; and a config with
+      unsupported cross-machine capabilities is blocked rather than silently
+      adapted ([TUI §2–§5](TUI_SPECIFICATION.md#2-screens),
+      [RESULTS §6](RESULTS_FORMAT.md#6-config-document)).
+- [x] **P5.4 — Execution monitoring screen.** Done when: Live run state, progress
+      by test point, current timing level, warnings and active isolation mode are
+      shown from core progress events, with process-level and instrumented
+      measurements kept visually distinct ([TUI §3–§5](TUI_SPECIFICATION.md#3-run-state-model)).
+- [x] **P5.5 — Results inspection screen.** Done when: Metrics show all four
+      statuses distinctly, validation outcomes, warnings/failures, completeness,
+      raw-data availability and retained overhead estimates are visible, and
+      incomplete runs are never rendered as complete
+      ([TUI §4](TUI_SPECIFICATION.md#4-interaction-rules)).
+- [x] **P5.6 — Comparison and report screens.** Done when: Stored comparisons,
+      thresholds, significance outcomes, comparability warnings, report/export
+      views and session export/import are read from or persisted to result
+      documents and core comparison records without recomputing metrics in the
+      TUI ([TUI §5](TUI_SPECIFICATION.md#5-data-binding),
+      [RESULTS §11](RESULTS_FORMAT.md#11-session-exportimport-and-storage)).
+- [x] **P5.7 — Trust confirmation interaction.** Done when: First-run consent
+      works through the TUI, displays plugin identity and declared capabilities,
+      and refuses execution until consent is recorded
+      ([TUI §4](TUI_SPECIFICATION.md#4-interaction-rules), BR §6.2).
+- [x] **P5.8 — Phase 5 verification pass.** Done when: The principal workflows
+      defined in [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows) are
+      verified by named CTest entries from `cargo test` and the FFI smoke test;
+      the BR §17.6 acceptance traceability is complete; and the development
+      version is bumped to `0.5.0-dev` per BR §21.
 
 ### 2.6 Phase 6 — Reliability
 

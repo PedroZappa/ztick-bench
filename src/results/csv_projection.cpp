@@ -228,9 +228,6 @@ std::string_view csv_row_mode_token(CsvRowMode mode) noexcept {
   return "unknown";
 }
 
-// Public library API: exercised by the test target, which is outside the
-// cppcheck scan of include/, src/ and tools/.
-// cppcheck-suppress unusedFunction
 std::optional<CsvRowMode> parse_csv_row_mode(std::string_view token) noexcept {
   if (token == csv_row_mode_token(CsvRowMode::per_test_point)) {
     return CsvRowMode::per_test_point;

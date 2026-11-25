@@ -12,6 +12,7 @@
 #include <ztick/result_document.hpp>
 #include <ztick/run_command.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -284,6 +285,39 @@ TEST_CASE("run executes with overrides applied", "[cli][run]") {
   REQUIRE(string_member(*snapshot.find("profile"), "name") == "Override");
   REQUIRE(stored.document.find("runs")->as_array()->size() == 1U);
   REQUIRE(string_member(stored.document, "status") == "complete");
+}
+
+/**
+ * @brief Verify context-aware dispatch observes a run but leaves read-only commands alone.
+ */
+TEST_CASE("CLI context dispatch forwards run progress", "[cli][run][progress]") {
+  TempDirectory directory("context-dispatch");
+  const std::filesystem::path config_path = directory.path() / "config.json";
+  write_text(config_path, make_config(2, 1));
+  const std::string config_arg = config_path.string();
+
+  std::vector<ztick::SessionProgress> observations;
+  SessionContext context = make_context();
+  context.progress = [&observations](const ztick::SessionProgress &progress) {
+    observations.push_back(progress);
+  };
+  const std::vector<std::string_view> run_args{"--format", "json", "run", config_arg};
+  const auto run = ztick::cli::dispatch_with_context(run_args, context);
+  REQUIRE(run.code == ExitCode::success);
+  REQUIRE_FALSE(observations.empty());
+  REQUIRE(observations.front().phase == ztick::SessionPhase::validating);
+  REQUIRE(observations.back().phase == ztick::SessionPhase::complete);
+  const bool saw_running_context = std::any_of(
+      observations.begin(), observations.end(), [](const ztick::SessionProgress &progress) {
+        return progress.phase == ztick::SessionPhase::running &&
+               progress.timing_level == "per_block" && progress.isolation == "in_process";
+      });
+  REQUIRE(saw_running_context);
+
+  const std::size_t observed = observations.size();
+  const auto list = ztick::cli::dispatch_with_context({"--format", "json", "list"}, context);
+  REQUIRE(list.code == ExitCode::success);
+  REQUIRE(observations.size() == observed);
 }
 
 /**

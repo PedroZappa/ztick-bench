@@ -42,7 +42,7 @@ is the integration boundary for adapters and for the Rust TUI's FFI calls.
 *Source: BR §15; BR §18 Q46, amended 2026-11-20 and 2026-11-22.*
 
 Toolchain baseline is GCC 13+ or Clang 16+ with `-Wall -Wextra -Wpedantic`,
-`-Werror` in CI and ASan/UBSan in debug builds. The tool version is `0.3.0-dev`
+`-Werror` in CI and ASan/UBSan in debug builds. The tool version is `0.5.0-dev`
 and the SDK ABI version is `1.0.0`. *Source: BR §21–§22.*
 
 ## 2. Component map
@@ -108,11 +108,20 @@ Planned targets (Derived design — names are not ledger requirements):
 | `ztick_platform` | platform abstraction + Linux implementation + inventory-to-metadata adapter; depends on `ztick_results` for the field type | Monitoring implementation is platform-selected |
 | `ztick_cli` | core, results, platform; owns command dispatch, help/version, `list`, `run` argument parsing/overrides/file I/O, `system` inventory rendering and stored-result rendering | No for CLI users |
 | `ztick-bench` | `ztick_cli`; thin executable that writes dispatch output and returns its exit code | No for CLI users |
-| `ztick_tui` | core and results through the C ABI via Rust FFI; Cargo crate driven by CMake | **Yes** — Rust toolchain and ratatui are needed only for TUI builds |
+| `ztick_frontend` | private C11 facade over core, results, platform and plugin host services; owned contract in [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design) | **Yes** — built only with `ZTICK_BUILD_TUI=ON`; not installed or exported |
+| `ztick_tui` | `ztick_frontend` through Rust FFI; Cargo crate driven by CMake | **Yes** — Rust toolchain and ratatui are needed only for TUI builds |
 | `ztick_static_adapters` | SDK C ABI | **Yes** |
 | `ztick_plugin_host` | SDK C ABI, platform library loader | **Yes** |
 | `ztick_runner` | SDK C ABI, IPC transport | **Yes** — needed for out-of-process execution |
 | `ztick_test_apps` | SDK C ABI | Yes for installation; required for acceptance testing |
+
+`ztick_frontend` is an internal C ABI target, not part of the installed SDK: it
+implements [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design)
+and is consumed only by the Rust `ztick_tui` crate. P5.1 replaces the earlier
+C++ `src/tui` placeholder with the Cargo crate and its ratatui executable; P5.2
+adds the dashboard, system inventory and integrations screens described in
+[TUI §2](TUI_SPECIFICATION.md#2-screens). Core/CLI-only builds leave both targets
+disabled and require no Rust toolchain.
 
 The Phase 3 example targets are `ztick_test_app_static`, which links the compiled
 runtime, and `ztick_test_app_dynamic`, which does not link `ztick_sdk` so the host owns
@@ -149,7 +158,8 @@ src/platform/linux/             Linux implementation
 src/plugin/                     discovery, trust, loader, runner/IPC
 src/results/                    JSON, CSV, config, comparisons
 src/cli/                        CLI command layer and ztick-bench executable
-src/tui/                        Rust/ratatui dashboard front end (Cargo crate)
+src/frontend/                   private C11 front-end control facade (P5.0)
+src/tui/                        Rust/ratatui dashboard front end (Cargo crate; P5.1)
 tools/ztick-sysinfo/            Phase 1 developer system-info executable
 tests/unit/                     unit tests (Catch2 v3)
 tests/integration/              integration tests

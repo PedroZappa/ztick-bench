@@ -1,0 +1,22 @@
+[package]
+name = "ztick-tui"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.88"
+description = "Rust front end and private C ABI bindings for ztick-bench"
+build = "build.rs"
+publish = false
+
+[dependencies]
+# Pinned by BR §21. ratatui 0.30.2 is MIT licensed and uses the crossterm backend
+# by default; its crossterm re-export keeps the backend version aligned.
+ratatui = "=0.30.2"
+
+[lib]
+name = "ztick_tui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ztick-tui"
+path = "src/main.rs"

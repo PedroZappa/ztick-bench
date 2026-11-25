@@ -45,8 +45,41 @@ never linked into installed SDK, core, CLI or TUI targets.
 
 **Rust TUI tests (Derived design).** The Phase 5 TUI is Rust/ratatui (BR §21), so
 its unit and screen-state tests use `cargo test`, with rustdoc comments, rustfmt
-and clippy; C ABI FFI smoke tests cover the language boundary. They join CTest and
-`make verify` from Phase 5, with no Rust dependency for core/CLI-only builds.
+and clippy; the private C boundary from
+[SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design)
+has a standalone C11 caller test and a Rust FFI smoke test. P5.0 registers named
+CTest entries for the C11 caller, the Rust FFI smoke test, rustfmt and clippy so
+they join `make verify`; P5.1 adds the crate's own `cargo test` suites. P5.8 adds
+the six principal workflow system
+tests from [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows). Derived
+design: the named CTest entries are the single definition of each Rust gate:
+`tui.rust.format` runs `cargo fmt --all -- --check`, `tui.rust.clippy` runs
+`cargo clippy --all-targets -- -D warnings`, `tui.rust.doc` runs
+`cargo doc --no-deps` with `RUSTDOCFLAGS=-D warnings`, and `tui.rust.test` runs
+`cargo test --all-targets`. `tui.ffi.smoke` stays registered as a named subset
+gate for the private boundary. `make verify` executes those entries once through
+CTest, so the complete Rust target set is gated without a second, drifting Cargo
+invocation. Every verification also configures `ZTICK_BUILD_TUI=OFF` and runs
+tests without Rust, proving that core/CLI-only users need no Rust toolchain.
+
+**Rust toolchain and optional quality gates (Derived design).**
+`rust-toolchain.toml` pins Rust 1.88.0 for editors, local commands and CI, with
+`rustfmt`, `clippy`, `rust-analyzer`, `rust-src` and `llvm-tools-preview`
+components; the pinned toolchain keeps rust-analyzer diagnostics aligned with
+the compiler that runs the gates, and `rust-src` supplies the standard-library
+sources needed to avoid false sysroot diagnostics. `tui.rust.coverage` uses
+cargo-llvm-cov 0.9.2 (Apache-2.0 OR MIT) to write LCOV and HTML reports under
+`build/coverage/rust`; it is report-only until a baseline exists, and
+`ZTICK_RUST_COVERAGE_MIN_LINES` can set a line-coverage floor. `tui.rust.deny`
+uses cargo-deny 0.20.2 (MIT OR Apache-2.0) with `src/tui/deny.toml` to enforce
+license, advisory, ban and registry-source policy for the TUI graph. These
+two Cargo subcommands are development tools, not runtime dependencies: CMake
+registers their gates only when `-DZTICK_RUST_COVERAGE=ON` or
+`-DZTICK_RUST_DENY=ON` is set and the tool responds to `--version`. `make verify`
+detects installed tools and enables the matching gates; CI sets
+`ZTICK_REQUIRE_RUST_TOOLS=1` so a missing tool fails the verification instead of
+silently skipping the gate. `make tui-coverage` and `make tui-deny` are the
+focused local entry points.
 
 **Unit-test scope (Derived design).** Every function introduced or modified in
 ztick-bench has a deterministic unit test asserting its observable behavior,
@@ -353,6 +386,68 @@ covers structured `system`, `report` and `compare` data reaching the envelope, a
 defect found and fixed during this pass. The suite is registered with CTest
 through `ztick_tests` and joins the `make verify` gate.
 
+**P5.0–P5.1 front-end boundary coverage (Derived design).** The C11 caller test
+drives every function in [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design),
+asserting status/reason encoding, struct headers, copied strings/events, handle
+lifetimes and invalidation of borrowed views. The Rust smoke test calls the same
+symbols through FFI and checks that copied data remains valid after callbacks
+return. CTest registration proves the boundary is part of `make verify`, while a
+separate `ZTICK_BUILD_TUI=OFF` configuration proves core/CLI-only builds need no
+Rust. Screen-state tests then cover each of the six workflows in
+[TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows) through named
+`principal_workflow_*` Rust tests in `src/tui/src/main.rs`, registered by
+`tui.rust.test`; `tui.ffi.smoke` covers the private boundary, including explicit
+consent denial, blocked cross-machine capabilities and incomplete-result status.
+
+**P5.4 execution-monitoring coverage (Derived design).** Core tests observe the
+validating, per-repetition running, warning and complete phases from an injected
+`ProgressObserver`, assert the copied timing/isolation tokens and repetition
+context, and verify that a missing injected service emits one failed observation
+with its reason. CLI tests inject the same observer through
+`dispatch_with_context`, prove that a `run` reaches the core while read-only
+commands produce no synthetic progress, and re-check the written result through
+the normal dispatch path. The C11 and Rust boundary tests cover `run_start` and
+`run_result` error paths, pending availability, copied progress context and the
+published JSON envelope, including destruction while a worker may still be
+active. Rust app/UI tests drive the execution key flow and assert that the
+screen shows run state, config path, test point, timing level, isolation mode,
+warnings and result status while keeping the two measurement classes visually
+separate. No metric value is invented from a progress event.
+
+**P5.5 results-inspection coverage (Derived design).** Rust data tests decode a
+deterministic stored result document containing `measured`, `estimated`,
+`unavailable` and `not_applicable` metrics, validation outcomes, classified
+warnings/failures, retained raw sample counts and a separate overhead estimate.
+They assert that a stored `complete` token is demoted by run failures, failed
+validation checks or session failures, and that malformed, unsupported and
+minimal documents keep explicit status/error evidence. UI tests assert that all
+four statuses, validation, warnings/failures, raw-data availability and retained
+overhead are visible, process-level and instrumented measurements remain
+distinct, and incomplete evidence is never rendered as complete. Key-flow tests
+map `0` to the results screen, load the stored document from the published run
+envelope through the safe `result_read` wrapper, and report unreadable paths
+without showing a completed result. The C11 and Rust boundary suites already
+cover `ztick_frontend_result_read`; the safe wrapper adds an owned-path error
+test and reads a real run document in the async run test.
+
+**P5.6 comparison/report coverage (Derived design).** Rust data tests decode
+core comparison records with applied and not-applicable thresholds, significance
+intervals, comparability warnings, unmatched metrics, zero baselines and unknown
+tokens, and assert that report envelopes keep stored and derived status separate.
+They also round-trip versioned session bundles, reject unsafe and duplicate
+reconstruction names before writing, verify atomic import, and keep failed CLI
+envelopes with null data visible as explicit error notes. UI tests render
+threshold, significance, comparability and per-metric classification evidence
+with explicit placeholders, and keep report stored/derived status distinct.
+Key-flow tests map `c` and `e` to the new screens, drive a real policy comparison,
+JSON/CSV report exports and session bundle round-trips, toggle sidedness and
+regression failure, keep control shortcuts inert while editing, and report
+unreadable documents without inventing results. The C11 and Rust FFI suites cover
+the additive policy comparison boundary, invalid arguments, short output buffers
+and both successful and regression-classified copied envelopes; the safe wrappers
+add interior-NUL and large-buffer retry tests and read real run documents in the
+async run test.
+
 ## 10. Acceptance criteria traceability
 
 | BR §17 criterion | Verifying tests |
@@ -362,7 +457,7 @@ through `ztick_tests` and joins the `make verify` gate.
 | 3. Static and dynamic integrations | §3 apps A/B; §8 discovery/load tests |
 | 4. Initial metrics and workload levels | §4, §5, §6 tests across processor/chain/engine |
 | 5. CLI, JSON, comparisons, regressions | §9 tests; §6 comparison tests; Phase 4 end-to-end verification pass (P4.11) |
-| 6. TUI principal workflows | System tests through dashboard, config, execution monitoring and results screens ([TUI](TUI_SPECIFICATION.md)) |
+| 6. TUI principal workflows | P5.8 named Rust tests `principal_workflow_orientation`, `principal_workflow_configuration`, `principal_workflow_execution_monitoring`, `principal_workflow_results_inspection`, `principal_workflow_comparison_and_report`, `principal_workflow_trust_consent` in `src/tui/src/main.rs` (registered by `tui.rust.test`) cover the six workflows in [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows); P5.1 C11/Rust FFI smoke tests cover the private boundary |
 | 7. Automated correctness/overhead/repeatability/failure/isolation tests | §4–§8 |
 | 8. Third-party integration docs | [SDK_SPECIFICATION](SDK_SPECIFICATION.md) conformance checklist and build steps validated by the out-of-tree builds of both apps (P3.9) |
 

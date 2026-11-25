@@ -686,25 +686,82 @@ ConfigValue run_record(const RunPlan &plan, std::uint32_t repetition, const Exec
   return run;
 }
 
+/**
+ * @brief Emit one copied progress observation when an observer is registered.
+ * @param context Session context that may carry a progress observer.
+ * @param phase Lifecycle phase to report.
+ * @param test_point One-based test point, or zero when none is active.
+ * @param repetition One-based repetition, or zero when none is active.
+ * @param repetition_count Total configured repetitions, or zero.
+ * @param plan Resolved run plan used for timing and isolation tokens, or null.
+ * @param message Human-readable context copied into the observation.
+ */
+void emit_progress(const SessionContext &context, SessionPhase phase, std::uint32_t test_point,
+                   std::uint32_t repetition, std::uint32_t repetition_count, const RunPlan *plan,
+                   std::string message) {
+  if (!context.progress) {
+    return;
+  }
+  SessionProgress progress;
+  progress.phase = phase;
+  progress.test_point = test_point;
+  progress.repetition = repetition;
+  progress.repetition_count = repetition_count;
+  if (plan != nullptr) {
+    progress.timing_level = plan->timing_levels.empty()
+                                ? std::string("unknown")
+                                : std::string(timing_level_name(plan->timing_levels.front()));
+    progress.isolation = plan->isolation;
+  }
+  progress.message = std::move(message);
+  context.progress(progress);
+}
+
+/**
+ * @brief Record a terminal failure and emit its progress observation.
+ * @param context Session context that may carry a progress observer.
+ * @param error Optional receiver for the failure explanation.
+ * @param message Human-readable failure explanation.
+ * @return Always `std::nullopt`, so callers can return this value directly.
+ */
+std::optional<ConfigValue> fail_run(const SessionContext &context, std::string *error,
+                                    std::string message) {
+  emit_progress(context, SessionPhase::failed, 0U, 0U, 0U, nullptr, message);
+  record_error(error, std::move(message));
+  return std::nullopt;
+}
+
 } // namespace detail
 } // namespace
 
 // Public library API: exercised by the test target, which is outside the
 // cppcheck scan of include/, src/ and tools/.
+bool validate_run_config(const ConfigValue &config, std::string *error) {
+  if (!validate_config_document(config, error)) {
+    return false;
+  }
+  return detail::make_run_plan(config, error).has_value();
+}
+
 std::optional<ConfigValue> run_configured_session(const ConfigValue &config,
                                                   const SessionContext &context,
                                                   std::string *error) {
   if (!context.clock || !context.machine_metadata || !context.session_id || !context.timestamp) {
-    detail::record_error(error, "session context is incomplete");
-    return std::nullopt;
+    return detail::fail_run(context, error, "session context is incomplete");
   }
-  if (!validate_config_document(config, error)) {
-    return std::nullopt;
+  if (!validate_run_config(config, error)) {
+    const std::string message =
+        error != nullptr && !error->empty() ? *error : "config is not runnable";
+    return detail::fail_run(context, error, message);
   }
   const auto plan = detail::make_run_plan(config, error);
   if (!plan.has_value()) {
-    return std::nullopt;
+    const std::string message =
+        error != nullptr && !error->empty() ? *error : "execution plan could not be built";
+    return detail::fail_run(context, error, message);
   }
+  detail::emit_progress(context, SessionPhase::validating, 1U, 0U, plan->profile.repetitions,
+                        &*plan, "validating portable config");
 
   const std::string session = context.session_id();
   const std::string started = context.timestamp();
@@ -713,17 +770,19 @@ std::optional<ConfigValue> run_configured_session(const ConfigValue &config,
   // test supplies the same constant for both; cppcheck cannot see that boundary.
   // cppcheck-suppress knownConditionTrueFalse
   if (session.empty() || started.empty() || ended.empty()) {
-    detail::record_error(error, "session context produced an empty identifier or timestamp");
-    return std::nullopt;
+    return detail::fail_run(context, error,
+                            "session context produced an empty identifier or timestamp");
   }
 
   detail::WorkSink sink;
   const OverheadEstimate overhead = estimate_overhead(context.clock, 8U, error);
   if (overhead.status != ValueStatus::estimated) {
-    detail::record_error(error, "clock overhead calibration failed");
-    return std::nullopt;
+    return detail::fail_run(context, error, "clock overhead calibration failed");
   }
+  detail::emit_progress(context, SessionPhase::running, 1U, 0U, plan->profile.repetitions, &*plan,
+                        "starting measured repetitions");
 
+  bool all_validations_passed = true;
   ConfigValue runs = ConfigValue::array();
   for (std::uint32_t repetition = 0U; repetition < plan->profile.repetitions; ++repetition) {
     std::vector<double> input;
@@ -757,6 +816,11 @@ std::optional<ConfigValue> run_configured_session(const ConfigValue &config,
       }
     };
 
+    detail::emit_progress(context, SessionPhase::running, 1U, repetition + 1U,
+                          plan->profile.repetitions, &*plan,
+                          "repetition " + std::to_string(repetition + 1U) + "/" +
+                              std::to_string(plan->profile.repetitions));
+
     SequenceOptions options;
     options.warmup_iterations = plan->profile.warmup_iterations;
     options.timing_levels = plan->timing_levels;
@@ -764,12 +828,11 @@ std::optional<ConfigValue> run_configured_session(const ConfigValue &config,
     options.overhead_estimate = overhead;
     const auto trace = run_sequence(actions, options, context.clock, &phase_error);
     if (!trace.has_value()) {
-      detail::record_error(error, "execution failed: " + phase_error);
-      return std::nullopt;
+      return detail::fail_run(context, error, "execution failed: " + phase_error);
     }
     if (!phase_error.empty()) {
-      detail::record_error(error, "validation phase failed to configure: " + phase_error);
-      return std::nullopt;
+      return detail::fail_run(context, error,
+                              "validation phase failed to configure: " + phase_error);
     }
 
     const std::vector<double> *basis = find_samples(*trace, TimingLevel::per_block);
@@ -779,28 +842,27 @@ std::optional<ConfigValue> run_configured_session(const ConfigValue &config,
       raw_basis = RawBasis::run_repetition;
     }
     if (basis == nullptr || basis->empty()) {
-      detail::record_error(error, "execution produced no aggregate timing samples");
-      return std::nullopt;
+      return detail::fail_run(context, error, "execution produced no aggregate timing samples");
     }
     const auto mean = mean_seconds(*basis);
     if (!mean.has_value()) {
-      detail::record_error(error, "duration samples are not finite");
-      return std::nullopt;
+      return detail::fail_run(context, error, "duration samples are not finite");
     }
     const double processing_seconds = raw_basis == RawBasis::per_block
                                           ? std::accumulate(basis->begin(), basis->end(), 0.0)
                                           : *mean;
     const auto statistics = compute_duration_statistics(*basis, raw_basis, &phase_error);
     if (!statistics.has_value()) {
-      detail::record_error(error, "duration aggregation failed: " + phase_error);
-      return std::nullopt;
+      return detail::fail_run(context, error, "duration aggregation failed: " + phase_error);
     }
     const auto performance =
         compute_performance_metrics(plan->frames, processing_seconds, plan->channels,
                                     plan->block_size, plan->sample_rate_hz, &phase_error);
     if (!performance.has_value()) {
-      detail::record_error(error, "performance metrics failed: " + phase_error);
-      return std::nullopt;
+      return detail::fail_run(context, error, "performance metrics failed: " + phase_error);
+    }
+    if (!report.all_passed()) {
+      all_validations_passed = false;
     }
     runs.push_back(detail::run_record(*plan, repetition, *trace, report, *statistics, *performance,
                                       processing_seconds));
@@ -821,23 +883,40 @@ std::optional<ConfigValue> run_configured_session(const ConfigValue &config,
   document.set("environment", ConfigValue::object());
   document.set("runs", std::move(runs));
 
+  const std::string warning_text =
+      "built-in reference workload used; no integration plugin was loaded";
+  detail::emit_progress(context, SessionPhase::warning, 1U, 0U, plan->profile.repetitions, &*plan,
+                        warning_text);
   ConfigValue warnings = ConfigValue::array();
-  warnings.push_back(detail::classified_record(
-      "execution", "built-in reference workload used; no integration plugin was loaded"));
+  warnings.push_back(detail::classified_record("execution", warning_text));
+  if (!all_validations_passed) {
+    const std::string validation_warning = "validation checks failed; run is incomplete";
+    detail::emit_progress(context, SessionPhase::warning, 1U, 0U, plan->profile.repetitions, &*plan,
+                          validation_warning);
+    warnings.push_back(detail::classified_record("validation", validation_warning));
+  }
   document.set("warnings", std::move(warnings));
   document.set("failures", ConfigValue::array());
   document.set("comparisons", ConfigValue::array());
   document.set("status",
-               ConfigValue::string(std::string(session_status_token(SessionStatus::complete))));
+               ConfigValue::string(std::string(session_status_token(
+                   all_validations_passed ? SessionStatus::complete : SessionStatus::incomplete))));
 
   const ConfigValue environment = environment_metadata(config);
   if (!attach_metadata(document, build_metadata(), context.machine_metadata(), environment,
                        error)) {
-    return std::nullopt;
+    const std::string message = error != nullptr && !error->empty() ? *error : "metadata failed";
+    return detail::fail_run(context, error, message);
   }
   if (!finalize_result_document(document, error)) {
-    return std::nullopt;
+    const std::string message =
+        error != nullptr && !error->empty() ? *error : "result document failed validation";
+    return detail::fail_run(context, error, message);
   }
+  detail::emit_progress(context,
+                        all_validations_passed ? SessionPhase::complete : SessionPhase::incomplete,
+                        1U, 0U, plan->profile.repetitions, &*plan,
+                        all_validations_passed ? "run completed" : "run completed with failures");
   return document;
 }
 

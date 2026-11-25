@@ -147,7 +147,7 @@ TEST_CASE("metadata fields keep status value and reason", "[results][metadata]")
  * @brief Verify build metadata records every discovered fact and reports missing ones.
  */
 TEST_CASE("build metadata records all facts", "[results][metadata]") {
-  const ztick::BuildInfo info{"deadbeef", "GNU", "14.2.0", "-O3 -DNDEBUG", "Release", "0.3.0-dev"};
+  const ztick::BuildInfo info{"deadbeef", "GNU", "14.2.0", "-O3 -DNDEBUG", "Release", "0.5.0-dev"};
   const ztick::ConfigValue build = ztick::build_metadata(info);
 
   REQUIRE(record_text(&build, "git_commit", "value") == "deadbeef");
@@ -155,7 +155,7 @@ TEST_CASE("build metadata records all facts", "[results][metadata]") {
   REQUIRE(record_text(&build, "compiler_version", "value") == "14.2.0");
   REQUIRE(record_text(&build, "optimization_flags", "value") == "-O3 -DNDEBUG");
   REQUIRE(record_text(&build, "build_configuration", "value") == "Release");
-  REQUIRE(record_text(&build, "project_version", "value") == "0.3.0-dev");
+  REQUIRE(record_text(&build, "project_version", "value") == "0.5.0-dev");
 
   const ztick::BuildInfo missing{"", "", "", "", "", ""};
   const ztick::ConfigValue unavailable = ztick::build_metadata(missing);

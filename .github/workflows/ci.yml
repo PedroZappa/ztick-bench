@@ -22,10 +22,21 @@ jobs:
       CC: ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }}
       CXX: ${{ matrix.compiler == 'clang' && 'clang++' || 'g++' }}
       CLANG_FORMAT: clang-format-18 # pin formatting so CI and local checks agree
+      ZTICK_REQUIRE_RUST_TOOLS: 1 # make verify must fail if a Rust gate tool is missing
       TERM: '' # verify.sh must also pass with TERM unset locally
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt, clippy, rust-analyzer, rust-src, llvm-tools-preview
+
+      - name: Install Rust quality tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.9.2,cargo-deny@0.20.2
 
       - name: Install toolchain and analysis tools
         run: |

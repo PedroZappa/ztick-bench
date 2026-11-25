@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT
+# Pin the Rust toolchain used by the TUI, local checks and CI.
+# rustup reads this file automatically from this directory and all subdirectories.
+[toolchain]
+channel = "1.88.0"
+profile = "minimal"
+# rust-src supplies the standard-library sources rust-analyzer needs; without a
+# usable sysroot it emits false errors such as E0600/E0608 and "None" warnings.
+components = ["rustfmt", "clippy", "rust-analyzer", "rust-src", "llvm-tools-preview"]

@@ -13,7 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ztick-sdk 1.0.0 REQUIRED)
 
-if(NOT "${ztick-sdk_PROJECT_VERSION}" STREQUAL "0.3.0-dev")
+if(NOT "${ztick-sdk_PROJECT_VERSION}" STREQUAL "0.5.0-dev")
   message(FATAL_ERROR
     "Unexpected informational project version: '${ztick-sdk_PROJECT_VERSION}'")
 endif()

@@ -72,7 +72,7 @@ record sections.
 C++20 and CMake are confirmed for the core, CLI and SDK (Q46); the integration
 boundary is a versioned C ABI with C++ wrappers. The TUI is the Rust/ratatui
 exception confirmed in BR §21. The toolchain targets GCC 13+/Clang 16+, uses
-Catch2 v3 as a dev-only test framework, and is at tool version `0.3.0-dev` with
+Catch2 v3 as a dev-only test framework, and is at tool version `0.5.0-dev` with
 SDK ABI `1.0.0` (BR §21–§22).
 The Phase 5 TUI is an optional Rust/ratatui front end (0.30.2, MIT; Rust 1.88+)
 that calls the C ABI via FFI. Rust and Cargo are needed only when the TUI target
@@ -85,21 +85,30 @@ make test                # wraps: ctest --test-dir build --output-on-failure
 make sysinfo             # print the inventory with availability states
 make sdk-consumer-check  # build an out-of-tree find_package(ztick-sdk) consumer
 make external-apps-check # build and run both integrations out of tree (P3.9)
+make tui-check           # registered Rust TUI gates through CTest
+make tui-coverage        # cargo-llvm-cov LCOV/HTML under build/coverage/rust
+make tui-deny            # cargo-deny policy for the TUI dependency graph
 ```
 
-Run the full CI gate locally — warnings-as-errors build, tests, formatting,
-static analysis, Doxygen, sanitizers, the SDK consumer check and the external-style
-app check:
+Run the full CI gate locally — warnings-as-errors build, C/C++ tests, registered
+Rust gates (formatting, clippy, rustdoc, all-targets tests, plus coverage and
+dependency-policy gates when their tools are installed), static analysis,
+Doxygen, sanitizers, the SDK consumer check and the external-style app check:
 
 ```bash
 make verify              # CI_CMAKE_ARGS overrides the default -DZTICK_WERROR=ON
 ```
 
-The verification gate is defined for Doxygen 1.9.8, Cppcheck 2.13 and
-clang-format 18 (the Ubuntu 24.04 CI toolchain); C/C++ are built with
-`-DZTICK_WERROR=ON`, and tests run under ASan/UBSan with `TERM` unset. These are
-development-tool requirements only: no third-party runtime library is required
-by the core or CLI (BR §15).
+The verification gate is defined for Doxygen 1.9.8, Cppcheck 2.13,
+clang-format 18 and Rust 1.88.0 (the Ubuntu 24.04 CI toolchain); C/C++ are built
+with `-DZTICK_WERROR=ON`, and tests run under ASan/UBSan with `TERM` unset.
+`rust-toolchain.toml` pins the Rust version and the `rustfmt`, `clippy`,
+`rust-analyzer`, `rust-src` and `llvm-tools-preview` components for local
+editors and CI.
+The optional Rust tools are cargo-llvm-cov 0.9.2 and cargo-deny 0.20.2; CI
+installs both and sets `ZTICK_REQUIRE_RUST_TOOLS=1` so they cannot be skipped.
+These are development-tool requirements only: no third-party runtime library is
+required by the core or CLI (BR §15).
 
 ## Building an integration out of tree
 

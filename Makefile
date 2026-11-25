@@ -20,7 +20,14 @@ BUILD_DIR         = build
 CI_BUILD_DIR      = build/ci
 SANITIZE_DIR      = build/sanitize
 DOCS_DIR          = docs
-DOXYGEN_BUILD_DIR = build/doxygen
+DOCS_BUILD_DIR    = build/docs
+DOXYGEN_BUILD_DIR = $(DOCS_BUILD_DIR)/cpp
+RUSTDOC_BUILD_DIR = $(DOCS_BUILD_DIR)/rust
+RUSTDOC_SOURCE_DIR = $(BUILD_DIR)/cargo/tui/doc
+RUSTDOC_INDEX     = $(RUSTDOC_BUILD_DIR)/ztick_tui/index.html
+DOCS_INDEX        = $(DOCS_BUILD_DIR)/index.html
+DOCS_LANDING      = docs/landing.html
+LEGACY_DOCS_DIRS  = $(BUILD_DIR)/doxygen $(BUILD_DIR)/cargo/tui/doc
 FORMAT_DIRS       = include src tests tools examples
 CPPCHECK_DIRS     = include src tools
 TEST_BINARY       = $(BUILD_DIR)/bin/ztick_tests
@@ -64,6 +71,24 @@ CMAKE_ARGS        ?=
 CI_CMAKE_ARGS     ?= -DZTICK_WERROR=ON
 HOST_OS           := $(shell uname -s)
 
+# TUI paths and launch settings. The Rust binary is produced by CMake in the
+# normal build tree; the demo rules use isolated XDG directories so plugin
+# discovery and trust state never touch the developer's real configuration.
+TUI_MANIFEST       = src/tui/Cargo.toml
+TUI_BINARY         = $(BUILD_DIR)/cargo/tui/debug/ztick-tui
+TUI_CARGO          ?= cargo
+TUI_CMAKE_ARGS     = -DZTICK_BUILD_TUI=ON
+TUI_DEMO_CMAKE_ARGS = $(TUI_CMAKE_ARGS) -DZTICK_BUILD_EXAMPLES=ON
+TUI_PLUGIN_EXT     = $(if $(filter Darwin,$(HOST_OS)),dylib,so)
+TUI_DEMO_ROOT      = $(BUILD_DIR)/tui-demo
+TUI_DEMO_DATA      = $(abspath $(TUI_DEMO_ROOT)/data)
+TUI_DEMO_CONFIG    = $(abspath $(TUI_DEMO_ROOT)/config)
+TUI_DEMO_PLUGINS   = $(TUI_DEMO_DATA)/ztick-bench/plugins
+TUI_DEMO_MODULE    = $(TUI_DEMO_PLUGINS)/ztick_test_app_dynamic.$(TUI_PLUGIN_EXT)
+TUI_COVERAGE_DIR   = $(BUILD_DIR)/coverage/rust
+TUI_COVERAGE_MIN_LINES ?=
+ZTICK_REQUIRE_RUST_TOOLS ?= 0
+
 # Colors. tput is silenced when TERM is unset (for example in CI), leaving the
 # escape sequences empty without polluting every make invocation with errors.
 B   = $(shell tput bold 2>/dev/null)
@@ -88,7 +113,8 @@ _INFO    = [$(BLU)INFO$(D)]
 CPPCHECK_FLAGS = --std=c++20 --enable=all --check-level=exhaustive \
                  --error-exitcode=1 --inline-suppr -I include \
                  -I src/core/include -I src/results/include -I src/platform/include -I src/plugin/include \
-                 -I src/sdk/include -I src/cli/include -I tools/ztick-sysinfo/include \
+                 -I src/sdk/include -I src/cli/include -I src/frontend/include \
+                 -I tools/ztick-sysinfo/include \
                  --suppress=checkersReport --suppress=missingIncludeSystem
 
 # Valgrind Memcheck: definite/indirect/possible leaks are hard errors;
@@ -111,8 +137,10 @@ else
 SANITIZE_ASAN_OPTIONS = detect_leaks=1:detect_stack_use_after_return=1:halt_on_error=1
 endif
 
-.PHONY: all build test test-verbose clean cppcheck memcheck sanitize run list sysinfo verify \
-	format-check format clang-format-18 sdk-consumer-check docs docs-open clean-docs help
+.PHONY: all build test test-verbose clean cppcheck memcheck sanitize run list sysinfo \
+	tui tui-build tui-demo tui-check tui-coverage tui-deny tui-demo-reset \
+	verify format-check format clang-format-18 sdk-consumer-check \
+	docs docs-doxygen docs-rust docs-landing docs-open clean-docs help
 
 #==============================================================================#
 #                                  RULES                                       #
@@ -161,6 +189,64 @@ sysinfo: build	## Print the system-info inventory with availability states
 	@$(SYSINFO_BINARY)
 	@echo "$(YEL)* $(_SUCCESS) System information printed$(D)"
 
+tui-build:	## Configure with the TUI enabled and build its binary
+	@echo "$(YEL)Configuring TUI build...$(D)"
+	@$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(CMAKE_ARGS) $(TUI_CMAKE_ARGS)
+	@$(CMAKE) --build $(BUILD_DIR) --target ztick_tui_binary --parallel
+	@echo "$(YEL)* $(_SUCCESS) TUI binary ready at $(TUI_BINARY)$(D)"
+
+tui: tui-build	## Open the TUI (0-9/c/e screens, arrows edit, Ctrl-R run, Ctrl-E execute/export, Ctrl-B/Ctrl-I bundle export/import, Ctrl-S save, Ctrl-O load, p priority, r refresh, q quit)
+	@if [ ! -x "$(TUI_BINARY)" ]; then \
+		echo "$(RED)$(TUI_BINARY) is not built$(D)"; \
+		exit 1; \
+	fi
+	@echo "$(YEL)Opening TUI... press q to quit$(D)"
+	@TERM="$${TERM:-xterm-256color}" "$(TUI_BINARY)"
+
+tui-demo:	## Open the TUI with a seeded plugin and isolated XDG state
+	@echo "$(YEL)Configuring isolated TUI demo build...$(D)"
+	@$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(CMAKE_ARGS) $(TUI_DEMO_CMAKE_ARGS)
+	@$(CMAKE) --build $(BUILD_DIR) --target ztick_tui_binary ztick_test_app_dynamic --parallel
+	@mkdir -p "$(TUI_DEMO_PLUGINS)"
+	@cp -f "$(BUILD_DIR)/lib/ztick_test_app_dynamic.$(TUI_PLUGIN_EXT)" "$(TUI_DEMO_MODULE)"
+	@echo "$(YEL)Opening TUI demo... press 3 for Integrations, q to quit$(D)"
+	@XDG_DATA_HOME="$(TUI_DEMO_DATA)" XDG_CONFIG_HOME="$(TUI_DEMO_CONFIG)" \
+		TERM="$${TERM:-xterm-256color}" "$(TUI_BINARY)"
+
+tui-check:	## Run registered TUI Rust gates through CTest (example adapter enabled)
+	@echo "$(YEL)Configuring TUI test build...$(D)"
+	@$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(CMAKE_ARGS) $(TUI_DEMO_CMAKE_ARGS)
+	@$(CMAKE) --build $(BUILD_DIR) --target ztick_tui_binary ztick_test_app_dynamic --parallel
+	@echo "$(YEL)Running TUI Rust gates...$(D)"
+	@$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure -R '^tui\.'
+	@echo "$(YEL)* $(_SUCCESS) TUI Rust gates passed$(D)"
+
+tui-coverage:	## Generate Rust TUI coverage with cargo-llvm-cov (TUI_COVERAGE_MIN_LINES sets an optional floor)
+	@echo "$(YEL)Configuring TUI coverage build...$(D)"
+	@$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(CMAKE_ARGS) $(TUI_DEMO_CMAKE_ARGS) -DZTICK_RUST_COVERAGE=ON \
+		-DZTICK_RUST_COVERAGE_MIN_LINES="$(TUI_COVERAGE_MIN_LINES)"
+	@$(CMAKE) --build $(BUILD_DIR) --target ztick_frontend ztick_test_app_dynamic --parallel
+	@echo "$(YEL)Running Rust TUI coverage gate...$(D)"
+	@$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure -R '^tui\.rust\.coverage$$'
+	@echo "$(YEL)* $(_SUCCESS) Rust coverage report: $(TUI_COVERAGE_DIR)/html/index.html$(D)"
+
+tui-deny:	## Check Rust dependency licenses, advisories, bans and sources with cargo-deny
+	@echo "$(YEL)Configuring Rust dependency-policy gate...$(D)"
+	@$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(CMAKE_ARGS) $(TUI_CMAKE_ARGS) -DZTICK_RUST_DENY=ON
+	@echo "$(YEL)Running Rust dependency-policy gate...$(D)"
+	@$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure -R '^tui\.rust\.deny$$'
+	@echo "$(YEL)* $(_SUCCESS) Rust dependency policy passed$(D)"
+
+tui-demo-reset:	## Remove isolated TUI demo plugin and trust state
+	@echo "$(YEL)Removing TUI demo state...$(D)"
+	@rm -rf "$(TUI_DEMO_ROOT)"
+	@echo "$(YEL)* $(_SUCCESS) TUI demo state removed$(D)"
+
 clean:	## Remove build trees
 	@echo "$(YEL)Removing build trees...$(D)"
 	@rm -rf $(BUILD_DIR)
@@ -199,9 +285,11 @@ sanitize:	## Run tests under ASan + UBSan (LSan on non-Darwin hosts)
 
 ##@ Verification ✅
 
-verify: clang-format-18	## Run the full CI gate (CI_CMAKE_ARGS defaults to -DZTICK_WERROR=ON)
+verify: clang-format-18	## Run the full CI gate (CI_CMAKE_ARGS defaults to -DZTICK_WERROR=ON; ZTICK_REQUIRE_RUST_TOOLS=1 requires coverage/deny tools)
 	@CI_BUILD_DIR="$(CI_BUILD_DIR)" CI_CMAKE_ARGS="$(CI_CMAKE_ARGS)" \
-		CMAKE="$(CMAKE)" CTEST="$(CTEST)" CMAKE_BUILD_TYPE="$(BUILD_TYPE)" \
+		CMAKE="$(CMAKE)" CTEST="$(CTEST)" TUI_CARGO="$(TUI_CARGO)" \
+		CMAKE_BUILD_TYPE="$(BUILD_TYPE)" \
+		ZTICK_REQUIRE_RUST_TOOLS="$(ZTICK_REQUIRE_RUST_TOOLS)" \
 		./scripts/verify.sh
 
 ##@ Utility Rules 🛠
@@ -236,31 +324,53 @@ external-apps-check:	## Build and run both integrations out of tree (P3.9)
 
 ##@ Documentation Rules 📚
 
-docs:	## Generate Doxygen documentation (requires Doxyfile)
+# Internal prerequisites keep `docs` as the single documented entry point.
+docs-doxygen:
 	@if [ ! -f $(DOXYFILE) ]; then \
 		echo "$(RED)Error: $(DOXYFILE) not found.$(D)"; \
 		exit 1; \
 	fi
-	@mkdir -p $(DOXYGEN_BUILD_DIR)
+	@mkdir -p $(DOCS_BUILD_DIR)
 	@doxygen $(DOXYFILE)
-	@echo "$(YEL)* $(_SUCCESS) Documentation generated in $(DOXYGEN_BUILD_DIR)$(D)"
+	@echo "$(YEL)* $(_SUCCESS) Doxygen documentation generated in $(DOXYGEN_BUILD_DIR)$(D)"
 
-docs-open:	## Open the generated documentation
-	@if [ ! -f $(DOXYGEN_BUILD_DIR)/html/index.html ]; then \
+docs-rust:
+	@echo "$(YEL)Building Rust documentation...$(D)"
+	@$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(CMAKE_ARGS) $(TUI_CMAKE_ARGS)
+	@$(CMAKE) --build $(BUILD_DIR) --target ztick_frontend --parallel
+	@CARGO_TARGET_DIR="$(abspath $(BUILD_DIR)/cargo/tui)" \
+		ZTICK_FRONTEND_LIB_DIR="$(abspath $(BUILD_DIR)/lib)" \
+		LD_LIBRARY_PATH="$(abspath $(BUILD_DIR)/lib)$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}" \
+		RUSTDOCFLAGS="-D warnings" $(TUI_CARGO) doc --manifest-path $(TUI_MANIFEST) --no-deps
+	@mkdir -p $(DOCS_BUILD_DIR)
+	@rm -rf "$(RUSTDOC_BUILD_DIR)"
+	@cp -R "$(RUSTDOC_SOURCE_DIR)" "$(RUSTDOC_BUILD_DIR)"
+	@echo "$(YEL)* $(_SUCCESS) Rust documentation generated in $(RUSTDOC_BUILD_DIR)$(D)"
+
+docs-landing:
+	@mkdir -p $(DOCS_BUILD_DIR)
+	@cp -f "$(DOCS_LANDING)" "$(DOCS_INDEX)"
+
+docs: docs-doxygen docs-rust docs-landing	## Generate all docs in one shared tree (Doxygen + Rust rustdoc)
+	@echo "$(YEL)* $(_SUCCESS) Combined documentation generated in $(DOCS_BUILD_DIR)$(D)"
+
+docs-open:	## Open the combined documentation landing page
+	@if [ ! -f "$(DOCS_INDEX)" ] || [ ! -f "$(DOXYGEN_BUILD_DIR)/index.html" ] || \
+		[ ! -f "$(RUSTDOC_INDEX)" ]; then \
 		echo "$(RED)Documentation not found. Run 'make docs' first.$(D)"; \
 		exit 1; \
 	fi
 	@case "$$(uname)" in \
-		Darwin) open $(DOXYGEN_BUILD_DIR)/html/index.html ;; \
-		Linux) xdg-open $(DOXYGEN_BUILD_DIR)/html/index.html || \
-			open $(DOXYGEN_BUILD_DIR)/html/index.html ;; \
-		*) echo "$(RED)Unsupported OS. Open the file manually.$(D)" ;; \
+		Darwin) open "$(DOCS_INDEX)" ;; \
+		Linux) xdg-open "$(DOCS_INDEX)" || open "$(DOCS_INDEX)" ;; \
+		*) echo "$(RED)Unsupported OS. Open $(DOCS_INDEX) manually.$(D)" ;; \
 	esac
 	@echo "$(YEL)* $(_SUCCESS) Browser launched$(D)"
 
 clean-docs:	## Remove generated documentation artifacts
 	@echo "$(YEL)Removing generated documentation...$(D)"
-	@rm -rf $(DOXYGEN_BUILD_DIR)
+	@rm -rf "$(DOCS_BUILD_DIR)" $(LEGACY_DOCS_DIRS)
 	@echo "$(YEL)* $(_SUCCESS) Documentation cleaned$(D)"
 
 ##@ Help 󰛵

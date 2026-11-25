@@ -115,6 +115,7 @@ Labels used in requirement statements; see
 | --- | --- |
 | **SDK** | The ztick-bench integration software development kit: versioned C ABI, C++ convenience wrappers and adapter contract. |
 | **C ABI** | The stable, C-compatible binary interface at the integration boundary, avoiding dependence on a stable C++ ABI. |
+| **Private front-end C boundary (`ztick_frontend`)** | The internal C11 facade over core, results, platform and plugin services that the Rust TUI calls through FFI; it is not installed, not part of the SDK ABI, and is specified in [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design). |
 | **Capability** | A declared support statement from an adapter, e.g. a sample format, channel layout or benchmark feature. |
 | **Typed parameter** | An adapter-declared configuration value with a type, valid range, default and description. |
 | **SDK version check** | Mandatory negotiation of SDK version and capabilities before an integration is used. |
@@ -144,6 +145,8 @@ Labels used in requirement statements; see
 | **CPU affinity** | Restriction of threads to a chosen set of CPUs. |
 | **Physical core / logical core** | Hardware core versus SMT thread; distinguishable where the platform exposes it. |
 | **Scheduling priority** | OS thread/process priority; unchanged by default, optionally raised only with explicit opt-in and warnings. |
+| **CPU isolation request** | An optional request to isolate benchmark work from other OS work where permitted; refusal falls back to inherited scheduling and is reported as a warning. |
+| **Process isolation request** | The execution-mode request for out-of-process isolation of an integration; process isolation reduces crash impact and is not a security sandbox. |
 
 ## Results and validation
 

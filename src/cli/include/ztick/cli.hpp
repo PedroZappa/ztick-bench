@@ -25,6 +25,12 @@
 #include <string_view>
 #include <vector>
 
+/** @brief Portable benchmarking core. */
+namespace ztick {
+/** @brief Injectable host services for one core run session. */
+struct SessionContext;
+} // namespace ztick
+
 /** @brief Command-line front end for ztick-bench. */
 namespace ztick::cli {
 
@@ -159,6 +165,19 @@ struct CommandResult {
  *       RESULTS_FORMAT §12.
  */
 CommandResult dispatch(const std::vector<std::string_view> &args);
+
+/**
+ * @brief Dispatch one command line with explicit core run services.
+ * @param args Arguments excluding the executable name; may be empty.
+ * @param context Host services, including an optional progress observer, used
+ *        when the command delegates to the core run session.
+ * @return Output text, structured data and exit code for the selected command.
+ * @note Non-run commands ignore @p context. This overload is private to
+ *       ztick-bench and lets the front end observe core progress without
+ *       changing ordinary CLI behavior.
+ */
+CommandResult dispatch_with_context(const std::vector<std::string_view> &args,
+                                    const ztick::SessionContext &context);
 
 } // namespace ztick::cli
 

@@ -17,22 +17,30 @@ menus/configuration/detail screens where useful. *Source: BR §12.1.*
 **REQ-TUI-05 (Required).** The TUI is a Rust front end using ratatui 0.30.2 (MIT;
 Rust 1.88+, edition 2024, crossterm backend). It reaches core functionality only
 through the versioned `ztick_` C ABI via FFI, performs no DSP work of its own, and
-is built by an optional Cargo target driven from CMake. *Source: BR §21
-(TUI-technology confirmation, 2026-11-22); BR §15, §22.*
+is built by an optional Cargo target driven from CMake. The FFI surface is the
+private `ztick_frontend` C boundary in
+[SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design):
+it is not the installed adapter SDK and adds no installed public header. *Source:
+BR §21 (TUI-technology confirmation, 2026-11-22); BR §15, §22.*
 
 Derived design principles:
 
 - The dashboard is the entry point: current system state, available integrations,
   last results and active warnings are visible without navigating a menu tree.
 - Every action available in the TUI maps to a CLI capability; the TUI never
-  applies a setting the CLI cannot express or the config cannot record.
+  applies a setting the CLI cannot express or the config cannot record. For this
+  principle, CLI capability includes the documented config-file, JSON/CSV and
+  result-document operations behind `run`, `report` and `compare`; named profiles
+  and session export/import are persisted as those documents, not as new CLI
+  subcommands.
 - The TUI never silently changes workload or timing settings. Changes are visible
   in the run configuration before execution and are snapshotted into results.
 - The Cargo crate lives in `src/tui/`; an optional CMake target invokes Cargo only
   when the TUI is enabled. Core/CLI-only builds need no Rust toolchain (BR §15).
-- Rust bindings mirror the C ABI's opaque handles and fixed-width types; no C++
-  types or exceptions cross the boundary. Result documents are decoded from the
-  versioned [RESULTS schema](RESULTS_FORMAT.md), never redefined in the TUI.
+- Rust bindings mirror the private `ztick_frontend` opaque handles and fixed-width
+  types; no C++ types or exceptions cross the boundary. Result documents are
+  decoded from the versioned [RESULTS schema](RESULTS_FORMAT.md), never redefined
+  in the TUI.
 - TUI code uses rustdoc comments, rustfmt and clippy, with `cargo test` joined to
   the verification gate when Phase 5 lands.
 
@@ -46,7 +54,7 @@ Derived design principles:
 | Workload | Define what runs | Processor/chain/engine selection, generator and fixed parameters ([BENCHMARK](BENCHMARK_SPECIFICATION.md#2-workload-levels)) |
 | Configuration | Dimensions and profile | Sample rate, block size, channels, instances, oversampling, profile, duration/iterations/repetitions |
 | Measurement & Validation | Detail settings | Timing levels, aggregate/per-block choice, end-to-end opt-in, validation level, tolerances |
-| Parallelism & Scheduling | CPU controls | Worker count, affinity, physical/logical selection, isolation request, priority opt-in |
+| Parallelism & Scheduling | CPU controls | Worker count, affinity, physical/logical selection, CPU-isolation request, separate process-isolation request, priority opt-in |
 | Execution monitoring | Live run feedback | Progress by test point, current timing level, warnings as they occur, isolation mode in use |
 | Results inspection | Detailed review | Metrics with status labels, raw data availability, validation outcomes, warnings/failures, completeness |
 | Compare | Comparison workflow | Baseline/candidate selection, thresholds, significance outcome, comparability warnings |
@@ -91,8 +99,17 @@ Additional rules (Derived design):
 - Render the four metric statuses visually distinctly: `measured`, `estimated`,
   `unavailable`, `not_applicable`.
 - Show `unsupported`/`unavailable` platform fields rather than hiding them.
+- Apply higher priority only after a dedicated opt-in action with a second
+  explicit confirmation; field cycling and typed entry cannot bypass it.
 - Show when raw measurements and overhead estimates are both retained and confirm
   that overhead was not subtracted.
+- Treat a stored `complete` token as incomplete when session failures, a
+  non-complete run, recorded run failures or a failed validation check are
+  present. Show the stored token and the derived status separately, and never
+  render such a document as complete (Derived design; BR §14).
+- Read results from the output path published by the completed run envelope. An
+  unreadable or undecodable document is reported as unavailable evidence rather
+  than shown as a completed run (Derived design; BR §14).
 - If a config from another machine contains unsupported capabilities, block the
   run with an explanation instead of adapting it silently
   ([RESULTS §7](RESULTS_FORMAT.md#7-portability-checks)).
@@ -104,10 +121,34 @@ The TUI is a front end over the core engine and result documents
 
 - Configuration screen edits produce the portable config document
   ([RESULTS §6](RESULTS_FORMAT.md#6-config-document)).
-- Execution monitoring reads progress events from the core; it does not implement
-  timing or validation itself.
-- Results, compare and report screens read result documents; they do not
-  recompute metrics except through the core's comparison functions.
+- Execution monitoring reads copied core progress events from the private C
+  boundary; it does not implement timing or validation itself. Known timing,
+  isolation and test-point values are retained across events, warnings are kept
+  in arrival order, and the copied run envelope is shown only after the worker
+  publishes it. Process-level and instrumented DSP/callback measurements are
+  rendered as separate sections and remain explicitly unavailable in live
+  progress, so no process-level number is presented as an SDK-hook measurement.
+- Results, compare and report screens read result documents through that
+  boundary; they do not recompute metrics except through the core's comparison
+  functions. The results screen decodes one stored document into a typed,
+  read-only view that retains metric status/value/source pairs, validation
+  outcomes, classified warnings/failures, retained raw sample counts and the
+  separately stored overhead estimate (Derived design).
+- The compare screen selects two stored results and asks the private boundary
+  for one core comparison record under explicit threshold, alpha, sidedness and
+  optional regression-failure settings. It renders the stored threshold status,
+  significance status and interval, comparability warnings and per-metric
+  classifications without recomputing them. The additive boundary operation is
+  described in
+  [SDK_SPECIFICATION §14](SDK_SPECIFICATION.md#14-private-front-end-c-boundary-derived-design)
+  (Derived design; BR §11.3).
+- The report/export screen decodes the `report` envelope with its stored and
+  derived status tokens kept separate, previews CSV projected by the core, and
+  writes JSON/CSV exports only from copied text. Session bundles persist result
+  documents, config snapshots and core comparison records verbatim in the
+  [RESULTS §11](RESULTS_FORMAT.md#11-session-exportimport-and-storage) schema;
+  import reconstructs documents without recomputing or rewriting measurements
+  (Derived design; BR §12.3).
 
 ## 6. Out of scope for this document
 
@@ -117,3 +158,22 @@ The TUI is a front end over the core engine and result documents
   [PLATFORM_MONITORING](PLATFORM_MONITORING.md).
 - Dashboard-heavy implementation before the SDK and core engine are validated by
   working custom applications, per BR §16.
+
+## 7. Phase 5 principal workflows (Derived design)
+
+The BR §17.6 phrase "principal workflows" means these six end-to-end paths. They
+are the Phase 5 acceptance scope and map to the numbered tasks in
+[ROADMAP §2.5](ROADMAP.md#25-phase-5--tui):
+
+| Workflow | Path | Roadmap task |
+| --- | --- | --- |
+| Orientation | Open dashboard; inspect system inventory, integration count, recent runs, warnings and active run state | P5.2 |
+| Configuration | Edit workload, dimensions, measurement, validation, scheduling and named profile settings; save/reload a valid portable config or confirm a blocked unsupported capability | P5.3 |
+| Execution monitoring | Start a run; observe state, test-point progress, timing level, warnings and isolation mode; distinguish process-level from instrumented measurements | P5.4 |
+| Results inspection | Open a completed or incomplete result; review all four metric statuses, validation, warnings/failures, raw-data availability and retained overhead | P5.5 |
+| Comparison and report | Select stored results; view threshold/significance outcome, comparability warnings and report/export views; export/import a session bundle | P5.6 |
+| Trust consent | Inspect an untrusted plugin's identity, version, SDK compatibility and capabilities; grant or deny first-run consent before execution | P5.7 |
+
+P5.1 supplies the Rust crate and FFI gate for all six paths, and P5.8 verifies
+them. Screens in §2 that are not named in a workflow remain part of the owning
+screen's detail view; no separate roadmap task is required for each widget.

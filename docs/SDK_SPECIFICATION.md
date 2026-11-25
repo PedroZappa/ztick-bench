@@ -363,3 +363,74 @@ symbol, inspects identity first and then drives the lifecycle callbacks (§10).
 Working out-of-tree examples of both forms are in `tests/sdk_external_apps`,
 built by `scripts/check_external_apps.sh` and verified by `integration.external_apps`
 and `make external-apps-check`.
+
+## 14. Private front-end C boundary (Derived design)
+
+**REQ-SDK-10 (Derived design).** The Rust TUI reaches the core, results and host
+services through a **private, internal C boundary**, not through the installed
+adapter SDK or a new IPC format (BR §21). This boundary is owned by this section;
+screen behavior remains owned by
+[TUI_SPECIFICATION](TUI_SPECIFICATION.md), and the build target topology remains
+owned by [ARCHITECTURE §3](ARCHITECTURE.md#3-dependency-direction-and-build-targets).
+It is built only when `ZTICK_BUILD_TUI=ON` and is not installed, exported by
+`find_package`, or visible to third-party SDK consumers. No public header name
+from §1.1 changes, and the SDK ABI remains `1.0.0`; this is an internal host
+facade, not a new adapter contract.
+
+The private header uses the same C11 discipline as §1.1: fixed-width C types,
+`ztick_` symbols, `ZTICK_` macros, opaque incomplete structs, explicit
+`size`/`version` struct headers and `int32_t` `ztick_status` returns. It reuses
+the core status inventory from §1.2 rather than defining competing status codes.
+No C++ type, exception, template, iterator or C++ callback signature crosses into
+Rust. Progress delivery uses a plain C function pointer with fixed-width types and
+copied structs. String results are NUL-terminated and copied into caller-owned
+buffers; caller-owned structs are zero-initialized before their headers are set.
+
+Required operation groups (Derived design):
+
+| Group | Operations | Boundary rules |
+| --- | --- | --- |
+| Session lifecycle | create/destroy/version query | One opaque session per active front end; destroy is idempotent and invalidates all borrowed views. |
+| Configuration | parse/validate/serialize/override/load/save | Accepts the versioned [RESULTS §6](RESULTS_FORMAT.md#6-config-document) JSON; rejects future schema or SDK minor versions with a reason. |
+| Command view | `list`/`system`/`run`/`report`/`compare`; additive `run_start`/`run_result` and policy-driven compare | Mirrors the documented CLI capabilities ([PROJECT_SPEC §3.3](PROJECT_SPEC.md#33-cli-command-set)); the TUI applies no setting the CLI cannot express. The additive run operations execute a config on a session-owned worker and publish a copied envelope; policy-driven compare forwards threshold, alpha, sidedness and optional regression failure through the same JSON envelope without changing plain `compare` semantics. |
+| Progress | subscribe/poll/drain events | Stable event identifiers for the [TUI §3](TUI_SPECIFICATION.md#3-run-state-model) states, including test point, timing level, isolation mode and warnings; events are copied across the boundary. |
+| Results | read report/compare/export JSON or CSV | Returns borrowed views valid until the next call on the same session, or caller-copied output; never recomputes metrics in the front end. |
+| Integrations and consent | list/inspect/query trust/record consent | Explicit consent is required before first execution of an untrusted plugin ([TUI §4](TUI_SPECIFICATION.md#4-interaction-rules), BR §6.2). |
+
+Every operation returns a `ztick_status`; `unsupported` and `unavailable`
+results carry a reason string and are never silently omitted. Callbacks are
+registered on a session and receive copied event structs; no callback executes
+DSP work or validation. Ownership and thread-safety are per session: a session
+is owned by one front-end thread, borrowed views are invalidated by the next call
+on that session, and progress events are copied so they remain valid after the
+callback returns. No exception crosses the boundary (§8).
+
+**P5.4 asynchronous execution (Derived design).** `ztick_frontend_run_start`
+copies the config path, returns before the run completes, and keeps only a weak
+reference from the session-owned worker so session destruction joins the worker
+without an ownership cycle. `ztick_frontend_run_result` reports 0 in
+`out_available` while the run is pending or before any run has started, then
+copies one versioned CLI envelope when the worker finishes. The worker maps core
+progress observations to copied events with one-based test point, timing level,
+isolation mode and warning text; the observer runs outside timed DSP intervals.
+The callback runs on the worker while the session mutex is held, so it must not
+call any other session operation. Read-only commands enqueue no synthetic run
+events and cannot overwrite an active run state.
+
+**Versioning (Derived design).** The private boundary has its own additive
+interface version, distinct from `ZTICK_SDK_VERSION_*`, exposed through a
+version query. The current interface is `0.3.0`: minor version 2 added
+`ztick_frontend_run_start` and `ztick_frontend_run_result`, and minor version 3
+adds policy-driven comparison through `ztick_frontend_compare_with_policy`,
+without changing the struct layout version or existing `compare` semantics.
+Unknown event kinds and capability bits are treated as `unsupported`; a newer
+minor version remains readable by an older front end. A breaking layout change
+requires a major-version bump of this private boundary, not of the installed SDK
+ABI.
+
+**Verification gate (Derived design).** A standalone C11 caller exercises every
+function and checks status, reason and ownership behavior; a Rust FFI smoke test
+calls the same symbols and verifies copied event and string lifetimes. Both are
+registered with CTest and join `make verify`. Core/CLI-only builds must configure
+and pass tests with `ZTICK_BUILD_TUI=OFF` and no Rust toolchain. Tooling details
+are owned by [TESTING_STRATEGY §2](TESTING_STRATEGY.md#2-test-layers).
