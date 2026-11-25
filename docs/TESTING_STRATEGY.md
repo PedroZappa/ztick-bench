@@ -51,9 +51,15 @@ has a standalone C11 caller test and a Rust FFI smoke test. P5.0 registers named
 CTest entries for the C11 caller, the Rust FFI smoke test, rustfmt and clippy so
 they join `make verify`; P5.1 adds the crate's own `cargo test` suites. P5.8 adds
 the six principal workflow system
-tests from [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows). Every
-verification also configures `ZTICK_BUILD_TUI=OFF` and runs tests without Rust,
-proving that core/CLI-only users need no Rust toolchain.
+tests from [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows). Derived
+design: the named CTest entries are the single definition of each Rust gate:
+`tui.rust.format` runs `cargo fmt --all -- --check`, `tui.rust.clippy` runs
+`cargo clippy --all-targets -- -D warnings` and `tui.rust.test` runs
+`cargo test --all-targets`. `tui.ffi.smoke` stays registered as a named subset
+gate for the private boundary. `make verify` executes those entries once through
+CTest, so the complete Rust target set is gated without a second, drifting Cargo
+invocation. Every verification also configures `ZTICK_BUILD_TUI=OFF` and runs
+tests without Rust, proving that core/CLI-only users need no Rust toolchain.
 
 **Unit-test scope (Derived design).** Every function introduced or modified in
 ztick-bench has a deterministic unit test asserting its observable behavior,

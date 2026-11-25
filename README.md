@@ -87,9 +87,9 @@ make sdk-consumer-check  # build an out-of-tree find_package(ztick-sdk) consumer
 make external-apps-check # build and run both integrations out of tree (P3.9)
 ```
 
-Run the full CI gate locally — warnings-as-errors build, tests, formatting,
-static analysis, Doxygen, sanitizers, the SDK consumer check and the external-style
-app check:
+Run the full CI gate locally — warnings-as-errors build, C/C++ tests, registered
+Rust gates (formatting, clippy, all-targets tests), static analysis, Doxygen,
+sanitizers, the SDK consumer check and the external-style app check:
 
 ```bash
 make verify              # CI_CMAKE_ARGS overrides the default -DZTICK_WERROR=ON

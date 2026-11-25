@@ -40,17 +40,20 @@ add_custom_target(ztick_tui_binary ALL
 )
 add_dependencies(ztick_tui_binary ztick_frontend)
 
+# tui.rust.test is the single full Rust suite: --all-targets covers lib, bins,
+# integration tests, examples and benches. tui.ffi.smoke stays registered as a
+# named subset gate so the private boundary remains visible in every gate list.
 add_test(
   NAME tui.rust.test
   COMMAND "${CMAKE_COMMAND}" -E env ${_ztick_cargo_env}
           "${ZTICK_CARGO_EXECUTABLE}" test --manifest-path "${_ztick_tui_manifest}"
-          --lib --bins
+          --all-targets
 )
 
 add_test(
   NAME tui.rust.format
   COMMAND "${CMAKE_COMMAND}" -E env ${_ztick_cargo_env}
-          "${ZTICK_CARGO_EXECUTABLE}" fmt --manifest-path "${_ztick_tui_manifest}" -- --check
+          "${ZTICK_CARGO_EXECUTABLE}" fmt --all --manifest-path "${_ztick_tui_manifest}" -- --check
 )
 
 add_test(
