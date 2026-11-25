@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: MIT
+# Dependency policy for the Rust TUI. Keep this beside src/tui/Cargo.toml so the
+# policy remains scoped to the optional front end and its dev/CI tooling.
+
+# Only targets in scope are checked; wasm, redox and UEFI-only crates are not
+# part of any supported ztick-bench build.
+[graph]
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+]
+all-features = true
+
+# Vulnerability, unsound and direct-dependency unmaintained advisories are hard
+# failures. Yanked crates are warnings so a transitive release choice does not
+# block a build without an explicit review.
+[advisories]
+yanked = "warn"
+unmaintained = "workspace"
+unsound = "workspace"
+ignore = []
+
+# The ratatui tree legitimately carries several major versions of common
+# crates. Wildcards and explicit bans remain hard failures.
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+deny = []
+
+# Permissive licenses only, matching AGENTS.md and BR §15. Unicode data files
+# and Unlicense/Zlib/BSL dependencies appear in the ratatui tree.
+[licenses]
+private = { ignore = true }
+unused-allowed-license = "allow"
+confidence-threshold = 0.93
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSL-1.0",
+  "MIT",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Unlicense",
+  "WTFPL",
+  "Zlib",
+]
+
+# All production dependencies come from crates.io; no git source is needed.
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+unused-allowed-source = "allow"

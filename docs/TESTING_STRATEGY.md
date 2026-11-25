@@ -54,12 +54,32 @@ the six principal workflow system
 tests from [TUI §7](TUI_SPECIFICATION.md#7-phase-5-principal-workflows). Derived
 design: the named CTest entries are the single definition of each Rust gate:
 `tui.rust.format` runs `cargo fmt --all -- --check`, `tui.rust.clippy` runs
-`cargo clippy --all-targets -- -D warnings` and `tui.rust.test` runs
+`cargo clippy --all-targets -- -D warnings`, `tui.rust.doc` runs
+`cargo doc --no-deps` with `RUSTDOCFLAGS=-D warnings`, and `tui.rust.test` runs
 `cargo test --all-targets`. `tui.ffi.smoke` stays registered as a named subset
 gate for the private boundary. `make verify` executes those entries once through
 CTest, so the complete Rust target set is gated without a second, drifting Cargo
 invocation. Every verification also configures `ZTICK_BUILD_TUI=OFF` and runs
 tests without Rust, proving that core/CLI-only users need no Rust toolchain.
+
+**Rust toolchain and optional quality gates (Derived design).**
+`rust-toolchain.toml` pins Rust 1.88.0 for editors, local commands and CI, with
+`rustfmt`, `clippy`, `rust-analyzer`, `rust-src` and `llvm-tools-preview`
+components; the pinned toolchain keeps rust-analyzer diagnostics aligned with
+the compiler that runs the gates, and `rust-src` supplies the standard-library
+sources needed to avoid false sysroot diagnostics. `tui.rust.coverage` uses
+cargo-llvm-cov 0.9.2 (Apache-2.0 OR MIT) to write LCOV and HTML reports under
+`build/coverage/rust`; it is report-only until a baseline exists, and
+`ZTICK_RUST_COVERAGE_MIN_LINES` can set a line-coverage floor. `tui.rust.deny`
+uses cargo-deny 0.20.2 (MIT OR Apache-2.0) with `src/tui/deny.toml` to enforce
+license, advisory, ban and registry-source policy for the TUI graph. These
+two Cargo subcommands are development tools, not runtime dependencies: CMake
+registers their gates only when `-DZTICK_RUST_COVERAGE=ON` or
+`-DZTICK_RUST_DENY=ON` is set and the tool responds to `--version`. `make verify`
+detects installed tools and enables the matching gates; CI sets
+`ZTICK_REQUIRE_RUST_TOOLS=1` so a missing tool fails the verification instead of
+silently skipping the gate. `make tui-coverage` and `make tui-deny` are the
+focused local entry points.
 
 **Unit-test scope (Derived design).** Every function introduced or modified in
 ztick-bench has a deterministic unit test asserting its observable behavior,

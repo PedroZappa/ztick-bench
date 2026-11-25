@@ -11,12 +11,22 @@ cd "${repo_root}"
 
 cmake_bin="${CMAKE:-cmake}"
 ctest_bin="${CTEST:-ctest}"
+cargo_bin="${TUI_CARGO:-cargo}"
 build_type="${CMAKE_BUILD_TYPE:-Release}"
 ci_build_dir="${CI_BUILD_DIR:-build/ci}"
 no_tui_build_dir="${NO_TUI_BUILD_DIR:-build/ci-no-tui}"
 sanitize_build_dir="${SANITIZE_DIR:-build/sanitize}"
 ci_cmake_args="${CI_CMAKE_ARGS:--DZTICK_WERROR=ON}"
-rust_gate_tests=(tui.rust.test tui.rust.format tui.rust.clippy tui.ffi.smoke unit.frontend.c11)
+require_rust_tools="${ZTICK_REQUIRE_RUST_TOOLS:-0}"
+rust_gate_tests=(
+  tui.rust.test
+  tui.rust.format
+  tui.rust.clippy
+  tui.rust.doc
+  tui.ffi.smoke
+  unit.frontend.c11
+)
+rust_tool_cmake_args=()
 
 # Colors follow the Makefile convention: tput is silenced when TERM is unset
 # (for example in CI), leaving empty sequences rather than control characters.
@@ -39,6 +49,13 @@ ctest_detail() {
   line="$(grep -Eo '[0-9]+% tests passed(, [0-9]+ tests failed)? out of [0-9]+' \
     "${log}" | tail -n 1 || true)"
   printf '%s' "${line}"
+}
+
+# @brief Check whether a Cargo subcommand is installed and runnable.
+# @param subcommand Cargo subcommand name, such as llvm-cov or deny.
+# @return Zero when the subcommand responds to --version.
+cargo_subcommand_available() {
+  "${cargo_bin}" "$1" --version >/dev/null 2>&1
 }
 
 # @brief Assert that every named CTest entry is registered in one build tree.
@@ -149,11 +166,33 @@ run_step() {
   fi
 }
 
+# Cargo subcommands are development tools, not runtime dependencies. Local
+# verification registers their gates only when installed; CI requires them.
+if cargo_subcommand_available llvm-cov; then
+  rust_tool_cmake_args+=(-DZTICK_RUST_COVERAGE=ON)
+  rust_gate_tests+=(tui.rust.coverage)
+elif [[ "${require_rust_tools}" == "1" ]]; then
+  echo "ZTICK_REQUIRE_RUST_TOOLS=1 requires cargo-llvm-cov" >&2
+  exit 2
+else
+  echo "Skipping tui.rust.coverage: cargo-llvm-cov is not installed"
+fi
+
+if cargo_subcommand_available deny; then
+  rust_tool_cmake_args+=(-DZTICK_RUST_DENY=ON)
+  rust_gate_tests+=(tui.rust.deny)
+elif [[ "${require_rust_tools}" == "1" ]]; then
+  echo "ZTICK_REQUIRE_RUST_TOOLS=1 requires cargo-deny" >&2
+  exit 2
+else
+  echo "Skipping tui.rust.deny: cargo-deny is not installed"
+fi
+
 run_step "Formatting" "-" make format-check
 run_step "Static analysis" "-" make cppcheck
 run_step "Documentation" "-" make docs
 run_step "CI configure" "-" "${cmake_bin}" -S . -B "${ci_build_dir}" \
-  -DCMAKE_BUILD_TYPE="${build_type}" ${ci_cmake_args}
+  -DCMAKE_BUILD_TYPE="${build_type}" ${ci_cmake_args} "${rust_tool_cmake_args[@]}"
 run_step "CI build" "-" "${cmake_bin}" --build "${ci_build_dir}" --parallel
 run_step "Rust boundary gate inventory" "-" require_ctest_tests "${ci_build_dir}" \
   "${rust_gate_tests[@]}"
@@ -171,4 +210,5 @@ run_step "Sanitizers (ASan + UBSan)" "ctest" make "SANITIZE_DIR=${sanitize_build
 run_step "Sanitizer gate inventory" "-" require_ctest_tests "${sanitize_build_dir}" \
   unit.frontend.c11
 run_step "Sanitizer Rust gate exclusion" "-" reject_ctest_tests "${sanitize_build_dir}" \
-  tui.rust.test tui.rust.format tui.rust.clippy tui.ffi.smoke
+  tui.rust.test tui.rust.format tui.rust.clippy tui.rust.doc tui.rust.coverage \
+  tui.rust.deny tui.ffi.smoke

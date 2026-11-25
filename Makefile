@@ -85,6 +85,9 @@ TUI_DEMO_DATA      = $(abspath $(TUI_DEMO_ROOT)/data)
 TUI_DEMO_CONFIG    = $(abspath $(TUI_DEMO_ROOT)/config)
 TUI_DEMO_PLUGINS   = $(TUI_DEMO_DATA)/ztick-bench/plugins
 TUI_DEMO_MODULE    = $(TUI_DEMO_PLUGINS)/ztick_test_app_dynamic.$(TUI_PLUGIN_EXT)
+TUI_COVERAGE_DIR   = $(BUILD_DIR)/coverage/rust
+TUI_COVERAGE_MIN_LINES ?=
+ZTICK_REQUIRE_RUST_TOOLS ?= 0
 
 # Colors. tput is silenced when TERM is unset (for example in CI), leaving the
 # escape sequences empty without polluting every make invocation with errors.
@@ -135,7 +138,7 @@ SANITIZE_ASAN_OPTIONS = detect_leaks=1:detect_stack_use_after_return=1:halt_on_e
 endif
 
 .PHONY: all build test test-verbose clean cppcheck memcheck sanitize run list sysinfo \
-	tui tui-build tui-demo tui-check tui-demo-reset \
+	tui tui-build tui-demo tui-check tui-coverage tui-deny tui-demo-reset \
 	verify format-check format clang-format-18 sdk-consumer-check \
 	docs docs-doxygen docs-rust docs-landing docs-open clean-docs help
 
@@ -221,6 +224,24 @@ tui-check:	## Run registered TUI Rust gates through CTest (example adapter enabl
 	@$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure -R '^tui\.'
 	@echo "$(YEL)* $(_SUCCESS) TUI Rust gates passed$(D)"
 
+tui-coverage:	## Generate Rust TUI coverage with cargo-llvm-cov (TUI_COVERAGE_MIN_LINES sets an optional floor)
+	@echo "$(YEL)Configuring TUI coverage build...$(D)"
+	@$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(CMAKE_ARGS) $(TUI_DEMO_CMAKE_ARGS) -DZTICK_RUST_COVERAGE=ON \
+		-DZTICK_RUST_COVERAGE_MIN_LINES="$(TUI_COVERAGE_MIN_LINES)"
+	@$(CMAKE) --build $(BUILD_DIR) --target ztick_frontend ztick_test_app_dynamic --parallel
+	@echo "$(YEL)Running Rust TUI coverage gate...$(D)"
+	@$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure -R '^tui\.rust\.coverage$$'
+	@echo "$(YEL)* $(_SUCCESS) Rust coverage report: $(TUI_COVERAGE_DIR)/html/index.html$(D)"
+
+tui-deny:	## Check Rust dependency licenses, advisories, bans and sources with cargo-deny
+	@echo "$(YEL)Configuring Rust dependency-policy gate...$(D)"
+	@$(CMAKE) -S . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) \
+		$(CMAKE_ARGS) $(TUI_CMAKE_ARGS) -DZTICK_RUST_DENY=ON
+	@echo "$(YEL)Running Rust dependency-policy gate...$(D)"
+	@$(CTEST) --test-dir $(BUILD_DIR) --output-on-failure -R '^tui\.rust\.deny$$'
+	@echo "$(YEL)* $(_SUCCESS) Rust dependency policy passed$(D)"
+
 tui-demo-reset:	## Remove isolated TUI demo plugin and trust state
 	@echo "$(YEL)Removing TUI demo state...$(D)"
 	@rm -rf "$(TUI_DEMO_ROOT)"
@@ -264,9 +285,11 @@ sanitize:	## Run tests under ASan + UBSan (LSan on non-Darwin hosts)
 
 ##@ Verification ✅
 
-verify: clang-format-18	## Run the full CI gate (CI_CMAKE_ARGS defaults to -DZTICK_WERROR=ON)
+verify: clang-format-18	## Run the full CI gate (CI_CMAKE_ARGS defaults to -DZTICK_WERROR=ON; ZTICK_REQUIRE_RUST_TOOLS=1 requires coverage/deny tools)
 	@CI_BUILD_DIR="$(CI_BUILD_DIR)" CI_CMAKE_ARGS="$(CI_CMAKE_ARGS)" \
-		CMAKE="$(CMAKE)" CTEST="$(CTEST)" CMAKE_BUILD_TYPE="$(BUILD_TYPE)" \
+		CMAKE="$(CMAKE)" CTEST="$(CTEST)" TUI_CARGO="$(TUI_CARGO)" \
+		CMAKE_BUILD_TYPE="$(BUILD_TYPE)" \
+		ZTICK_REQUIRE_RUST_TOOLS="$(ZTICK_REQUIRE_RUST_TOOLS)" \
 		./scripts/verify.sh
 
 ##@ Utility Rules 🛠
