@@ -314,13 +314,32 @@ impl App {
         &self.data
     }
 
-    /// Replace all copied dashboard inputs and keep the current selection in range.
+    /// Replace copied dashboard inputs while preserving inspection for the same plugin.
+    ///
+    /// The selection is clamped to the new plugin list. Inspection detail is
+    /// retained only when it still describes the selected candidate, so an
+    /// unrelated dashboard refresh cannot silently remove a portability blocker.
     pub fn set_dashboard_data(&mut self, data: DashboardData) {
+        let selected_path = self
+            .selected_plugin()
+            .map(|plugin| plugin.path().to_string());
         self.selected_plugin = self
             .selected_plugin
             .min(data.plugins().plugins().len().saturating_sub(1));
-        self.inspection = None;
+        let keep_inspection = match (
+            selected_path.as_deref(),
+            self.selected_plugin(),
+            self.inspection(),
+        ) {
+            (Some(path), Some(plugin), Some(inspection)) => {
+                inspection.path() == path && plugin.path() == path
+            }
+            _ => false,
+        };
         self.data = data;
+        if !keep_inspection {
+            self.inspection = None;
+        }
     }
 
     /// Return the index of the selected plugin candidate.
@@ -386,8 +405,10 @@ impl App {
     /// Replace the decoded portable config and record any decode error.
     ///
     /// A rejected document is never retained, so stale edits cannot appear as
-    /// the effective config after a failed reload.
+    /// the effective config after a failed reload. A pending priority decision
+    /// belongs to the previous document and is always discarded.
     pub fn set_config_json(&mut self, text: &str) -> Result<(), crate::data::DataError> {
+        self.pending_priority = None;
         match crate::data::PortableConfig::from_json(text) {
             Ok(config) => {
                 self.config = Some(config);
@@ -838,6 +859,38 @@ mod tests {
         assert_eq!(app.selected_plugin_index(), 0);
     }
 
+    /// Verify replacing data keeps inspection for an unchanged plugin path.
+    #[test]
+    fn replacing_data_keeps_matching_inspection() {
+        let mut app = App::new();
+        app.set_dashboard_data(data_with_plugins(1));
+        let inspection = PluginInspection::from_json(
+            r#"{"schema_version":1,"command":"plugin inspect","status":"success","exit_code":0,"data":{"path":"/app0.so","status":"success","reason":"","metadata":{},"compatibility":{"status":"failure","reason":"unsupported on this host"},"trust":{"status":"available","reason":"","entries":[],"state":"untrusted"}},"error":""}"#,
+        )
+        .expect("inspection decodes");
+        app.set_inspection(Some(inspection));
+
+        app.set_dashboard_data(data_with_plugins(1));
+        let retained = app.inspection().expect("matching inspection is retained");
+        assert_eq!(retained.path(), "/app0.so");
+        assert_eq!(retained.compatibility().status(), "failure");
+        assert_eq!(
+            retained.compatibility().reason(),
+            "unsupported on this host"
+        );
+
+        let second = PluginInspection::from_json(
+            r#"{"schema_version":1,"command":"plugin inspect","status":"success","exit_code":0,"data":{"path":"/app1.so","status":"success","reason":"","metadata":{},"compatibility":{"status":"success","reason":""},"trust":{"status":"available","reason":"","entries":[],"state":"untrusted"}},"error":""}"#,
+        )
+        .expect("inspection decodes");
+        app.set_dashboard_data(data_with_plugins(2));
+        app.select_next_plugin();
+        app.set_inspection(Some(second));
+        app.set_dashboard_data(data_with_plugins(1));
+        assert_eq!(app.selected_plugin_index(), 0);
+        assert!(app.inspection().is_none());
+    }
+
     /// Verify event message stops at first nul.
     #[test]
     fn event_message_stops_at_first_nul() {
@@ -961,6 +1014,24 @@ mod tests {
         assert_eq!(app.pending_priority(), None);
         app.request_priority_change(true);
         app.clear_pending_priority();
+        assert_eq!(app.pending_priority(), None);
+    }
+
+    /// Verify replacing the config discards a pending priority decision.
+    #[test]
+    fn config_replacement_discards_pending_priority() {
+        let mut app = App::new();
+        app.set_config_json(DEFAULT_CONFIG_JSON)
+            .expect("default config decodes");
+        assert!(!app.request_priority_change(true));
+        assert_eq!(app.pending_priority(), Some(true));
+
+        app.set_config_json(DEFAULT_CONFIG_JSON)
+            .expect("default config decodes");
+        assert_eq!(app.pending_priority(), None);
+
+        assert!(!app.request_priority_change(true));
+        assert!(app.set_config_json("not json").is_err());
         assert_eq!(app.pending_priority(), None);
     }
 

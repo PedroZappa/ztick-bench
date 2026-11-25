@@ -451,12 +451,14 @@ mod tests {
 
     use super::{
         apply_assignment, apply_dashboard_result, apply_inspection_result, consume_events,
-        handle_key, refresh_dashboard, refresh_profiles, refresh_screen, save_current_profile,
+        handle_key, refresh_dashboard, refresh_portability, refresh_profiles, refresh_screen,
+        save_current_profile,
     };
     use ztick_tui::app::{App, RunState, Screen};
     use ztick_tui::config::{DEFAULT_CONFIG_JSON, EditableField};
-    use ztick_tui::data::{DashboardData, PortabilityReport};
+    use ztick_tui::data::{DashboardData, PluginInspection, PortabilityReport};
     use ztick_tui::frontend::{FrontendError, Session};
+    use ztick_tui::profile::{self, SavedProfile};
 
     /// Build dashboard data with one plugin from valid envelopes.
     fn test_data() -> DashboardData {
@@ -553,6 +555,36 @@ mod tests {
         assert!(app.inspection().is_none());
     }
 
+    /// Verify a dashboard refresh preserves an inspection-backed blocker.
+    #[test]
+    fn dashboard_refresh_keeps_inspection_backed_blocker() {
+        let mut app = configured_app();
+        let data = test_data();
+        app.set_dashboard_data(data.clone());
+        let inspection = PluginInspection::from_json(
+            r#"{"schema_version":1,"command":"plugin inspect","status":"success","exit_code":0,"data":{"path":"/app.so","status":"success","reason":"","metadata":{},"compatibility":{"status":"failure","reason":"unsupported on this host"},"trust":{"status":"available","reason":"","entries":[],"state":"untrusted"}},"error":""}"#,
+        )
+        .expect("inspection decodes");
+        app.set_inspection(Some(inspection));
+        refresh_portability(&mut app);
+        assert!(
+            app.portability()
+                .blockers()
+                .iter()
+                .any(|finding| finding.message().contains("unsupported on this host"))
+        );
+
+        apply_dashboard_result(Ok(data), &mut app);
+        refresh_portability(&mut app);
+        assert!(app.inspection().is_some());
+        assert!(
+            app.portability()
+                .blockers()
+                .iter()
+                .any(|finding| finding.message().contains("unsupported on this host"))
+        );
+    }
+
     /// Verify number keys select registered screens without quitting.
     #[test]
     fn number_keys_select_registered_screens() {
@@ -624,6 +656,44 @@ mod tests {
                 .iter()
                 .any(|finding| finding.message().contains("explicitly accepted"))
         );
+    }
+
+    /// Verify a pending priority confirmation does not survive a profile load.
+    #[test]
+    fn profile_load_discards_pending_priority_confirmation() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let session = Session::new().expect("session creation succeeds");
+        session
+            .parse_config(DEFAULT_CONFIG_JSON)
+            .expect("default config parses");
+        let mut app = configured_app();
+        app.set_screen(Screen::Scheduling);
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after the epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("ztick-priority-load-{nonce}"));
+        let path = profile::save(&directory, "Other", DEFAULT_CONFIG_JSON)
+            .expect("named profile is saved");
+        app.set_profile_directory(&directory);
+        app.set_saved_profiles(vec![SavedProfile::new("Other", path)]);
+
+        assert!(!handle_key(&session, &mut app, key(KeyCode::Char('p'))));
+        assert_eq!(app.pending_priority(), Some(true));
+        assert!(!handle_key(
+            &session,
+            &mut app,
+            KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)
+        ));
+        assert_eq!(app.pending_priority(), None);
+        assert!(!app.config().expect("config remains").priority_opt_in());
+
+        assert!(!handle_key(&session, &mut app, key(KeyCode::Char('p'))));
+        assert_eq!(app.pending_priority(), Some(true));
+        assert!(!app.config().expect("config remains").priority_opt_in());
+
+        std::fs::remove_dir_all(&directory).expect("temporary directory is removed");
     }
 
     /// Verify core-invalid overrides are rejected without mutating the session config.

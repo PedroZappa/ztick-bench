@@ -856,6 +856,9 @@ fn quote_assignment(path: &str, value: &str) -> String {
 }
 
 /// Quote one string as a JSON literal with deterministic escapes.
+///
+/// All control characters are emitted as `\uXXXX` escapes so the result is a
+/// valid JSON string even for values entered through the text editor.
 fn json_quote(value: &str) -> String {
     let mut output = String::from("\"");
     for character in value.chars() {
@@ -865,6 +868,9 @@ fn json_quote(value: &str) -> String {
             '\n' => output.push_str("\\n"),
             '\r' => output.push_str("\\r"),
             '\t' => output.push_str("\\t"),
+            other if other.is_control() => {
+                output.push_str(&format!("\\u{:04x}", u32::from(other)));
+            }
             other => output.push(other),
         }
     }
@@ -1213,6 +1219,10 @@ mod tests {
     #[test]
     fn json_literal_helpers_escape_strings_and_build_generators() {
         assert_eq!(json_quote("a\"b"), "\"a\\\"b\"");
+        assert_eq!(
+            json_quote("a\u{0}b\u{8}c\u{b}d\u{c}e\u{1f}f"),
+            "\"a\\u0000b\\u0008c\\u000bd\\u000ce\\u001ff\""
+        );
         assert_eq!(json_string_array(&["eq".to_string()]), "[\"eq\"]");
         assert!(generator_object("multitone", 0.5).contains("\"tones\":["));
         assert!(generator_object("impulse", 0.5).contains("\"position\":0"));
