@@ -12,9 +12,8 @@
 ## 1. Purpose and identity
 
 **REQ-PROJ-01 (Required).** `ztick-bench` is a standalone, general-purpose
-audio/DSP benchmarking application, independent of ALIENMETAL, with its own
-development rules defined in `AGENTS.md`. *Source: BR §1; BR §22 supersedes the
-former ALIENMETAL-standards clause.*
+audio/DSP benchmarking application with its own development rules defined in
+`AGENTS.md`. *Source: BR §1; BR §22.*
 
 **REQ-PROJ-02 (Required).** The core must not be coupled to one DSP library, audio
 framework, product, or application. *Source: BR §1, §15.*

@@ -32,8 +32,8 @@ If a topic belongs to another file, add a link instead of re-documenting it.
 
 ## Hard constraints
 
-- **Project identity:** ztick-bench is not ALIENMETAL and does not inherit its
-  development standards. Its own rules are defined in this file (BR §22).
+- **Project identity:** ztick-bench is an independent open-source project. Its own
+  development rules are defined in this file (BR §22).
 - **Core portability:** the core must stay independent of individual DSP libraries
   and frameworks. Linux-specific behavior lives behind platform abstractions.
 - **C ABI at the integration boundary**, with C++ convenience wrappers; do not

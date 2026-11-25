@@ -15,12 +15,10 @@ documents refer to sections of this record (BR = Baseline Record).*
 ## 1. Project identity and purpose
 
 -   **Project name:** `ztick-bench`
--   **Project type:** Standalone application, independent of ALIENMETAL.
--   **Engineering approach:** Follow the strict development standards
-    and procedures established for the ALIENMETAL project, adapted to
-    this independent project. **(Superseded by BR §22, 2026-11-20:**
-    ztick-bench is not ALIENMETAL and does not inherit its development
-    standards; its own rules are defined in `AGENTS.md` and BR §22.)
+-   **Project type:** Standalone, independent open-source application.
+-   **Engineering approach:** Follow strict, explicit development standards
+    adapted to this project. **(Superseded by BR §22, 2026-11-20:**
+    ztick-bench defines its own development standards in `AGENTS.md` and BR §22.)
 -   **Primary purpose:** A general-purpose audio/DSP benchmarking
     application suitable for evaluating DSP libraries and audio
     applications, including future projects and third-party
@@ -750,10 +748,10 @@ finalised. Per §19, they are requirements or explicit scope decisions.
 
 Decisions made after the specification was completed, to unblock Phase 1.
 
--   **Project identity / standards:** ztick-bench is not ALIENMETAL and does not
-    inherit its development standards. The BR §1 clause referencing those
-    standards is superseded by concrete naming, formatting, commit and branch
-    rules in `AGENTS.md`. Reason: the user clarified the project's identity.
+-   **Project identity / standards:** ztick-bench is an independent open-source
+    project and defines its own development standards. The BR §1 clause is
+    superseded by concrete naming, formatting, commit and branch rules in
+    `AGENTS.md`. Reason: the user clarified the project's identity.
 -   **License:** MIT, with `SPDX-License-Identifier: MIT` on source files.
 -   **Versioning:** tool `0.1.0-dev` at Phase 1, then `0.2.0-dev` at Phase 2
     (BR §21 tool-versioning confirmation); SDK ABI version `1.0.0` from Phase 1.

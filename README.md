@@ -20,9 +20,8 @@
 ## What ztick-bench is
 
 A standalone application for measuring the performance of DSP libraries and audio
-applications. It is independent of ALIENMETAL and defines its own development
-standards in [AGENTS.md](AGENTS.md). It is licensed under the
-[MIT License](LICENSE).
+applications. It defines its own development standards in [AGENTS.md](AGENTS.md)
+and is licensed under the [MIT License](LICENSE).
 
 - **General-purpose core.** The core is not coupled to any one DSP library, audio
   framework, product, or application.

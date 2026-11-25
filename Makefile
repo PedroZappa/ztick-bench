@@ -3,9 +3,9 @@
 # Convenience wrapper around CMake and CTest. CMake is the active build system;
 # these targets configure, build, test, analyse and document the existing project.
 #
-# Structure adapted from the ALIENMETAL Makefile. ztick-bench is an independent
-# project (AGENTS.md, BR §22): ALIENMETAL names, scripts, vendored dependencies
-# and profiling trees are intentionally absent. Also not carried over, because
+# ztick-bench is an independent project (AGENTS.md, BR §22). Unrelated project
+# names, scripts, vendored dependencies and profiling trees are intentionally
+# absent. Also not carried over, because
 # no target or dependency for them exists in this specification yet:
 # scripts/build.sh, per-case Memcheck, and the DSP microbenchmark binary.
 #
